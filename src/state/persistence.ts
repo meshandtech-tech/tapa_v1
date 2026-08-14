@@ -1,8 +1,9 @@
-import { questions } from "../data/questions";
+import { getDeck } from "../data/questions";
+import { DIFFICULTIES, type Difficulty } from "../party/types";
 import { advanceToNextQuestion } from "./gameReducer";
 import type { AnswerRecord, GameScreen, GameState, PlayerId } from "../types/game";
 
-export const STORAGE_KEY = "despedida-game:v1";
+export const STORAGE_KEY = "tapa:quiz:v1";
 
 const persistedScreens = new Set<GameScreen>([
   "question",
@@ -13,8 +14,8 @@ const persistedScreens = new Set<GameScreen>([
   "final",
 ]);
 
-function isPlayer(value: unknown): value is PlayerId {
-  return value === "Lucas" || value === "Samuel";
+function isPlayerId(value: unknown): value is PlayerId {
+  return typeof value === "string" && value.length > 0;
 }
 
 function isAnswerRecord(value: unknown): value is AnswerRecord {
@@ -23,7 +24,7 @@ function isAnswerRecord(value: unknown): value is AnswerRecord {
   return (
     Number.isInteger(record.questionIndex) &&
     Number.isInteger(record.questionId) &&
-    isPlayer(record.player) &&
+    isPlayerId(record.player) &&
     (record.selectedAnswer === null || (Number.isInteger(record.selectedAnswer) && record.selectedAnswer! >= 0 && record.selectedAnswer! <= 3)) &&
     typeof record.wasCorrect === "boolean" &&
     (record.scoreDelta === 0 || record.scoreDelta === 1) &&
@@ -32,14 +33,17 @@ function isAnswerRecord(value: unknown): value is AnswerRecord {
   );
 }
 
-function getScores(history: readonly AnswerRecord[]): Record<PlayerId, number> {
-  return history.reduce<Record<PlayerId, number>>(
-    (scores, record) => ({
-      ...scores,
-      [record.player]: scores[record.player] + record.scoreDelta,
-    }),
-    { Lucas: 0, Samuel: 0 },
+function getScores(
+  players: readonly PlayerId[],
+  history: readonly AnswerRecord[],
+): Record<PlayerId, number> {
+  const scores: Record<PlayerId, number> = Object.fromEntries(
+    players.map((player) => [player, 0]),
   );
+  history.forEach((record) => {
+    scores[record.player] = (scores[record.player] ?? 0) + record.scoreDelta;
+  });
+  return scores;
 }
 
 export function stateForPersistence(state: GameState): GameState | null {
@@ -59,43 +63,62 @@ export function parseSavedGame(raw: string | null): GameState | null {
 
   try {
     const candidate = JSON.parse(raw) as Partial<GameState>;
+
     if (
       candidate.version !== 1 ||
       !candidate.screen ||
       !persistedScreens.has(candidate.screen) ||
+      !DIFFICULTIES.includes(candidate.difficulty as Difficulty) ||
+      !Array.isArray(candidate.players) ||
+      candidate.players.length === 0 ||
+      !candidate.players.every(isPlayerId) ||
+      new Set(candidate.players).size !== candidate.players.length
+    ) {
+      return null;
+    }
+
+    const players = candidate.players as PlayerId[];
+    const deck = getDeck(candidate.difficulty as Difficulty);
+
+    if (
       !Number.isInteger(candidate.currentQuestionIndex) ||
       candidate.currentQuestionIndex! < 0 ||
-      candidate.currentQuestionIndex! >= questions.length ||
+      candidate.currentQuestionIndex! >= deck.length ||
       !Array.isArray(candidate.history) ||
-      candidate.history.length > questions.length ||
+      candidate.history.length > deck.length ||
       !candidate.history.every(isAnswerRecord)
     ) {
       return null;
     }
 
     const history = candidate.history as AnswerRecord[];
+    // O histórico tem de bater exatamente com o deck e com o rodízio de turnos.
     const historyIsSequential = history.every((record, index) => {
-      const question = questions[index];
-      return record.questionIndex === index && question?.id === record.questionId && question.player === record.player;
+      const question = deck[index];
+      return (
+        record.questionIndex === index &&
+        question?.id === record.questionId &&
+        record.player === players[index % players.length]
+      );
     });
     if (!historyIsSequential) return null;
 
     const expectsAnsweredCurrent = ["wheel", "punishment-result"].includes(candidate.screen);
     const expectedIndex = expectsAnsweredCurrent ? history.length - 1 : history.length;
-    const finalIndexIsValid = candidate.screen === "final" && history.length === questions.length;
+    const finalIndexIsValid = candidate.screen === "final" && history.length === deck.length;
     if (!finalIndexIsValid && candidate.currentQuestionIndex !== expectedIndex) return null;
 
     const punishmentIndex = candidate.currentPunishmentIndex;
     if (punishmentIndex !== null && (!Number.isInteger(punishmentIndex) || punishmentIndex! < 0 || punishmentIndex! > 11)) return null;
     if (candidate.screen === "punishment-result" && punishmentIndex === null) return null;
 
-    const currentQuestionIndex = candidate.currentQuestionIndex as number;
-
     return {
       version: 1,
       screen: candidate.screen,
-      currentQuestionIndex,
-      scores: getScores(history),
+      difficulty: candidate.difficulty as Difficulty,
+      players,
+      currentQuestionIndex: candidate.currentQuestionIndex as number,
+      scores: getScores(players, history),
       history,
       selectedAnswer: null,
       currentPunishmentIndex: punishmentIndex ?? null,

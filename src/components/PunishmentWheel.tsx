@@ -93,7 +93,7 @@ export function PunishmentWheel({ usedPunishmentIndices, onComplete }: Punishmen
             </div>
           ))}
         </div>
-        <div className="wheel-hub" aria-hidden="true">♥</div>
+        <div className="wheel-hub" aria-hidden="true">★</div>
       </div>
       <button className="button button--light wheel-button" type="button" onClick={spin} disabled={spinning}>
         {spinning ? "SEGURA ESSA..." : "GIRAR A ROLETA"}

@@ -3,24 +3,45 @@ import type { PlayerId } from "../types/game";
 
 interface FinalScreenProps {
   scores: Record<PlayerId, number>;
+  totalQuestions?: number;
 }
 
-function getWinner(scores: Record<PlayerId, number>): PlayerId | "Empate" {
-  if (scores.Lucas === scores.Samuel) return "Empate";
-  return scores.Lucas > scores.Samuel ? "Lucas" : "Samuel";
+interface Ranked {
+  player: PlayerId;
+  score: number;
 }
 
-function getPerformanceMessage(scores: Record<PlayerId, number>): string {
-  const total = scores.Lucas + scores.Samuel;
-  if (total >= 16) return "VOCÊS CONHECEM AS MULHERES COM QUEM VÃO CASAR. MILAGRE.";
-  if (total >= 10) return "DÁ TEMPO DE ESTUDAR MAIS ANTES DO CASAMENTO.";
-  return "VOCÊS TÊM CERTEZA QUE VÃO CASAR COM ESSAS MULHERES?";
+function rank(scores: Record<PlayerId, number>): Ranked[] {
+  return Object.entries(scores)
+    .map(([player, score]) => ({ player, score }))
+    .sort((a, b) => b.score - a.score);
 }
 
-function buildShareMessage(scores: Record<PlayerId, number>): string {
-  const winner = getWinner(scores);
-  const winnerText = winner === "Empate" ? "Empate" : winner;
-  return `Resultado oficial da Despedida de Solteiros 😂❤️\n\nLucas acertou ${scores.Lucas} de 10 perguntas sobre sua noiva.\n\nSamuel acertou ${scores.Samuel} de 10 perguntas sobre sua noiva.\n\nVencedor: ${winnerText}\n\nDescobrimos hoje quem realmente conhece a mulher com quem vai casar 😂`;
+/** Todos que empataram no topo. Um só nome significa vitória isolada. */
+function winners(ranked: readonly Ranked[]): Ranked[] {
+  if (ranked.length === 0) return [];
+  const top = ranked[0].score;
+  return ranked.filter((entry) => entry.score === top);
+}
+
+function getPerformanceMessage(ranked: readonly Ranked[], total: number): string {
+  if (ranked.length === 0 || total === 0) return "NINGUÉM JOGOU. QUE FESTA ANIMADA.";
+  const best = ranked[0].score / total;
+  if (best >= 0.8) return "ALGUÉM AQUI ANDOU ESTUDANDO. SUSPEITO.";
+  if (best >= 0.5) return "DEU PRO GASTO. NA PRÓXIMA A ROLETA PEGA GERAL.";
+  return "A ROLETA FOI A GRANDE VENCEDORA DA NOITE.";
+}
+
+function buildShareMessage(ranked: readonly Ranked[], total: number): string {
+  const podium = ranked
+    .map((entry, index) => `${index + 1}º ${entry.player} — ${entry.score}/${total}`)
+    .join("\n");
+  const top = winners(ranked);
+  const winnerText = top.length > 1
+    ? `Empate entre ${top.map((entry) => entry.player).join(" e ")}`
+    : (top[0]?.player ?? "Ninguém");
+
+  return `Resultado oficial no Tapa 🎉\n\n${podium}\n\nVencedor: ${winnerText}\n\nJogue você também: quem erra, paga.`;
 }
 
 function fallbackCopy(text: string): boolean {
@@ -35,11 +56,14 @@ function fallbackCopy(text: string): boolean {
   return copied;
 }
 
-export function FinalScreen({ scores }: FinalScreenProps) {
+export function FinalScreen({ scores, totalQuestions = 0 }: FinalScreenProps) {
   const [copyStatus, setCopyStatus] = useState("COPIAR RESULTADO");
-  const winner = getWinner(scores);
-  const shareMessage = buildShareMessage(scores);
-  const resultTitle = winner === "Empate" ? "EMPATE!" : `${winner.toUpperCase()} VENCEU!`;
+  const ranked = rank(scores);
+  const top = winners(ranked);
+  const shareMessage = buildShareMessage(ranked, totalQuestions);
+  const resultTitle = top.length > 1
+    ? "EMPATE!"
+    : `${(top[0]?.player ?? "NINGUÉM").toUpperCase()} VENCEU!`;
 
   const copyResult = async () => {
     try {
@@ -58,14 +82,19 @@ export function FinalScreen({ scores }: FinalScreenProps) {
         <h1>{resultTitle}</h1>
       </div>
       <section className="final-card">
-        <div className={`final-score ${winner === "Lucas" ? "final-score--winner" : ""}`}>
-          <span>LUCAS</span><strong>{scores.Lucas}<small>/10</small></strong>
-        </div>
-        <span className="final-card__versus">×</span>
-        <div className={`final-score ${winner === "Samuel" ? "final-score--winner" : ""}`}>
-          <span>SAMUEL</span><strong>{scores.Samuel}<small>/10</small></strong>
-        </div>
-        <p>{getPerformanceMessage(scores)}</p>
+        {ranked.map((entry) => (
+          <div
+            className={`final-score ${top.some((item) => item.player === entry.player) ? "final-score--winner" : ""}`}
+            key={entry.player}
+          >
+            <span>{entry.player.toUpperCase()}</span>
+            <strong>
+              {entry.score}
+              <small>/{totalQuestions}</small>
+            </strong>
+          </div>
+        ))}
+        <p>{getPerformanceMessage(ranked, totalQuestions)}</p>
       </section>
       <div className="final-actions">
         <a

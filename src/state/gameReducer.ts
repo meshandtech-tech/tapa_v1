@@ -1,18 +1,44 @@
-import { questions } from "../data/questions";
-import type { AnswerRecord, GameState, PlayerId } from "../types/game";
+import { getDeck } from "../data/questions";
+import type { Difficulty } from "../party/types";
+import type { AnswerRecord, GameState, PlayerId, Question } from "../types/game";
 
-export const initialGameState: GameState = {
-  version: 1,
-  screen: "start",
-  currentQuestionIndex: 0,
-  scores: { Lucas: 0, Samuel: 0 },
-  history: [],
-  selectedAnswer: null,
-  currentPunishmentIndex: null,
-};
+export function createGameState(
+  players: readonly PlayerId[],
+  difficulty: Difficulty = "medio",
+): GameState {
+  return {
+    version: 1,
+    screen: "start",
+    difficulty,
+    players: [...players],
+    currentQuestionIndex: 0,
+    scores: Object.fromEntries(players.map((player) => [player, 0])),
+    history: [],
+    selectedAnswer: null,
+    currentPunishmentIndex: null,
+  };
+}
+
+/** O turno gira pelo roster: generaliza a antiga alternância de dois jogadores. */
+export function playerForQuestion(state: GameState, questionIndex: number): PlayerId | null {
+  if (state.players.length === 0) return null;
+  return state.players[questionIndex % state.players.length];
+}
+
+export function currentPlayer(state: GameState): PlayerId | null {
+  return playerForQuestion(state, state.currentQuestionIndex);
+}
+
+export function deckFor(state: GameState): readonly Question[] {
+  return getDeck(state.difficulty);
+}
+
+export function currentQuestion(state: GameState): Question | undefined {
+  return deckFor(state)[state.currentQuestionIndex];
+}
 
 export type GameAction =
-  | { type: "START_NEW" }
+  | { type: "START_NEW"; players: readonly PlayerId[]; difficulty: Difficulty }
   | { type: "LOAD_GAME"; state: GameState }
   | { type: "ANSWER"; optionIndex: number }
   | { type: "FEEDBACK_COMPLETE" }
@@ -21,12 +47,8 @@ export type GameAction =
   | { type: "ADMIN_NEXT" }
   | { type: "ADMIN_BACK" };
 
-function startNewGame(): GameState {
-  return { ...initialGameState, screen: "question" };
-}
-
 export function advanceToNextQuestion(state: GameState): GameState {
-  if (state.currentQuestionIndex >= questions.length - 1) {
+  if (state.currentQuestionIndex >= deckFor(state).length - 1) {
     return {
       ...state,
       screen: "final",
@@ -49,21 +71,22 @@ function updateScore(
   player: PlayerId,
   delta: number,
 ): Record<PlayerId, number> {
-  return { ...scores, [player]: Math.max(0, scores[player] + delta) };
+  return { ...scores, [player]: Math.max(0, (scores[player] ?? 0) + delta) };
 }
 
 function answerQuestion(state: GameState, optionIndex: number): GameState {
   if (state.screen !== "question" || optionIndex < 0 || optionIndex > 3) return state;
   if (state.history.some((record) => record.questionIndex === state.currentQuestionIndex)) return state;
 
-  const question = questions[state.currentQuestionIndex];
-  if (!question) return state;
+  const question = currentQuestion(state);
+  const player = currentPlayer(state);
+  if (!question || player === null) return state;
 
   const wasCorrect = question.correctAnswer !== null && optionIndex === question.correctAnswer;
   const record: AnswerRecord = {
     questionIndex: state.currentQuestionIndex,
     questionId: question.id,
-    player: question.player,
+    player,
     selectedAnswer: optionIndex,
     wasCorrect,
     scoreDelta: wasCorrect ? 1 : 0,
@@ -73,7 +96,7 @@ function answerQuestion(state: GameState, optionIndex: number): GameState {
   return {
     ...state,
     screen: wasCorrect ? "correct-feedback" : "wrong-feedback",
-    scores: wasCorrect ? updateScore(state.scores, question.player, 1) : state.scores,
+    scores: wasCorrect ? updateScore(state.scores, player, 1) : state.scores,
     history: [...state.history, record],
     selectedAnswer: optionIndex,
     currentPunishmentIndex: null,
@@ -87,8 +110,9 @@ function skipAndAdvance(state: GameState): GameState {
   let nextState = state;
 
   if (!hasCurrentRecord) {
-    const question = questions[state.currentQuestionIndex];
-    if (!question) return state;
+    const question = currentQuestion(state);
+    const player = currentPlayer(state);
+    if (!question || player === null) return state;
 
     nextState = {
       ...state,
@@ -97,7 +121,7 @@ function skipAndAdvance(state: GameState): GameState {
         {
           questionIndex: state.currentQuestionIndex,
           questionId: question.id,
-          player: question.player,
+          player,
           selectedAnswer: null,
           wasCorrect: false,
           scoreDelta: 0,
@@ -131,7 +155,7 @@ function undoLastRecord(state: GameState): GameState {
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case "START_NEW":
-      return startNewGame();
+      return { ...createGameState(action.players, action.difficulty), screen: "question" };
     case "LOAD_GAME":
       return action.state;
     case "ANSWER":

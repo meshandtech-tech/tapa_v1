@@ -5,18 +5,26 @@ interface ScoreboardProps {
   compact?: boolean;
 }
 
+/** Placar de qualquer roster: renderiza os jogadores que existirem. */
 export function Scoreboard({ scores, compact = false }: ScoreboardProps) {
+  const entries = Object.entries(scores);
+
   return (
-    <section className={`scoreboard ${compact ? "scoreboard--compact" : ""}`} aria-label="Placar atual">
-      <div className="scoreboard__player">
-        <span>LUCAS</span>
-        <strong>{String(scores.Lucas).padStart(2, "0")}</strong>
-      </div>
-      <span className="scoreboard__versus" aria-hidden="true">×</span>
-      <div className="scoreboard__player">
-        <span>SAMUEL</span>
-        <strong>{String(scores.Samuel).padStart(2, "0")}</strong>
-      </div>
+    <section
+      className={`scoreboard ${compact ? "scoreboard--compact" : ""}`}
+      aria-label="Placar atual"
+    >
+      {entries.map(([player, score], index) => (
+        <div className="scoreboard__player" key={player}>
+          {index > 0 ? (
+            <span className="scoreboard__versus" aria-hidden="true">
+              ×
+            </span>
+          ) : null}
+          <span>{player.toUpperCase()}</span>
+          <strong>{String(score).padStart(2, "0")}</strong>
+        </div>
+      ))}
     </section>
   );
 }
