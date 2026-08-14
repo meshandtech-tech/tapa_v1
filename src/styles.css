@@ -96,7 +96,6 @@ body,
 
 body {
   min-height: 100dvh;
-  overflow: hidden;
   font-weight: 700;
 }
 
@@ -141,14 +140,6 @@ summary:focus-visible {
 @keyframes heart-float {
   0%, 100% { transform: translateY(0) rotate(-8deg); }
   50% { transform: translateY(-18px) rotate(8deg); }
-}
-
-@media (max-width: 700px) {
-  /* body nasce com overflow:hidden (layout de TV). No celular a tela do
-     jogador precisa rolar. */
-  body {
-    overflow: auto;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
