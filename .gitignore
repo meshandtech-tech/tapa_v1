@@ -5,3 +5,8 @@ dist
 coverage
 browser-checks
 dev.db
+
+# Credenciais locais. O .env.example (esse sim versionado) mostra o formato.
+.env
+.env.*
+!.env.example

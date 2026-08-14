@@ -185,6 +185,59 @@ describe("configurações", () => {
   });
 });
 
+describe("lotação da sala", () => {
+  it("nasce no máximo do jogo padrão", () => {
+    expect(createPartyState("1234", 0).settings.maxPlayers).toBe(10);
+  });
+
+  it("o host define o teto", () => {
+    const state = partyReducer(createPartyState("1234", 0), {
+      type: "SET_MAX_PLAYERS",
+      maxPlayers: 4,
+    });
+    expect(state.settings.maxPlayers).toBe(4);
+  });
+
+  it("recusa quem chega depois de lotar", () => {
+    let state = partyReducer(withPlayers(3), { type: "SET_MAX_PLAYERS", maxPlayers: 3 });
+    state = partyReducer(state, {
+      type: "PLAYER_JOIN",
+      player: makePlayer("intruso", { color: PLAYER_COLORS[5] }),
+    });
+    expect(state.players).toHaveLength(3);
+  });
+
+  it("não encolhe abaixo de quem já entrou", () => {
+    const state = partyReducer(withPlayers(4), { type: "SET_MAX_PLAYERS", maxPlayers: 2 });
+    expect(state.settings.maxPlayers).toBe(10);
+  });
+
+  // Sair de um jogo de até 10 para um de até 8 deixaria um teto impossível.
+  it("reajusta o teto ao trocar de jogo", () => {
+    let state = partyReducer(createPartyState("1234", 0), {
+      type: "SET_MAX_PLAYERS",
+      maxPlayers: 10,
+    });
+    state = partyReducer(state, { type: "SET_GAME", gameId: "pitch-no-escuro" });
+    expect(state.settings.maxPlayers).toBe(8);
+  });
+
+  it("respeita o mínimo do jogo", () => {
+    let state = partyReducer(createPartyState("1234", 0), {
+      type: "SET_GAME",
+      gameId: "advogado-do-diabo",
+    });
+    state = partyReducer(state, { type: "SET_MAX_PLAYERS", maxPlayers: 1 });
+    expect(state.settings.maxPlayers).toBe(3);
+  });
+
+  it("só muda no lobby", () => {
+    let state = partyReducer(withPlayers(2), { type: "START_GAME" });
+    state = partyReducer(state, { type: "SET_MAX_PLAYERS", maxPlayers: 5 });
+    expect(state.settings.maxPlayers).toBe(10);
+  });
+});
+
 describe("tema da party", () => {
   it("nasce no preset padrão, em modo manual", () => {
     const state = createPartyState("1234", 0);

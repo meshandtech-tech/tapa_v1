@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Check, Copy, DoorOpen, Play, Smartphone, Users } from "lucide-react";
+import { Check, Copy, DoorOpen, Play, Smartphone, TriangleAlert, Users } from "lucide-react";
 import { GAMES, getGame, isGameId } from "../games/registry";
+import { activeTransport } from "../party/channel";
 import { buildInviteUrl, isValidPin } from "../party/pin";
 import { canStart } from "../party/partyReducer";
 import { clearPartyState } from "../party/partyStorage";
 import { usePartyHost } from "../party/usePartyHost";
 import { usePartyTheme } from "../party/usePartyTheme";
-import { DIFFICULTIES, DIFFICULTY_LABELS, MAX_PLAYERS } from "../party/types";
+import { DIFFICULTIES, DIFFICULTY_LABELS } from "../party/types";
+
+const transport = activeTransport();
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { Button } from "../ui/Button";
 import { Card, Knockout } from "../ui/Card";
@@ -56,6 +59,12 @@ function HostLobby({
   const inviteUrl = buildInviteUrl(pin, window.location.origin);
   const ready = canStart(state);
   const missing = Math.max(0, game.minPlayers - state.players.length);
+
+  // Lotações que o jogo aceita, do mínimo dele até o máximo.
+  const capacityOptions = Array.from(
+    { length: game.maxPlayers - game.minPlayers + 1 },
+    (_, index) => game.minPlayers + index,
+  );
 
   const copyInvite = async () => {
     try {
@@ -109,6 +118,18 @@ function HostLobby({
               {copied ? "Link copiado" : "Copiar convite"}
             </Button>
           </Card>
+
+          {/* Sem isto, o host escaneia o QR no celular e não entende por que
+              a sala nunca aparece. Melhor dizer antes de frustrar. */}
+          {transport === "local" ? (
+            <Card variant="dashed" className="flex gap-3 p-4">
+              <TriangleAlert strokeWidth={2.5} className="size-6 shrink-0" />
+              <p className="font-hand text-lg leading-snug">
+                Modo local: só entram abas <strong>deste</strong> navegador. Para
+                celulares e outros PCs, configure o Supabase.
+              </p>
+            </Card>
+          ) : null}
         </div>
 
         {/* Coluna da sala: jogadores e configuração. */}
@@ -120,7 +141,7 @@ function HostLobby({
                 Na sala
               </h2>
               <span className="border-4 border-ink bg-accent px-3 py-1 font-action text-lg uppercase text-on-accent">
-                {state.players.length}/{MAX_PLAYERS}
+                {state.players.length}/{state.settings.maxPlayers}
               </span>
             </div>
 
@@ -212,6 +233,39 @@ function HostLobby({
                 </div>
               </div>
             ) : null}
+
+            <div>
+              <h3 className="mb-3 font-display text-2xl font-bold uppercase">
+                Quantas pessoas
+              </h3>
+              <div className="flex flex-wrap gap-3">
+                {capacityOptions.map((size) => {
+                  const active = size === state.settings.maxPlayers;
+                  // Encolher abaixo de quem já entrou não faz sentido.
+                  const tooSmall = size < state.players.length;
+                  return (
+                    <button
+                      key={size}
+                      type="button"
+                      disabled={tooSmall}
+                      onClick={() => dispatch({ type: "SET_MAX_PLAYERS", maxPlayers: size })}
+                      aria-pressed={active}
+                      className={cn(
+                        "min-w-14 cursor-pointer border-4 border-ink px-4 py-2",
+                        "font-action text-base uppercase transition-transform",
+                        "focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                        "motion-safe:hover:-translate-y-0.5",
+                        "disabled:cursor-not-allowed disabled:opacity-30",
+                        "disabled:motion-safe:hover:translate-y-0",
+                        active ? "bg-accent text-on-accent shadow-brutal" : "bg-paper text-ink",
+                      )}
+                    >
+                      {size}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="flex flex-wrap items-center gap-4 border-t-4 border-dashed border-ink pt-5">
               <Button

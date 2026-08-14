@@ -50,6 +50,8 @@ export function parsePartyState(raw: string | null): PartyState | null {
       !DIFFICULTIES.includes(candidate.settings.difficulty) ||
       !isThemeId(candidate.settings.themeId) ||
       (candidate.settings.themeMode !== "manual" && candidate.settings.themeMode !== "auto") ||
+      !Number.isInteger(candidate.settings.maxPlayers) ||
+      candidate.settings.maxPlayers < 1 ||
       !Number.isInteger(candidate.round) ||
       candidate.round! < 0 ||
       !Number.isFinite(candidate.createdAt)

@@ -29,11 +29,23 @@ export function createPartyState(
       difficulty: "medio",
       themeId: DEFAULT_THEME_ID,
       themeMode: "manual",
+      maxPlayers: getGame(DEFAULT_GAME_ID).maxPlayers,
       ...settings,
     },
     round: 0,
     createdAt: now,
   };
+}
+
+/**
+ * Lotação válida para um jogo: nunca abaixo do mínimo que ele exige, nunca
+ * acima do que ele suporta. Trocar de jogo passa por aqui — sem isso, sair de
+ * um jogo de até 10 para um de até 8 deixaria a sala com um teto impossível.
+ */
+export function clampCapacity(gameId: GameId, desired: number): number {
+  const game = getGame(gameId);
+  if (!Number.isFinite(desired)) return game.maxPlayers;
+  return Math.min(game.maxPlayers, Math.max(game.minPlayers, Math.round(desired)));
 }
 
 export type PartyAction =
@@ -44,6 +56,7 @@ export type PartyAction =
   | { type: "SET_GAME"; gameId: GameId }
   | { type: "SET_DIFFICULTY"; difficulty: Difficulty }
   | { type: "SET_THEME"; themeId?: ThemeId; themeMode?: ThemeMode }
+  | { type: "SET_MAX_PLAYERS"; maxPlayers: number }
   | { type: "SCORE"; playerId: string; delta: number }
   | { type: "START_GAME" }
   | { type: "ADVANCE"; forfeit?: boolean }
@@ -100,7 +113,10 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
   }
 
   if (state.phase !== "LOBBY") return state;
-  if (state.players.length >= MAX_PLAYERS) return state;
+  // O teto é o do host, nunca acima do limite absoluto da plataforma.
+  if (state.players.length >= Math.min(state.settings.maxPlayers, MAX_PLAYERS)) {
+    return state;
+  }
 
   const nickname = sanitizeNickname(player.nickname);
   if (!nickname || isNicknameTaken(state.players, nickname)) return state;
@@ -192,9 +208,26 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
     case "PLAYER_UPDATE":
       return updatePlayer(state, action.playerId, action.patch);
 
-    case "SET_GAME":
+    case "SET_GAME": {
       if (state.phase !== "LOBBY") return state;
-      return { ...state, settings: { ...state.settings, gameId: action.gameId } };
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          gameId: action.gameId,
+          // O teto atual pode não caber no jogo novo.
+          maxPlayers: clampCapacity(action.gameId, state.settings.maxPlayers),
+        },
+      };
+    }
+
+    case "SET_MAX_PLAYERS": {
+      if (state.phase !== "LOBBY") return state;
+      const maxPlayers = clampCapacity(state.settings.gameId, action.maxPlayers);
+      // Não dá para encolher a sala abaixo de quem já entrou.
+      if (maxPlayers < state.players.length) return state;
+      return { ...state, settings: { ...state.settings, maxPlayers } };
+    }
 
     case "SET_DIFFICULTY":
       if (state.phase !== "LOBBY") return state;

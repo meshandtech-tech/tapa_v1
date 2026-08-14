@@ -43,6 +43,7 @@ export const PLAYER_COLORS: readonly string[] = [
   "#c9ff4c",
 ];
 
+/** Teto absoluto da plataforma. Nenhum jogo nem host passa disto. */
 export const MAX_PLAYERS = 10;
 export const NICKNAME_MAX_LENGTH = 14;
 
@@ -67,6 +68,11 @@ export interface PartySettings {
   themeId: ThemeId;
   /** `auto` gira o preset a cada entrada em ROUND_ACTIVE. */
   themeMode: ThemeMode;
+  /**
+   * Lotação escolhida pelo host. Sempre dentro da faixa que o jogo aceita
+   * (registry) — trocar de jogo reajusta este valor.
+   */
+  maxPlayers: number;
 }
 
 export interface PartyState {
