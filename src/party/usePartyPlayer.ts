@@ -70,8 +70,18 @@ export function usePartyPlayer(pin: string) {
     [pin],
   );
 
+  const answer = useCallback((optionIndex: number) => {
+    const current = meRef.current;
+    if (!current) return;
+    channelRef.current?.broadcast({
+      type: "ANSWER",
+      playerId: current.id,
+      optionIndex,
+    });
+  }, []);
+
   /** Eu como o Host me enxerga — a verdade sobre pontuação e apelido aceito. */
   const meInParty = state?.players.find((player) => player.id === me?.id) ?? null;
 
-  return { state, me, meInParty, connection, join, updateMe };
+  return { state, me, meInParty, connection, join, updateMe, answer };
 }

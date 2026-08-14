@@ -36,6 +36,14 @@ export function usePartyHost(pin: string) {
         case "PLAYER_UPDATE":
           dispatch({ type: "PLAYER_UPDATE", playerId: event.playerId, patch: event.patch });
           break;
+        case "ANSWER":
+          // O reducer é quem valida fase, jogador e alternativa.
+          dispatch({
+            type: "ANSWER",
+            playerId: event.playerId,
+            optionIndex: event.optionIndex,
+          });
+          break;
         case "REQUEST_STATE":
           // Celular acabou de abrir: manda o estado corrente.
           channel.broadcast({ type: "STATE", state: stateRef.current });

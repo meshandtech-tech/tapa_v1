@@ -75,6 +75,24 @@ export interface PartySettings {
   maxPlayers: number;
 }
 
+/** Segundos para responder cada pergunta. */
+export const ROUND_SECONDS = 20;
+
+/**
+ * Estado do "Quem Erra, Paga". Todo mundo responde a MESMA pergunta ao mesmo
+ * tempo — não há rodízio de turno.
+ */
+export interface QuizState {
+  /** Ordem sorteada das perguntas desta partida (índices no deck). */
+  order: number[];
+  /** Resposta da rodada corrente: id do jogador → índice da alternativa. */
+  answers: Record<string, number>;
+  /** Instante em que o tempo acaba (epoch ms). */
+  deadline: number;
+  /** Prenda sorteada para quem errou. Definida ao entrar em FORFEIT_WHEEL. */
+  punishmentIndex: number | null;
+}
+
 export interface PartyState {
   version: 1;
   pin: string;
@@ -84,4 +102,6 @@ export interface PartyState {
   /** Rodada atual, base 1. Vale 0 enquanto a party está no lobby. */
   round: number;
   createdAt: number;
+  /** Preenchido em START_GAME; volta a null ao retornar ao lobby. */
+  quiz: QuizState | null;
 }

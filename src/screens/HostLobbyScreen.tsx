@@ -1,9 +1,20 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Check, Copy, DoorOpen, Play, Smartphone, TriangleAlert, Users } from "lucide-react";
+import { punishments } from "../data/punishments";
+import { QuemErraPagaHost } from "../games/QuemErraPagaHost";
+import {
+  drawDifferentPunishment,
+  drawOrder,
+  drawPunishment,
+  everyoneAnswered,
+  secondsLeft as computeSecondsLeft,
+} from "../games/quemErraPaga";
+import { getDeck } from "../data/questions";
 import { GAMES, getGame, isGameId } from "../games/registry";
+import { useNow } from "../party/useNow";
 import { activeTransport } from "../party/channel";
 import { buildInviteUrl, isValidPin } from "../party/pin";
 import { canStart } from "../party/partyReducer";
@@ -55,6 +66,47 @@ function HostLobby({
     onExit();
   };
 
+  // O relógio só anda durante a rodada — fora dela não há nada para contar.
+  const running = state.phase === "ROUND_ACTIVE";
+  const now = useNow(running);
+  const secondsLeft = computeSecondsLeft(state, now);
+
+  const advance = useCallback(() => {
+    dispatch({
+      type: "ADVANCE",
+      now: Date.now(),
+      punishmentIndex: drawPunishment(punishments.length),
+    });
+  }, [dispatch]);
+
+  const reroll = useCallback(() => {
+    dispatch({
+      type: "REROLL_PUNISHMENT",
+      punishmentIndex: drawDifferentPunishment(
+        punishments.length,
+        state.quiz?.punishmentIndex ?? null,
+      ),
+    });
+  }, [dispatch, state.quiz?.punishmentIndex]);
+
+  // A TV é quem fecha a rodada: quando o tempo acaba OU quando todo mundo já
+  // respondeu (não faz sentido encarar o cronômetro à toa).
+  useEffect(() => {
+    if (!running) return;
+    if (secondsLeft > 0 && !everyoneAnswered(state)) return;
+    const timer = window.setTimeout(advance, 400);
+    return () => window.clearTimeout(timer);
+  }, [running, secondsLeft, state, advance]);
+
+  const startGame = () => {
+    const deck = getDeck(state.settings.difficulty);
+    dispatch({
+      type: "START_GAME",
+      order: drawOrder(deck.length, game.rounds),
+      now: Date.now(),
+    });
+  };
+
   const game = getGame(state.settings.gameId);
   const inviteUrl = buildInviteUrl(pin, window.location.origin);
   const ready = canStart(state);
@@ -94,6 +146,15 @@ function HostLobby({
         </div>
       </header>
 
+      {state.phase !== "LOBBY" ? (
+        <QuemErraPagaHost
+          state={state}
+          secondsLeft={secondsLeft}
+          onAdvance={advance}
+          onReroll={reroll}
+          onBackToLobby={() => dispatch({ type: "RESET_TO_LOBBY" })}
+        />
+      ) : (
       <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
         {/* Coluna de entrada: PIN, QR e link. */}
         <div className="flex flex-col gap-5">
@@ -272,7 +333,7 @@ function HostLobby({
                 size="tv"
                 variant="solid"
                 disabled={!ready}
-                onClick={() => dispatch({ type: "START_GAME" })}
+                onClick={startGame}
               >
                 <Play strokeWidth={3} className="size-7" />
                 Começar
@@ -289,21 +350,7 @@ function HostLobby({
           </Card>
         </div>
       </div>
-
-      {state.phase !== "LOBBY" ? (
-        <Card variant="speech" tilt="tilt-2" className="mt-6 p-5">
-          <p className="font-display text-2xl font-bold uppercase">
-            Fase atual: {state.phase}
-          </p>
-          <p className="font-hand text-lg">
-            As telas do jogo entram na próxima etapa. Por enquanto, a máquina de
-            estados já está rodando.
-          </p>
-          <Button size="sm" className="mt-3" onClick={() => dispatch({ type: "RESET_TO_LOBBY" })}>
-            Voltar ao lobby
-          </Button>
-        </Card>
-      ) : null}
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   partyReducer,
   type PartyAction,
 } from "./partyReducer";
+import { currentQuestion } from "../games/quemErraPaga";
 import { MAX_PLAYERS, PLAYER_COLORS, type PartyState, type Player } from "./types";
 
 function makePlayer(id: string, overrides: Partial<Player> = {}): Player {
@@ -20,6 +21,20 @@ function makePlayer(id: string, overrides: Partial<Player> = {}): Player {
     joinedAt: 1000,
     ...overrides,
   };
+}
+
+/**
+ * Todos acertam a pergunta da rodada. Sem isto, ninguém responde — e não
+ * responder conta como erro, então a roleta apareceria em toda rodada.
+ */
+function allAnswerCorrectly(state: PartyState): PartyState {
+  const question = currentQuestion(state);
+  const option = question?.correctAnswer ?? 0;
+  return state.players.reduce(
+    (acc, player) =>
+      partyReducer(acc, { type: "ANSWER", playerId: player.id, optionIndex: option }),
+    state,
+  );
 }
 
 function withPlayers(count: number): PartyState {
@@ -270,6 +285,9 @@ describe("tema da party", () => {
     expect(state.phase).toBe("ROUND_ACTIVE");
     expect(state.settings.themeId).toBe("emerald-green");
 
+    // Todos acertam, para a rodada seguir sem passar pela roleta.
+    state = allAnswerCorrectly(state);
+
     // A cor fica estável durante a rodada — não pisca no meio da pergunta.
     state = partyReducer(state, { type: "ADVANCE" });
     expect(state.phase).toBe("REVEAL_ANSWER");
@@ -325,12 +343,23 @@ describe("máquina de fases", () => {
     expect(state.round).toBe(2);
   });
 
-  it("pula a roleta quando ninguém errou", () => {
+  it("pula a roleta quando todo mundo acertou", () => {
     let state = partyReducer(withPlayers(2), { type: "START_GAME" });
     state = partyReducer(state, { type: "ADVANCE" });
+    state = allAnswerCorrectly(state);
     state = partyReducer(state, { type: "ADVANCE" });
-    state = partyReducer(state, { type: "ADVANCE", forfeit: false });
+    state = partyReducer(state, { type: "ADVANCE" });
     expect(state.phase).toBe("LEADERBOARD");
+  });
+
+  it("manda para a roleta quem deixou o tempo acabar sem responder", () => {
+    let state = partyReducer(withPlayers(2), { type: "START_GAME" });
+    state = partyReducer(state, { type: "ADVANCE" });
+    // Ninguém responde.
+    state = partyReducer(state, { type: "ADVANCE" });
+    state = partyReducer(state, { type: "ADVANCE", punishmentIndex: 5 });
+    expect(state.phase).toBe("FORFEIT_WHEEL");
+    expect(state.quiz?.punishmentIndex).toBe(5);
   });
 
   it("pula a roleta em jogo que não tem prendas, mesmo com forfeit", () => {
@@ -346,16 +375,19 @@ describe("máquina de fases", () => {
   it("termina o jogo depois da última rodada", () => {
     let state = partyReducer(withPlayers(2), { type: "START_GAME" });
     state = partyReducer(state, { type: "ADVANCE" });
-    // "quem-erra-paga" tem 10 rodadas.
-    for (let round = 1; round < 10; round += 1) {
-      state = partyReducer(state, { type: "ADVANCE" });
-      state = partyReducer(state, { type: "ADVANCE", forfeit: false });
-      state = partyReducer(state, { type: "ADVANCE" });
-    }
+    // "quem-erra-paga" tem 10 rodadas. Todos acertam para pular a roleta.
+    const jogarRodada = (input: PartyState) => {
+      let next = partyReducer(allAnswerCorrectly(input), { type: "ADVANCE" });
+      // A pegadinha do deck não tem resposta certa: todo mundo erra e a rodada
+      // passa pela roleta, gastando um ADVANCE a mais que as demais.
+      while (next.phase !== "ROUND_ACTIVE" && next.phase !== "GAME_OVER") {
+        next = partyReducer(next, { type: "ADVANCE" });
+      }
+      return next;
+    };
+    for (let round = 1; round < 10; round += 1) state = jogarRodada(state);
     expect(state.round).toBe(10);
-    state = partyReducer(state, { type: "ADVANCE" });
-    state = partyReducer(state, { type: "ADVANCE", forfeit: false });
-    state = partyReducer(state, { type: "ADVANCE" });
+    state = jogarRodada(state);
     expect(state.phase).toBe("GAME_OVER");
   });
 

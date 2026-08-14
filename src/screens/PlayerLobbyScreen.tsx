@@ -6,6 +6,9 @@ import { isValidPin } from "../party/pin";
 import { isNicknameTaken } from "../party/partyReducer";
 import { usePartyPlayer } from "../party/usePartyPlayer";
 import { usePartyTheme } from "../party/usePartyTheme";
+import { useNow } from "../party/useNow";
+import { QuemErraPagaPlayer } from "../games/QuemErraPagaPlayer";
+import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type Player } from "../party/types";
 import { getGame } from "../games/registry";
 import { Avatar } from "../ui/Avatar";
@@ -28,10 +31,12 @@ export function PlayerLobbyScreen() {
 
 function PlayerLobby({ pin }: { pin: string }) {
   const navigate = useNavigate();
-  const { state, me, meInParty, connection, join, updateMe } = usePartyPlayer(pin);
+  const { state, me, meInParty, connection, join, updateMe, answer } = usePartyPlayer(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
   usePartyTheme(state);
+
+  const now = useNow(state?.phase === "ROUND_ACTIVE");
 
   const [nickname, setNickname] = useState("");
   const [seed, setSeed] = useState(randomId);
@@ -89,6 +94,20 @@ function PlayerLobby({ pin }: { pin: string }) {
             Trocar PIN
           </Button>
         </Card>
+      </Shell>
+    );
+  }
+
+  // O jogo começou: o celular vira controle.
+  if (meInParty && state && state.phase !== "LOBBY") {
+    return (
+      <Shell>
+        <QuemErraPagaPlayer
+          state={state}
+          me={meInParty}
+          secondsLeft={computeSecondsLeft(state, now)}
+          onAnswer={answer}
+        />
       </Shell>
     );
   }

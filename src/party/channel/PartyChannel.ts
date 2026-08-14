@@ -11,6 +11,8 @@ export type PartyEvent =
   | { type: "PLAYER_JOIN"; player: Player }
   | { type: "PLAYER_LEAVE"; playerId: string }
   | { type: "PLAYER_UPDATE"; playerId: string; patch: Partial<Omit<Player, "id">> }
+  /** Player → host. "marquei a alternativa N". O host decide se vale. */
+  | { type: "ANSWER"; playerId: string; optionIndex: number }
   /** Host → todos. Estado completo e autoritativo. */
   | { type: "STATE"; state: PartyState }
   /** Player → host. "acabei de chegar, me manda o estado". */

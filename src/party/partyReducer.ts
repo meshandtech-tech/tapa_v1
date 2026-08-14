@@ -1,9 +1,12 @@
+import { getDeck } from "../data/questions";
+import { roundOutcome, sequentialOrder } from "../games/quemErraPaga";
 import { DEFAULT_GAME_ID, getGame } from "../games/registry";
 import { DEFAULT_THEME_ID, nextThemeId } from "../theme/presets";
 import {
   MAX_PLAYERS,
   NICKNAME_MAX_LENGTH,
   PLAYER_COLORS,
+  ROUND_SECONDS,
   type Difficulty,
   type GameId,
   type PartyPhase,
@@ -34,6 +37,7 @@ export function createPartyState(
     },
     round: 0,
     createdAt: now,
+    quiz: null,
   };
 }
 
@@ -58,8 +62,12 @@ export type PartyAction =
   | { type: "SET_THEME"; themeId?: ThemeId; themeMode?: ThemeMode }
   | { type: "SET_MAX_PLAYERS"; maxPlayers: number }
   | { type: "SCORE"; playerId: string; delta: number }
-  | { type: "START_GAME" }
-  | { type: "ADVANCE"; forfeit?: boolean }
+  /** `order` e `now` vêm do host: o reducer continua puro e testável. */
+  | { type: "START_GAME"; order?: number[]; now?: number }
+  | { type: "ANSWER"; playerId: string; optionIndex: number }
+  | { type: "ADVANCE"; forfeit?: boolean; now?: number; punishmentIndex?: number }
+  /** Ninguém topou a prenda: sorteia outra sem sair da roleta. */
+  | { type: "REROLL_PUNISHMENT"; punishmentIndex: number }
   | { type: "RESET_TO_LOBBY" };
 
 /**
@@ -156,35 +164,75 @@ function rotateTheme(settings: PartySettings): PartySettings {
   return { ...settings, themeId: nextThemeId(settings.themeId) };
 }
 
-function advance(state: PartyState, forfeit: boolean): PartyState {
+/** Abre uma rodada: zera as respostas e arma o cronômetro. */
+function startRound(state: PartyState, round: number, now: number): PartyState {
+  return {
+    ...state,
+    phase: "ROUND_ACTIVE",
+    round,
+    settings: rotateTheme(state.settings),
+    quiz: state.quiz
+      ? {
+          ...state.quiz,
+          answers: {},
+          deadline: now + ROUND_SECONDS * 1000,
+          punishmentIndex: null,
+        }
+      : null,
+  };
+}
+
+/** +1 para cada acerto. Aplicado uma única vez, ao revelar a resposta. */
+function applyScores(state: PartyState): PartyState {
+  const { correct } = roundOutcome(state);
+  if (correct.length === 0) return state;
+  const winners = new Set(correct.map((player) => player.id));
+  return {
+    ...state,
+    players: state.players.map((player) =>
+      winners.has(player.id) ? { ...player, score: player.score + 1 } : player,
+    ),
+  };
+}
+
+function advance(
+  state: PartyState,
+  forfeit: boolean,
+  now: number,
+  punishmentIndex: number,
+): PartyState {
   const game = getGame(state.settings.gameId);
+  // A ordem sorteada manda no total de rodadas: o deck pode ser menor que
+  // `game.rounds`, e aí a partida acaba junto com as perguntas.
+  const totalRounds = state.quiz?.order.length ?? game.rounds;
 
   switch (state.phase) {
     case "GAME_INTRO":
-      return {
-        ...state,
-        phase: "ROUND_ACTIVE",
-        round: 1,
-        settings: rotateTheme(state.settings),
-      };
+      return startRound(state, 1, now);
+
     case "ROUND_ACTIVE":
-      return { ...state, phase: "REVEAL_ANSWER" };
-    case "REVEAL_ANSWER":
+      // Pontua ao revelar — depois disso as respostas viram histórico da rodada.
+      return { ...applyScores(state), phase: "REVEAL_ANSWER" };
+
+    case "REVEAL_ANSWER": {
+      // Quem não respondeu conta como erro; a prenda é a mesma para todos.
+      const alguemErrou = state.quiz ? roundOutcome(state).wrong.length > 0 : forfeit;
+      if (!game.hasForfeit || !alguemErrou) return { ...state, phase: "LEADERBOARD" };
       return {
         ...state,
-        phase: game.hasForfeit && forfeit ? "FORFEIT_WHEEL" : "LEADERBOARD",
+        phase: "FORFEIT_WHEEL",
+        quiz: state.quiz ? { ...state.quiz, punishmentIndex } : null,
       };
+    }
+
     case "FORFEIT_WHEEL":
       return { ...state, phase: "LEADERBOARD" };
+
     case "LEADERBOARD":
-      return state.round >= game.rounds
+      return state.round >= totalRounds
         ? { ...state, phase: "GAME_OVER" }
-        : {
-            ...state,
-            phase: "ROUND_ACTIVE",
-            round: state.round + 1,
-            settings: rotateTheme(state.settings),
-          };
+        : startRound(state, state.round + 1, now);
+
     default:
       // LOBBY avança só via START_GAME; GAME_OVER é terminal.
       return state;
@@ -255,17 +303,64 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
       return { ...state, players };
     }
 
-    case "START_GAME":
-      return canStart(state) ? { ...state, phase: "GAME_INTRO", round: 0 } : state;
+    case "START_GAME": {
+      if (!canStart(state)) return state;
+      const game = getGame(state.settings.gameId);
+      const deck = getDeck(state.settings.difficulty);
+      return {
+        ...state,
+        phase: "GAME_INTRO",
+        round: 0,
+        quiz: {
+          order: action.order ?? sequentialOrder(deck.length, game.rounds),
+          answers: {},
+          deadline: 0,
+          punishmentIndex: null,
+        },
+      };
+    }
+
+    case "ANSWER": {
+      if (state.phase !== "ROUND_ACTIVE" || !state.quiz) return state;
+      if (!state.players.some((player) => player.id === action.playerId)) return state;
+      // Resposta é definitiva: sem trocar depois de ver a cara dos outros.
+      if (state.quiz.answers[action.playerId] !== undefined) return state;
+      if (!Number.isInteger(action.optionIndex)) return state;
+      if (action.optionIndex < 0 || action.optionIndex > 3) return state;
+      return {
+        ...state,
+        quiz: {
+          ...state.quiz,
+          answers: { ...state.quiz.answers, [action.playerId]: action.optionIndex },
+        },
+      };
+    }
+
+    // Válvula de escape: se ninguém topa a prenda, roda de novo em vez de
+    // travar a festa numa discussão. Só vale enquanto a roleta está na tela.
+    case "REROLL_PUNISHMENT": {
+      if (state.phase !== "FORFEIT_WHEEL" || !state.quiz) return state;
+      if (!Number.isInteger(action.punishmentIndex)) return state;
+      return {
+        ...state,
+        quiz: { ...state.quiz, punishmentIndex: action.punishmentIndex },
+      };
+    }
 
     case "ADVANCE":
-      return advance(state, action.forfeit ?? false);
+      return advance(
+        state,
+        action.forfeit ?? false,
+        action.now ?? Date.now(),
+        action.punishmentIndex ?? 0,
+      );
 
     case "RESET_TO_LOBBY":
       return {
         ...state,
         phase: "LOBBY",
         round: 0,
+        quiz: null,
         players: state.players.map((player) => ({ ...player, score: 0 })),
       };
 

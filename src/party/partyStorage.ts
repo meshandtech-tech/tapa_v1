@@ -1,7 +1,13 @@
 import { isGameId } from "../games/registry";
 import { isThemeId } from "../theme/presets";
 import { isValidPin } from "./pin";
-import { DIFFICULTIES, type PartyPhase, type PartyState, type Player } from "./types";
+import {
+  DIFFICULTIES,
+  type PartyPhase,
+  type PartyState,
+  type Player,
+  type QuizState,
+} from "./types";
 
 const PHASES: readonly PartyPhase[] = [
   "LOBBY",
@@ -30,6 +36,22 @@ function isPlayer(value: unknown): value is Player {
   );
 }
 
+/** `null` é válido: a party só ganha quiz quando o jogo começa. */
+function isQuizState(value: unknown): value is QuizState | null {
+  if (value === null || value === undefined) return true;
+  if (typeof value !== "object") return false;
+  const quiz = value as Partial<QuizState>;
+  return (
+    Array.isArray(quiz.order) &&
+    quiz.order.every((index) => Number.isInteger(index) && index >= 0) &&
+    Number.isFinite(quiz.deadline) &&
+    (quiz.punishmentIndex === null || Number.isInteger(quiz.punishmentIndex)) &&
+    !!quiz.answers &&
+    typeof quiz.answers === "object" &&
+    Object.values(quiz.answers).every((option) => Number.isInteger(option))
+  );
+}
+
 /**
  * Só devolve estado se TUDO validar. Dado corrompido no localStorage vira
  * `null` e a party recomeça limpa, em vez de quebrar a tela no meio da festa.
@@ -54,7 +76,8 @@ export function parsePartyState(raw: string | null): PartyState | null {
       candidate.settings.maxPlayers < 1 ||
       !Number.isInteger(candidate.round) ||
       candidate.round! < 0 ||
-      !Number.isFinite(candidate.createdAt)
+      !Number.isFinite(candidate.createdAt) ||
+      !isQuizState(candidate.quiz)
     ) {
       return null;
     }
