@@ -84,9 +84,11 @@ export function usePartyHost(pin: string) {
           dispatch({ type: "PLAYER_UPDATE", playerId: event.playerId, patch: event.patch });
           break;
         case "ANSWER":
-          // O reducer é quem valida fase, jogador e alternativa.
+          // O reducer valida fase, jogador, alternativa e atraso. O relógio é
+          // o da TV: o celular não decide se chegou a tempo.
           dispatch({
             type: "ANSWER",
+            now: Date.now(),
             playerId: event.playerId,
             optionIndex: event.optionIndex,
           });

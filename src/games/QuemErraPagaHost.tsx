@@ -75,43 +75,52 @@ export function QuemErraPagaHost({
   if (state.phase === "ROUND_ACTIVE" && question) {
     const urgent = secondsLeft <= 5;
     return (
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+      // Ocupa o quadro da TV: sem isto, tudo se aperta no topo e sobra um
+      // terço de tela vazia justamente onde o texto precisa ser grande.
+      <div className="mx-auto flex min-h-[calc(100dvh-12rem)] w-full max-w-[110rem] flex-col justify-center gap-[2.5vh]">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <span className="border-4 border-ink bg-paper px-4 py-2 font-action text-xl uppercase">
+          <span className="border-4 border-ink bg-paper px-5 py-2 font-action text-[clamp(1rem,1.6vw,1.75rem)] uppercase">
             Pergunta {state.round} de {total}
           </span>
           <motion.div
             animate={urgent ? { scale: [1, 1.12, 1] } : { scale: 1 }}
             transition={urgent ? { repeat: Infinity, duration: 0.7 } : undefined}
           >
-            <Knockout className="flex items-center gap-3 px-6 py-3">
-              <Timer strokeWidth={3} className="size-8" />
-              <span className="font-display text-5xl font-extrabold leading-none tabular-nums">
+            <Knockout className="flex items-center gap-3 px-[1.5vw] py-[1vh]">
+              <Timer strokeWidth={3} className="size-[clamp(1.75rem,3vw,3rem)]" />
+              <span className="font-display text-[clamp(2.5rem,6vw,6rem)] font-extrabold leading-none tabular-nums">
                 {secondsLeft}
               </span>
             </Knockout>
           </motion.div>
         </div>
 
-        <Card className="p-8 text-center">
-          <h2 className="font-display text-[clamp(1.75rem,4vw,3.5rem)] font-extrabold uppercase leading-tight">
+        <Card className="px-[3vw] py-[3.5vh] text-center">
+          <h2 className="font-display text-[clamp(2rem,5.2vw,5.5rem)] font-extrabold uppercase leading-[1.05]">
             {question.question}
           </h2>
         </Card>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        {/* Alternativas grandes: precisam ser lidas do outro lado da sala. */}
+        <div className="grid gap-[1.5vh] sm:grid-cols-2 sm:gap-[1.5vw]">
           {question.options.map((option, index) => (
-            <Card key={index} tilt={tiltByIndex(index)} className="flex items-center gap-4 p-5">
-              <span className="grid size-12 shrink-0 place-items-center border-4 border-ink bg-accent font-action text-2xl text-on-accent">
+            <Card
+              key={index}
+              tilt={tiltByIndex(index)}
+              className="flex items-center gap-[1.5vw] px-[1.5vw] py-[2vh]"
+            >
+              <span className="grid size-[clamp(2.5rem,4vw,4.5rem)] shrink-0 place-items-center border-4 border-ink bg-accent font-action text-[clamp(1.25rem,2.4vw,2.75rem)] text-on-accent">
                 {LETTERS[index]}
               </span>
-              <span className="font-ui text-2xl leading-snug">{option}</span>
+              <span className="font-ui text-[clamp(1.25rem,2.6vw,3rem)] font-bold leading-tight">
+                {option}
+              </span>
             </Card>
           ))}
         </div>
 
-        <Card variant="dashed" className="p-4 text-center">
-          <p className="font-hand text-xl">
+        <Card variant="dashed" className="px-4 py-[1.5vh] text-center">
+          <p className="font-hand text-[clamp(1rem,1.8vw,1.75rem)]">
             {pending.length === 0
               ? "Todo mundo respondeu."
               : `Faltam ${pending.length} de ${state.players.length} responderem...`}
@@ -204,6 +213,11 @@ export function QuemErraPagaHost({
               <div className="mt-2">
                 <PlayerChips players={wrong} />
               </div>
+              {/* A TV para aqui de propósito. Dizer que está esperando evita
+                  o grupo achar que o jogo travou. */}
+              <p className="mt-6 font-action text-xl uppercase text-on-accent opacity-80">
+                O host continua quando todo mundo pagar
+              </p>
             </motion.div>
           ) : null}
         </AnimatePresence>

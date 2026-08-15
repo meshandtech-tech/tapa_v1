@@ -10,7 +10,7 @@ import {
   type PartyAction,
 } from "./partyReducer";
 import { currentQuestion } from "../games/quemErraPaga";
-import { GAMES } from "../games/registry";
+import { GAMES, phaseDuration } from "../games/registry";
 import { MAX_PLAYERS, PLAYER_COLORS, type PartyState, type Player } from "./types";
 
 function makePlayer(id: string, overrides: Partial<Player> = {}): Player {
@@ -296,13 +296,44 @@ describe("papel de host", () => {
 });
 
 describe("auto-host", () => {
+  // Derivado do registry: mudar QUIZ_ANSWER_TIME não deve quebrar teste.
   it("toda fase do jogo nasce com prazo", () => {
     let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 1000 });
-    expect(state.phaseDeadline).toBe(1000 + 6000); // GAME_INTRO
+    expect(state.phaseDeadline).toBe(1000 + phaseDuration("quem-erra-paga", "GAME_INTRO"));
 
     state = partyReducer(state, { type: "ADVANCE", now: 7000 });
     expect(state.phase).toBe("ROUND_ACTIVE");
-    expect(state.phaseDeadline).toBe(7000 + 20000);
+    expect(state.phaseDeadline).toBe(7000 + phaseDuration("quem-erra-paga", "ROUND_ACTIVE"));
+  });
+
+  /**
+   * O quiz para na roleta e espera o host. É o único ponto assim: enquanto o
+   * pessoal paga a prenda, ninguém está olhando para a TV.
+   */
+  it("a roleta de prendas não avança sozinha", () => {
+    expect(phaseDuration("quem-erra-paga", "FORFEIT_WHEEL")).toBe(0);
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 0 });
+    state = partyReducer(state, { type: "ADVANCE", now: 0 }); // ROUND_ACTIVE
+    state = partyReducer(state, { type: "ADVANCE", now: 0 }); // REVEAL_ANSWER
+    state = partyReducer(state, { type: "ADVANCE", now: 0 }); // FORFEIT_WHEEL
+    expect(state.phase).toBe("FORFEIT_WHEEL");
+    expect(state.phaseDeadline).toBe(0);
+  });
+
+  it("resposta depois do prazo não conta", () => {
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 0 });
+    state = partyReducer(state, { type: "ADVANCE", now: 0 });
+    const prazo = state.phaseDeadline;
+
+    const atrasado = partyReducer(state, {
+      type: "ANSWER", playerId: "p0", optionIndex: 1, now: prazo + 1,
+    });
+    expect(atrasado.quiz?.answers.p0).toBeUndefined();
+
+    const noPrazo = partyReducer(state, {
+      type: "ANSWER", playerId: "p0", optionIndex: 1, now: prazo - 1,
+    });
+    expect(noPrazo.quiz?.answers.p0).toBe(1);
   });
 
   // LOBBY e GAME_OVER esperam decisão humana, e é de propósito.

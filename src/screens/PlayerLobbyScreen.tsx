@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { Dices, Gamepad2, LogIn, Play, RotateCcw, WifiOff } from "lucide-react";
+import { Check, Dices, Gamepad2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
 import { isValidPin } from "../party/pin";
-import { canStart, isNicknameTaken } from "../party/partyReducer";
+import { canStart, isNicknameTaken, roomCapacity } from "../party/partyReducer";
 import { clearPartyState } from "../party/partyStorage";
 import { usePartyPlayer } from "../party/usePartyPlayer";
 import { usePartyTheme } from "../party/usePartyTheme";
@@ -121,6 +121,30 @@ function PlayerLobby({ pin }: { pin: string }) {
     );
   }
 
+  /**
+   * Sala cheia. Sem esta tela, o 11º jogador preenchia o apelido, apertava
+   * entrar e não acontecia nada — o reducer recusava em silêncio.
+   */
+  if (!meInParty && state && state.players.length >= roomCapacity(state.settings.gameId)) {
+    return (
+      <Shell>
+        <Card tilt="tilt-2" className="w-full max-w-md p-7 text-center">
+          <Users strokeWidth={2.5} className="mx-auto mb-3 size-12" />
+          <h2 className="font-display text-3xl font-bold uppercase">Essa party está cheia</h2>
+          <p className="mt-3 font-display text-5xl font-extrabold tabular-nums">
+            {state.players.length}/{roomCapacity(state.settings.gameId)}
+          </p>
+          <p className="mt-3 font-hand text-lg">
+            Espera alguém sair, ou peça para o host abrir outra sala.
+          </p>
+          <Button size="md" variant="knockout" className="mt-5 w-full" onClick={() => navigate("/join")}>
+            Tentar outro PIN
+          </Button>
+        </Card>
+      </Shell>
+    );
+  }
+
   // O jogo começou: o celular vira controle.
   if (meInParty && state && state.phase !== "LOBBY") {
     return (
@@ -131,6 +155,20 @@ function PlayerLobby({ pin }: { pin: string }) {
           secondsLeft={computeSecondsLeft(state, now)}
           onAnswer={answer}
         />
+        {/* O único momento em que a máquina para e espera gente: enquanto o
+            pessoal cumpre a prenda, ninguém está olhando para a TV. */}
+        {state.phase === "FORFEIT_WHEEL" && isHost ? (
+          <Button
+            size="md"
+            variant="solid"
+            className="w-full max-w-md"
+            onClick={() => sendHostCommand({ type: "ADVANCE" })}
+          >
+            <Check strokeWidth={3} className="size-6" />
+            Todo mundo pagou, continuar
+          </Button>
+        ) : null}
+
         {state.phase === "GAME_OVER" && isHost ? (
           <div className="flex w-full max-w-md flex-col gap-3">
             <Button size="md" variant="solid" onClick={() => sendHostCommand({ type: "START_GAME" })}>

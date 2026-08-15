@@ -144,10 +144,12 @@ describe("cronômetro", () => {
   });
 
   it("congela enquanto pausado", () => {
+    const rodada = phaseDuration("quem-erra-paga", "ROUND_ACTIVE") / 1000;
     let state = emJogo(2, 0);
     state = partyReducer(state, { type: "PAUSE", now: 5_000 });
-    // 15s restavam quando pausou — e continuam restando 10s depois.
-    expect(secondsLeft(state, 15_000)).toBe(15);
+    // Pausou aos 5s; o relógio não anda mais, por mais que o tempo real passe.
+    expect(secondsLeft(state, 15_000)).toBe(rodada - 5);
+    expect(secondsLeft(state, 999_000)).toBe(rodada - 5);
   });
 
   it("nunca fica negativo", () => {

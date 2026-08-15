@@ -63,6 +63,7 @@ function HostLobby({
   const capacity = roomCapacity(state.settings.gameId);
   const missing = Math.max(0, game.minPlayers - state.players.length);
   const host = state.players.find((player) => player.id === state.hostPlayerId) ?? null;
+  const emJogo = state.phase !== "LOBBY";
 
   const now = useNow(state.phaseDeadline > 0);
   const secondsLeft = computeSecondsLeft(state, now);
@@ -80,12 +81,21 @@ function HostLobby({
   };
 
   return (
-    <div className={cn("min-h-dvh bg-accent px-5 py-6 lg:px-10", game.identity.pattern)}>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div
+      className={cn(
+        "bg-accent px-5 lg:px-10",
+        game.identity.pattern,
+        // Durante o jogo a TV é uma tela fixa: altura travada e nada de
+        // rolagem, senão em 1366x768 a pergunta escorrega para fora do quadro.
+        // No lobby o conteúdo é alto e precisa rolar no celular.
+        emJogo ? "flex h-dvh flex-col overflow-hidden py-[2vh]" : "min-h-dvh py-6",
+      )}
+    >
+      <header className={cn("flex flex-wrap items-center justify-between gap-4", emJogo ? "mb-[1.5vh]" : "mb-6")}>
         <button type="button" onClick={onExit} className="cursor-pointer">
           <Logo size="sm" />
         </button>
-        {state.phase !== "LOBBY" ? (
+        {emJogo ? (
           <span className="border-4 border-ink bg-paper px-4 py-2 font-action text-lg uppercase">
             {game.title} · {state.round > 0 ? `Rodada ${state.round}` : "Começando"}
           </span>
@@ -95,7 +105,7 @@ function HostLobby({
       {/* Barra fina do tempo da fase: o grupo sente que algo vai acontecer,
           sem um cronômetro gigante competindo com o conteúdo. */}
       {state.phaseDeadline > 0 ? (
-        <div className="mb-6 h-3 w-full border-4 border-ink bg-paper">
+        <div className={cn("h-3 w-full shrink-0 border-4 border-ink bg-paper", emJogo ? "mb-[1.5vh]" : "mb-6")}>
           <div
             className="h-full bg-ink transition-[width] duration-200 ease-linear"
             style={{ width: `${Math.round(progress * 100)}%` }}
@@ -110,8 +120,10 @@ function HostLobby({
         </Knockout>
       ) : null}
 
-      {state.phase !== "LOBBY" ? (
-        <QuemErraPagaHost state={state} secondsLeft={secondsLeft} />
+      {emJogo ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <QuemErraPagaHost state={state} secondsLeft={secondsLeft} />
+        </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
           {/* Como entrar. */}

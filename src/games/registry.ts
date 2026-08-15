@@ -13,11 +13,21 @@ export type GameId = "quem-erra-paga" | "advogado-do-diabo" | "pitch-no-escuro";
  */
 export type PhaseDurations = Partial<Record<PartyPhase, number>>;
 
+/** Tempo para responder cada pergunta. Mexa aqui para mudar o quiz inteiro. */
+export const QUIZ_ANSWER_TIME = 30;
+
 const DEFAULT_DURATIONS: PhaseDurations = {
   GAME_INTRO: 6000,
-  ROUND_ACTIVE: 20000,
+  ROUND_ACTIVE: QUIZ_ANSWER_TIME * 1000,
   REVEAL_ANSWER: 6000,
-  FORFEIT_WHEEL: 11000,
+  /**
+   * `0` = não avança sozinha: espera o host.
+   *
+   * É o único ponto do quiz onde a máquina para de propósito. Enquanto o
+   * pessoal cumpre a prenda, ninguém está olhando para a TV — se a rodada
+   * seguinte entrasse por conta própria, todo mundo perderia a pergunta.
+   */
+  FORFEIT_WHEEL: 0,
   LEADERBOARD: 7000,
 };
 

@@ -6,10 +6,15 @@
    --------------------------------------------------------------------------- */
 
 @theme {
-  --font-display: "Shantell Sans", "Comic Sans MS", cursive;
-  --font-action: "Rubik Marker Hatch", "Shantell Sans", cursive;
-  --font-hand: "Patrick Hand", "Comic Sans MS", cursive;
-  --font-ui: "Fredoka", system-ui, sans-serif;
+  /* Helvetica Bold em tudo. A identidade passa a vir de layout, escala, cor,
+     movimento e tempo — não de fonte decorativa. O que manda aqui é ser lido
+     de longe, do outro lado da sala, numa TV.
+     Os quatro tokens continuam existindo (centenas de usos dependem deles) e
+     agora se diferenciam por espaçamento e caixa, não por família. */
+  --font-display: Helvetica, Arial, sans-serif;
+  --font-action: Helvetica, Arial, sans-serif;
+  --font-hand: Helvetica, Arial, sans-serif;
+  --font-ui: Helvetica, Arial, sans-serif;
 
   /* Constantes da marca — nunca mudam entre temas. */
   --color-ink: #000000;
@@ -48,7 +53,10 @@
   font-family: var(--font-ui);
   color: var(--tapa-ink);
   background: var(--tapa-accent);
-  font-synthesis: none;
+  /* Helvetica só tem Regular e Bold instaladas. Sem síntese, um peso 800
+     cairia para o Regular e a tela ficaria fina justamente onde precisa
+     gritar; deixamos o navegador engrossar quando faltar o corte. */
+  font-synthesis: weight;
   text-rendering: optimizeLegibility;
 
   /* Aliases legados: as telas antigas do quiz passam a obedecer ao Theme

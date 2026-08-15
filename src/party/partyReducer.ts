@@ -60,7 +60,7 @@ export type PartyAction =
   | { type: "SCORE"; playerId: string; delta: number }
   /** `order` e `now` vêm do host: o reducer continua puro e testável. */
   | { type: "START_GAME"; order?: number[]; now?: number }
-  | { type: "ANSWER"; playerId: string; optionIndex: number }
+  | { type: "ANSWER"; playerId: string; optionIndex: number; now?: number }
   | { type: "ADVANCE"; forfeit?: boolean; now?: number; punishmentIndex?: number }
   /** Ninguém topou a prenda: sorteia outra sem sair da roleta. */
   | { type: "REROLL_PUNISHMENT"; punishmentIndex: number }
@@ -340,6 +340,9 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
 
     case "ANSWER": {
       if (state.phase !== "ROUND_ACTIVE" || !state.quiz) return state;
+      // Resposta atrasada não entra. A TV avança com um respiro depois do
+      // prazo, e sem esta trava esse respiro viraria tempo extra.
+      if (state.phaseDeadline > 0 && (action.now ?? 0) > state.phaseDeadline) return state;
       if (!state.players.some((player) => player.id === action.playerId)) return state;
       // Resposta é definitiva: sem trocar depois de ver a cara dos outros.
       if (state.quiz.answers[action.playerId] !== undefined) return state;
