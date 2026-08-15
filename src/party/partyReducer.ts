@@ -109,13 +109,28 @@ function sanitizeNickname(nickname: string): string {
   return nickname.trim().slice(0, NICKNAME_MAX_LENGTH);
 }
 
+/**
+ * Garante que a sala SEMPRE tenha um host: o primeiro da fila assume.
+ *
+ * A versão anterior dependia de um token no localStorage de quem criou a sala,
+ * o que não funciona na vida real — a sala é criada no computador e as pessoas
+ * entram pelo celular, que é outro aparelho com outro localStorage. Resultado:
+ * ninguém reivindicava o papel, ninguém tinha controles e o jogo não começava.
+ */
+function ensureHost(state: PartyState): PartyState {
+  if (state.hostPlayerId && state.players.some((p) => p.id === state.hostPlayerId)) {
+    return state;
+  }
+  return { ...state, hostPlayerId: state.players[0]?.id ?? null };
+}
+
 function joinPlayer(state: PartyState, player: Player): PartyState {
   // Reconexão: o mesmo id reentrando atualiza em vez de duplicar.
   const existing = state.players.findIndex((item) => item.id === player.id);
   if (existing >= 0) {
     const players = [...state.players];
     players[existing] = { ...players[existing], ...player, score: players[existing].score };
-    return { ...state, players };
+    return ensureHost({ ...state, players });
   }
 
   if (state.phase !== "LOBBY") return state;
@@ -124,10 +139,10 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
   const nickname = sanitizeNickname(player.nickname);
   if (!nickname || isNicknameTaken(state.players, nickname)) return state;
 
-  return {
+  return ensureHost({
     ...state,
     players: [...state.players, { ...player, nickname, score: 0 }],
-  };
+  });
 }
 
 /**
@@ -137,9 +152,7 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
 function leavePlayer(state: PartyState, playerId: string): PartyState {
   const players = state.players.filter((player) => player.id !== playerId);
   if (players.length === state.players.length) return state;
-  const hostPlayerId =
-    state.hostPlayerId === playerId ? (players[0]?.id ?? null) : state.hostPlayerId;
-  return { ...state, players, hostPlayerId };
+  return ensureHost({ ...state, players });
 }
 
 function updatePlayer(

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPartyChannel, type HostCommand, type PartyChannel } from "./channel";
-import { loadLocalPlayer, ownsHostToken, saveLocalPlayer } from "./partyStorage";
+import { loadLocalPlayer, saveLocalPlayer } from "./partyStorage";
 import type { PartyState, Player } from "./types";
 
 export type PartyConnection = "connecting" | "connected" | "closed";
@@ -92,14 +92,15 @@ export function usePartyPlayer(pin: string) {
   const isHost = !!meInParty && state?.hostPlayerId === meInParty.id;
 
   /**
-   * Reivindica o comando da sala assim que entro, se este aparelho guardou o
-   * token de criação. O reducer recusa se já houver outro host.
+   * Rede de segurança: se a sala está sem host (estado antigo, ou o host caiu
+   * antes de alguém assumir), o primeiro da fila reivindica. No caminho normal
+   * o host já é definido no `PLAYER_JOIN`, então isto quase nunca dispara.
    */
   useEffect(() => {
-    if (!meInParty || state?.hostPlayerId) return;
-    if (!ownsHostToken(pin)) return;
+    if (!meInParty || !state || state.hostPlayerId) return;
+    if (state.players[0]?.id !== meInParty.id) return;
     channelRef.current?.broadcast({ type: "CLAIM_HOST", playerId: meInParty.id });
-  }, [pin, meInParty, state?.hostPlayerId]);
+  }, [meInParty, state]);
 
   return { state, me, meInParty, isHost, connection, join, updateMe, answer, sendHostCommand };
 }

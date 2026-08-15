@@ -230,23 +230,54 @@ describe("lotação da sala", () => {
 });
 
 describe("papel de host", () => {
-  it("nasce sem host", () => {
+  it("sala vazia não tem host", () => {
     expect(createPartyState("1234", 0).hostPlayerId).toBeNull();
   });
 
-  it("o primeiro a reivindicar leva", () => {
-    const state = partyReducer(withPlayers(3), { type: "CLAIM_HOST", playerId: "p1" });
-    expect(state.hostPlayerId).toBe("p1");
+  /**
+   * A regressão que travou uma festa de verdade: o host dependia de um token
+   * no localStorage de quem criou a sala. Como a sala nasce no computador e as
+   * pessoas entram pelo celular, o token nunca chegava a ninguém — e sem host
+   * não havia botão de começar em lugar nenhum.
+   */
+  it("o primeiro a entrar já vira host, sem depender de nada do aparelho", () => {
+    const state = withPlayers(3);
+    expect(state.hostPlayerId).toBe("p0");
   });
 
-  it("recusa um segundo pretendente", () => {
-    let state = partyReducer(withPlayers(3), { type: "CLAIM_HOST", playerId: "p1" });
-    state = partyReducer(state, { type: "CLAIM_HOST", playerId: "p2" });
+  it("quem entra depois não rouba o comando", () => {
+    let state = withPlayers(1);
+    expect(state.hostPlayerId).toBe("p0");
+    state = partyReducer(state, {
+      type: "PLAYER_JOIN",
+      player: makePlayer("p9", { color: PLAYER_COLORS[7] }),
+    });
+    expect(state.hostPlayerId).toBe("p0");
+  });
+
+  it("uma sala com gente nunca fica sem host", () => {
+    for (let n = 1; n <= 5; n += 1) {
+      const state = withPlayers(n);
+      expect(state.hostPlayerId).not.toBeNull();
+      expect(state.players.some((p) => p.id === state.hostPlayerId)).toBe(true);
+    }
+  });
+
+  it("CLAIM_HOST não derruba o host vigente", () => {
+    const state = partyReducer(withPlayers(3), { type: "CLAIM_HOST", playerId: "p1" });
+    expect(state.hostPlayerId).toBe("p0");
+  });
+
+  // CLAIM_HOST virou rede de segurança para salas órfãs, não disputa.
+  it("CLAIM_HOST assume uma sala que ficou sem host", () => {
+    const orfa = { ...withPlayers(3), hostPlayerId: null };
+    const state = partyReducer(orfa, { type: "CLAIM_HOST", playerId: "p1" });
     expect(state.hostPlayerId).toBe("p1");
   });
 
   it("ignora quem não está na sala", () => {
-    const state = partyReducer(withPlayers(2), { type: "CLAIM_HOST", playerId: "fantasma" });
+    const orfa = { ...withPlayers(2), hostPlayerId: null };
+    const state = partyReducer(orfa, { type: "CLAIM_HOST", playerId: "fantasma" });
     expect(state.hostPlayerId).toBeNull();
   });
 

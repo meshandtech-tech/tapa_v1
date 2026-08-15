@@ -48,7 +48,13 @@ function enrichCommand(command: HostCommand, state: PartyState): PartyAction {
 function initHostState(pin: string): PartyState {
   // F5 na TV não pode matar a sala: reidrata do localStorage quando possível.
   const saved = loadPartyState(pin);
-  return saved && saved.pin === pin ? saved : createPartyState(pin);
+  if (!saved || saved.pin !== pin) return createPartyState(pin);
+  // Salas criadas antes da correção do host ficaram salvas com hostPlayerId
+  // null — sem isso elas continuariam travadas, sem ninguém para começar.
+  if (!saved.hostPlayerId && saved.players.length > 0) {
+    return { ...saved, hostPlayerId: saved.players[0].id };
+  }
+  return saved;
 }
 
 /**

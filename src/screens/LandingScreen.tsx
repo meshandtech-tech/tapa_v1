@@ -6,7 +6,7 @@ import { LogIn, PartyPopper, Users } from "lucide-react";
 import { DecorativeDoodles } from "../components/DecorativeDoodles";
 import { GAMES } from "../games/registry";
 import { generateFreePin } from "../party/pin";
-import { loadPartyState, markHostDevice } from "../party/partyStorage";
+import { loadPartyState } from "../party/partyStorage";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -20,9 +20,6 @@ export function LandingScreen() {
     // Evita cair num PIN cuja sala antiga ainda está salva — senão o host
     // reidrataria o roster da festa passada em vez de abrir uma sala limpa.
     const pin = generateFreePin((candidate) => loadPartyState(candidate) !== null);
-    // Guarda o token: quando este aparelho entrar pelo /play, ele assume o
-    // comando da sala — o host joga como todo mundo.
-    markHostDevice(pin);
     navigate(gameId ? `/host/${pin}?game=${gameId}` : `/host/${pin}`);
   };
 

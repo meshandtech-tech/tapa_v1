@@ -62,6 +62,7 @@ function HostLobby({
   const inviteUrl = buildInviteUrl(pin, window.location.origin);
   const capacity = roomCapacity(state.settings.gameId);
   const missing = Math.max(0, game.minPlayers - state.players.length);
+  const host = state.players.find((player) => player.id === state.hostPlayerId) ?? null;
 
   const now = useNow(state.phaseDeadline > 0);
   const secondsLeft = computeSecondsLeft(state, now);
@@ -217,10 +218,14 @@ function HostLobby({
                   ) : null}
                 </div>
               </div>
+              {/* Dizer QUEM manda importa: sem isso, uma sala sem host vira um
+                  mistério — foi exatamente assim que a festa travou uma vez. */}
               <p className="border-t-4 border-dashed border-ink pt-3 font-hand text-2xl">
                 {missing > 0
                   ? `Faltam ${missing} ${missing === 1 ? "jogador" : "jogadores"} para começar.`
-                  : "Tudo pronto — o host começa pelo celular."}
+                  : host
+                    ? `Tudo pronto — ${host.nickname} começa pelo celular.`
+                    : "Tudo pronto. Entre pelo celular para começar."}
               </p>
             </Card>
           </div>
