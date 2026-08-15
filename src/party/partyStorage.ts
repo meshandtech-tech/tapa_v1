@@ -10,14 +10,29 @@ import {
   type QuizState,
 } from "./types";
 
+/**
+ * Toda fase válida. Precisa acompanhar `PartyPhase`: uma fase esquecida aqui
+ * faz o estado ser rejeitado ao recarregar, e um F5 no meio do jogo derruba a
+ * sala inteira sem nenhum erro visível. Foi exatamente o que aconteceu quando
+ * as fases do Advogado do Diabo entraram e esta lista ficou para trás.
+ */
 const PHASES: readonly PartyPhase[] = [
   "LOBBY",
   "GAME_INTRO",
+  "LEADERBOARD",
+  "GAME_OVER",
   "ROUND_ACTIVE",
   "REVEAL_ANSWER",
   "FORFEIT_WHEEL",
-  "LEADERBOARD",
-  "GAME_OVER",
+  "TOPIC_SPIN",
+  "TOPIC_REVEAL",
+  "PLAYER_SPIN",
+  "PLAYER_REVEAL",
+  "PREPARATION",
+  "COUNTDOWN",
+  "PRESENTATION",
+  "VOTING",
+  "SCORE_REVEAL",
 ];
 
 const stateKey = (pin: string) => `tapa:party:${pin}:state`;

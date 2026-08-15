@@ -18,7 +18,11 @@ import type { PartyState } from "./types";
  * Completa um comando do host com o que só a TV pode decidir: relógio e
  * sorteios. Assim dois aparelhos nunca divergem sobre a pergunta ou a prenda.
  */
-function enrichCommand(command: HostCommand, state: PartyState): PartyAction {
+function enrichCommand(
+  command: HostCommand,
+  state: PartyState,
+  playerId: string,
+): PartyAction {
   const now = Date.now();
   switch (command.type) {
     case "START_GAME": {
@@ -36,6 +40,9 @@ function enrichCommand(command: HostCommand, state: PartyState): PartyAction {
           state.quiz?.punishmentIndex ?? null,
         ),
       };
+    // O voto do host é um voto como o de qualquer um.
+    case "VOTE":
+      return { type: "VOTE", playerId, rating: command.rating };
     case "PAUSE":
       return { type: "PAUSE", now };
     case "RESUME":
@@ -93,6 +100,9 @@ export function usePartyHost(pin: string) {
             optionIndex: event.optionIndex,
           });
           break;
+        case "VOTE":
+          dispatch({ type: "VOTE", playerId: event.playerId, rating: event.rating });
+          break;
         case "CLAIM_HOST":
           dispatch({ type: "CLAIM_HOST", playerId: event.playerId });
           break;
@@ -101,7 +111,7 @@ export function usePartyHost(pin: string) {
           // relógio) são preenchidos AQUI — nunca vêm do celular.
           const atual = stateRef.current;
           if (atual.hostPlayerId !== event.playerId) break;
-          dispatch(enrichCommand(event.command, atual));
+          dispatch(enrichCommand(event.command, atual, event.playerId));
           break;
         }
         case "REQUEST_STATE":

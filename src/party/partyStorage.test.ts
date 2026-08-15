@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPartyState } from "./partyReducer";
 import { parsePartyState } from "./partyStorage";
-import type { PartyState } from "./types";
+import type { PartyPhase, PartyState } from "./types";
 
 /** Estado válido, serializado, com um campo adulterado. */
 function raw(mutate: (state: PartyState) => void = () => {}): string {
@@ -56,5 +56,29 @@ describe("parsePartyState", () => {
     expect(parsePartyState(null)).toBeNull();
     expect(parsePartyState("{")).toBeNull();
     expect(parsePartyState("{}")).toBeNull();
+  });
+});
+
+describe("fases persistíveis", () => {
+  /**
+   * Regressão: quando as fases do Advogado do Diabo entraram, a whitelist de
+   * `partyStorage` ficou para trás e todo estado desse jogo era descartado ao
+   * recarregar — um F5 no meio da partida derrubava a sala em silêncio.
+   */
+  it("aceita TODA fase declarada em PartyPhase", () => {
+    const todas: PartyPhase[] = [
+      "LOBBY", "GAME_INTRO", "LEADERBOARD", "GAME_OVER",
+      "ROUND_ACTIVE", "REVEAL_ANSWER", "FORFEIT_WHEEL",
+      "TOPIC_SPIN", "TOPIC_REVEAL", "PLAYER_SPIN", "PLAYER_REVEAL",
+      "PREPARATION", "COUNTDOWN", "PRESENTATION", "VOTING", "SCORE_REVEAL",
+    ];
+    for (const phase of todas) {
+      const parsed = parsePartyState(raw((state) => { state.phase = phase; }));
+      expect(parsed, `fase ${phase} foi rejeitada`).not.toBeNull();
+    }
+  });
+
+  it("recusa fase inventada", () => {
+    expect(parsePartyState(raw((s) => Object.assign(s, { phase: "VOANDO" })))).toBeNull();
   });
 });

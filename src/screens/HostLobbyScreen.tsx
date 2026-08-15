@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Check, Copy, Crown, Pause, Smartphone, TriangleAlert, Users } from "lucide-react";
+import { AdvogadoDoDiaboHost } from "../games/AdvogadoDoDiaboHost";
 import { QuemErraPagaHost } from "../games/QuemErraPagaHost";
 import { phaseProgress, secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { getGame, isGameId, phaseDuration } from "../games/registry";
@@ -122,7 +123,11 @@ function HostLobby({
 
       {emJogo ? (
         <div className="min-h-0 flex-1 overflow-hidden">
-          <QuemErraPagaHost state={state} secondsLeft={secondsLeft} />
+          {state.settings.gameId === "advogado-do-diabo" ? (
+            <AdvogadoDoDiaboHost state={state} secondsLeft={secondsLeft} />
+          ) : (
+            <QuemErraPagaHost state={state} secondsLeft={secondsLeft} />
+          )}
         </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">

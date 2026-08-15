@@ -80,6 +80,13 @@ export function usePartyPlayer(pin: string) {
     });
   }, []);
 
+  /** Nota na apresentação. Todo mundo vota, não só o host. */
+  const vote = useCallback((rating: number) => {
+    const current = meRef.current;
+    if (!current) return;
+    channelRef.current?.broadcast({ type: "VOTE", playerId: current.id, rating });
+  }, []);
+
   /** Comando do host. A TV confere se sou mesmo o host antes de aplicar. */
   const sendHostCommand = useCallback((command: HostCommand) => {
     const current = meRef.current;
@@ -102,5 +109,5 @@ export function usePartyPlayer(pin: string) {
     channelRef.current?.broadcast({ type: "CLAIM_HOST", playerId: meInParty.id });
   }, [meInParty, state]);
 
-  return { state, me, meInParty, isHost, connection, join, updateMe, answer, sendHostCommand };
+  return { state, me, meInParty, isHost, connection, join, updateMe, answer, vote, sendHostCommand };
 }

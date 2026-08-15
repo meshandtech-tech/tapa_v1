@@ -14,6 +14,8 @@ export type HostCommand =
   | { type: "START_GAME" }
   | { type: "ADVANCE" }
   | { type: "REROLL_PUNISHMENT" }
+  | { type: "VOTE"; rating: number }
+  | { type: "REROLL_TOPIC" }
   | { type: "PAUSE" }
   | { type: "RESUME" }
   | { type: "RESET_TO_LOBBY" };
@@ -31,6 +33,8 @@ export type PartyEvent =
   | { type: "PLAYER_UPDATE"; playerId: string; patch: Partial<Omit<Player, "id">> }
   /** Player → host. "marquei a alternativa N". O host decide se vale. */
   | { type: "ANSWER"; playerId: string; optionIndex: number }
+  /** Player → host. Nota de 1 a 5 na apresentação da rodada. */
+  | { type: "VOTE"; playerId: string; rating: number }
   /** Host → TV. A TV confere se `playerId` é mesmo o host antes de aplicar. */
   | { type: "HOST_ACTION"; playerId: string; command: HostCommand }
   /** Player → host. "eu sou o dono desta sala" (token guardado no aparelho). */

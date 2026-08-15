@@ -59,3 +59,27 @@ export const GAME_IDENTITIES = {
 } as const satisfies Record<string, GameIdentity>;
 
 export type GameIdentityId = keyof typeof GAME_IDENTITIES;
+
+/**
+ * Paletas de apresentação do Advogado do Diabo.
+ *
+ * Cada apresentador recebe uma cor diferente — a troca de fundo é o sinal
+ * visual de que agora é a vez de outra pessoa. Lista fixa e conferida, nunca
+ * cor gerada na hora: com aleatório sai combinação ilegível.
+ */
+export const PRESENTATION_THEMES: readonly GameIdentity[] = [
+  { accent: "#c1121f", accentDark: "#780000", accentSoft: "#ffd7d7", onAccent: "#ffffff", pattern: "zine-flames" },
+  { accent: "#0066ff", accentDark: "#003d99", accentSoft: "#cfe0ff", onAccent: "#ffffff", pattern: "zine-dots" },
+  { accent: "#7b2cbf", accentDark: "#3c096c", accentSoft: "#e9d2ff", onAccent: "#ffffff", pattern: "zine-noise" },
+  { accent: "#087f5b", accentDark: "#02523a", accentSoft: "#c3fae8", onAccent: "#ffffff", pattern: "zine-grain" },
+  { accent: "#f77f00", accentDark: "#9c5000", accentSoft: "#ffe8cc", onAccent: "#000000", pattern: "zine-dots" },
+  { accent: "#d6006e", accentDark: "#8a0047", accentSoft: "#ffd6ea", onAccent: "#ffffff", pattern: "zine-grain" },
+  { accent: "#1d3557", accentDark: "#0d1b2a", accentSoft: "#d0dcf0", onAccent: "#ffffff", pattern: "zine-noise" },
+  { accent: "#00b4a6", accentDark: "#00706a", accentSoft: "#c8fff9", onAccent: "#000000", pattern: "zine-dots" },
+];
+
+/** Paleta da vez. Cicla pela lista, então nunca repete em seguida. */
+export function presentationTheme(index: number): GameIdentity {
+  if (index < 0) return PRESENTATION_THEMES[0];
+  return PRESENTATION_THEMES[index % PRESENTATION_THEMES.length];
+}

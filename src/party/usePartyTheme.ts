@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { presentationTheme } from "../games/identity";
 import { getGame } from "../games/registry";
 import { useTheme } from "../theme/useTheme";
 import { getPreset } from "../theme/presets";
@@ -39,15 +40,22 @@ export function useGameIdentity(state: PartyState | null): void {
   const emJogo = !!state && state.phase !== "LOBBY";
   const gameId = state?.settings.gameId;
   const themeId = state?.settings.themeId;
+  /**
+   * No Advogado do Diabo cada apresentador ganha uma cor. A troca de fundo é
+   * o sinal de que agora é a vez de outra pessoa.
+   */
+  const apresentador = gameId === "advogado-do-diabo" ? (state?.devil?.index ?? -1) : -1;
 
   useEffect(() => {
     const root = document.documentElement;
     const paleta =
-      emJogo && gameId
-        ? getGame(gameId).identity
-        : themeId
-          ? getPreset(themeId)
-          : null;
+      emJogo && apresentador >= 0
+        ? presentationTheme(apresentador)
+        : emJogo && gameId
+          ? getGame(gameId).identity
+          : themeId
+            ? getPreset(themeId)
+            : null;
     if (!paleta) return;
 
     root.style.setProperty("--tapa-accent", paleta.accent);
@@ -58,5 +66,5 @@ export function useGameIdentity(state: PartyState | null): void {
       "--tapa-on-accent-contrast",
       paleta.onAccent === "#ffffff" ? "#000000" : "#ffffff",
     );
-  }, [emJogo, gameId, themeId]);
+  }, [emJogo, gameId, themeId, apresentador]);
 }

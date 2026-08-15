@@ -9,6 +9,8 @@ import { usePartyPlayer } from "../party/usePartyPlayer";
 import { usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
 import { HostControls } from "../party/HostControls";
+import { AdvogadoDoDiaboPlayer } from "../games/AdvogadoDoDiaboPlayer";
+import { DevilHostActions } from "../games/DevilHostActions";
 import { QuemErraPagaPlayer } from "../games/QuemErraPagaPlayer";
 import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type Player } from "../party/types";
@@ -34,13 +36,14 @@ export function PlayerLobbyScreen() {
 
 function PlayerLobby({ pin }: { pin: string }) {
   const navigate = useNavigate();
-  const { state, me, meInParty, isHost, connection, join, updateMe, answer, sendHostCommand } =
+  const { state, me, meInParty, isHost, connection, join, updateMe, answer, vote, sendHostCommand } =
     usePartyPlayer(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
   usePartyTheme(state);
 
-  const now = useNow(state?.phase === "ROUND_ACTIVE");
+  // O relógio precisa correr em toda fase cronometrada, não só na rodada do quiz.
+  const now = useNow((state?.phaseDeadline ?? 0) > 0);
 
   const [nickname, setNickname] = useState("");
   const [seed, setSeed] = useState(randomId);
@@ -149,12 +152,21 @@ function PlayerLobby({ pin }: { pin: string }) {
   if (meInParty && state && state.phase !== "LOBBY") {
     return (
       <Shell>
-        <QuemErraPagaPlayer
-          state={state}
-          me={meInParty}
-          secondsLeft={computeSecondsLeft(state, now)}
-          onAnswer={answer}
-        />
+        {state.settings.gameId === "advogado-do-diabo" ? (
+          <AdvogadoDoDiaboPlayer
+            state={state}
+            me={meInParty}
+            secondsLeft={computeSecondsLeft(state, now)}
+            onVote={vote}
+          />
+        ) : (
+          <QuemErraPagaPlayer
+            state={state}
+            me={meInParty}
+            secondsLeft={computeSecondsLeft(state, now)}
+            onAnswer={answer}
+          />
+        )}
         {/* O único momento em que a máquina para e espera gente: enquanto o
             pessoal cumpre a prenda, ninguém está olhando para a TV. */}
         {state.phase === "FORFEIT_WHEEL" && isHost ? (
@@ -167,6 +179,10 @@ function PlayerLobby({ pin }: { pin: string }) {
             <Check strokeWidth={3} className="size-6" />
             Todo mundo pagou, continuar
           </Button>
+        ) : null}
+
+        {isHost && state.settings.gameId === "advogado-do-diabo" ? (
+          <DevilHostActions state={state} send={sendHostCommand} />
         ) : null}
 
         {state.phase === "GAME_OVER" && isHost ? (
