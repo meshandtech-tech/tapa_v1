@@ -4,7 +4,7 @@ import { createGameState, gameReducer } from "./gameReducer";
 import { parseSavedGame, serializeGameState, stateForPersistence } from "./persistence";
 
 const PLAYERS = ["Ana", "Bruno"] as const;
-const DECK = getDeck("medio");
+const DECK = getDeck("medium");
 const RIGHT = DECK[0].correctAnswer as number;
 const WRONG = (RIGHT + 1) % 4;
 
@@ -12,7 +12,7 @@ function started() {
   return gameReducer(createGameState(PLAYERS), {
     type: "START_NEW",
     players: PLAYERS,
-    difficulty: "medio",
+    difficulty: "medium",
   });
 }
 
@@ -48,16 +48,16 @@ describe("persistência do quiz", () => {
   });
 
   it("preserva a dificuldade escolhida", () => {
-    const facil = gameReducer(createGameState(PLAYERS), {
+    const easy = gameReducer(createGameState(PLAYERS), {
       type: "START_NEW",
       players: PLAYERS,
-      difficulty: "facil",
+      difficulty: "easy",
     });
-    const answered = gameReducer(facil, {
+    const answered = gameReducer(easy, {
       type: "ANSWER",
-      optionIndex: getDeck("facil")[0].correctAnswer as number,
+      optionIndex: getDeck("easy")[0].correctAnswer as number,
     });
-    expect(parseSavedGame(serializeGameState(answered))?.difficulty).toBe("facil");
+    expect(parseSavedGame(serializeGameState(answered))?.difficulty).toBe("easy");
   });
 
   it("aceita roster de qualquer tamanho", () => {
@@ -65,7 +65,7 @@ describe("persistência do quiz", () => {
     let state = gameReducer(createGameState(trio), {
       type: "START_NEW",
       players: trio,
-      difficulty: "medio",
+      difficulty: "medium",
     });
     state = gameReducer(state, { type: "ADMIN_NEXT" });
     state = gameReducer(state, { type: "ADMIN_NEXT" });
@@ -82,7 +82,7 @@ describe("persistência do quiz", () => {
     expect(parseSavedGame(JSON.stringify({
       version: 1,
       screen: "question",
-      difficulty: "medio",
+      difficulty: "medium",
       players: ["Ana", "Bruno"],
       currentQuestionIndex: 5,
       scores: { Ana: 99, Bruno: 99 },
@@ -102,8 +102,8 @@ describe("persistência do quiz", () => {
       currentPunishmentIndex: null,
     };
     expect(parseSavedGame(JSON.stringify({ ...base, difficulty: "impossivel", players: ["Ana"] }))).toBeNull();
-    expect(parseSavedGame(JSON.stringify({ ...base, difficulty: "medio", players: [] }))).toBeNull();
-    expect(parseSavedGame(JSON.stringify({ ...base, difficulty: "medio", players: ["Ana", "Ana"] }))).toBeNull();
+    expect(parseSavedGame(JSON.stringify({ ...base, difficulty: "medium", players: [] }))).toBeNull();
+    expect(parseSavedGame(JSON.stringify({ ...base, difficulty: "medium", players: ["Ana", "Ana"] }))).toBeNull();
   });
 
   it("rejeita histórico que não bate com o rodízio de turnos", () => {

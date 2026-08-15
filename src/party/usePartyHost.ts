@@ -1,8 +1,49 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { createPartyChannel, type PartyChannel } from "./channel";
+import { getDeck } from "../data/questions";
+import { punishments } from "../data/punishments";
+import {
+  drawDifferentPunishment,
+  drawOrder,
+  drawPunishment,
+  everyoneAnswered,
+} from "../games/quemErraPaga";
+import { getGame } from "../games/registry";
+import { createPartyChannel, type HostCommand, type PartyChannel } from "./channel";
 import { createPartyState, partyReducer, type PartyAction } from "./partyReducer";
 import { loadPartyState, savePartyState } from "./partyStorage";
+import { useNow } from "./useNow";
 import type { PartyState } from "./types";
+
+/**
+ * Completa um comando do host com o que só a TV pode decidir: relógio e
+ * sorteios. Assim dois aparelhos nunca divergem sobre a pergunta ou a prenda.
+ */
+function enrichCommand(command: HostCommand, state: PartyState): PartyAction {
+  const now = Date.now();
+  switch (command.type) {
+    case "START_GAME": {
+      const game = getGame(state.settings.gameId);
+      const deck = getDeck(state.settings.difficulty);
+      return { type: "START_GAME", now, order: drawOrder(deck.length, game.rounds) };
+    }
+    case "ADVANCE":
+      return { type: "ADVANCE", now, punishmentIndex: drawPunishment(punishments.length) };
+    case "REROLL_PUNISHMENT":
+      return {
+        type: "REROLL_PUNISHMENT",
+        punishmentIndex: drawDifferentPunishment(
+          punishments.length,
+          state.quiz?.punishmentIndex ?? null,
+        ),
+      };
+    case "PAUSE":
+      return { type: "PAUSE", now };
+    case "RESUME":
+      return { type: "RESUME", now };
+    default:
+      return command;
+  }
+}
 
 function initHostState(pin: string): PartyState {
   // F5 na TV não pode matar a sala: reidrata do localStorage quando possível.
@@ -44,6 +85,17 @@ export function usePartyHost(pin: string) {
             optionIndex: event.optionIndex,
           });
           break;
+        case "CLAIM_HOST":
+          dispatch({ type: "CLAIM_HOST", playerId: event.playerId });
+          break;
+        case "HOST_ACTION": {
+          // Só o host manda. E os valores não-determinísticos (sorteios,
+          // relógio) são preenchidos AQUI — nunca vêm do celular.
+          const atual = stateRef.current;
+          if (atual.hostPlayerId !== event.playerId) break;
+          dispatch(enrichCommand(event.command, atual));
+          break;
+        }
         case "REQUEST_STATE":
           // Celular acabou de abrir: manda o estado corrente.
           channel.broadcast({ type: "STATE", state: stateRef.current });
@@ -65,6 +117,31 @@ export function usePartyHost(pin: string) {
     savePartyState(state);
     channelRef.current?.broadcast({ type: "STATE", state });
   }, [state]);
+
+  /**
+   * Auto-host: a TV toca a partida sozinha.
+   *
+   * Duas condições fecham uma fase — o prazo vencer, ou (na rodada) todo mundo
+   * já ter respondido. É isto que dispensa alguém preso clicando "avançar", e
+   * é por isso que o host pode ser um jogador como os outros.
+   */
+  const running = state.phaseDeadline > 0 && state.pausedAt === null;
+  const now = useNow(running);
+  const acabou = running && now >= state.phaseDeadline;
+  const todosResponderam = state.phase === "ROUND_ACTIVE" && everyoneAnswered(state);
+
+  useEffect(() => {
+    if (!running || (!acabou && !todosResponderam)) return;
+    // Respiro curto: sem ele a revelação entra no mesmo quadro do último clique.
+    const timer = window.setTimeout(() => {
+      dispatch({
+        type: "ADVANCE",
+        now: Date.now(),
+        punishmentIndex: drawPunishment(punishments.length),
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [running, acabou, todosResponderam]);
 
   const hostDispatch = useCallback((action: PartyAction) => dispatch(action), []);
 

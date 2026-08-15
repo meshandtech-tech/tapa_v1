@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPartyChannel, type PartyChannel } from "./channel";
-import { loadLocalPlayer, saveLocalPlayer } from "./partyStorage";
+import { createPartyChannel, type HostCommand, type PartyChannel } from "./channel";
+import { loadLocalPlayer, ownsHostToken, saveLocalPlayer } from "./partyStorage";
 import type { PartyState, Player } from "./types";
 
 export type PartyConnection = "connecting" | "connected" | "closed";
@@ -80,8 +80,26 @@ export function usePartyPlayer(pin: string) {
     });
   }, []);
 
+  /** Comando do host. A TV confere se sou mesmo o host antes de aplicar. */
+  const sendHostCommand = useCallback((command: HostCommand) => {
+    const current = meRef.current;
+    if (!current) return;
+    channelRef.current?.broadcast({ type: "HOST_ACTION", playerId: current.id, command });
+  }, []);
+
   /** Eu como o Host me enxerga — a verdade sobre pontuação e apelido aceito. */
   const meInParty = state?.players.find((player) => player.id === me?.id) ?? null;
+  const isHost = !!meInParty && state?.hostPlayerId === meInParty.id;
 
-  return { state, me, meInParty, connection, join, updateMe, answer };
+  /**
+   * Reivindica o comando da sala assim que entro, se este aparelho guardou o
+   * token de criação. O reducer recusa se já houver outro host.
+   */
+  useEffect(() => {
+    if (!meInParty || state?.hostPlayerId) return;
+    if (!ownsHostToken(pin)) return;
+    channelRef.current?.broadcast({ type: "CLAIM_HOST", playerId: meInParty.id });
+  }, [pin, meInParty, state?.hostPlayerId]);
+
+  return { state, me, meInParty, isHost, connection, join, updateMe, answer, sendHostCommand };
 }

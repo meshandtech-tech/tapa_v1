@@ -1,12 +1,11 @@
 import { getDeck } from "../data/questions";
 import { roundOutcome, sequentialOrder } from "../games/quemErraPaga";
-import { DEFAULT_GAME_ID, getGame } from "../games/registry";
+import { DEFAULT_GAME_ID, getGame, phaseDuration } from "../games/registry";
 import { DEFAULT_THEME_ID, nextThemeId } from "../theme/presets";
 import {
   MAX_PLAYERS,
   NICKNAME_MAX_LENGTH,
   PLAYER_COLORS,
-  ROUND_SECONDS,
   type Difficulty,
   type GameId,
   type PartyPhase,
@@ -29,27 +28,23 @@ export function createPartyState(
     players: [],
     settings: {
       gameId: DEFAULT_GAME_ID,
-      difficulty: "medio",
+      difficulty: "medium",
       themeId: DEFAULT_THEME_ID,
       themeMode: "manual",
-      maxPlayers: getGame(DEFAULT_GAME_ID).maxPlayers,
       ...settings,
     },
     round: 0,
     createdAt: now,
     quiz: null,
+    hostPlayerId: null,
+    phaseDeadline: 0,
+    pausedAt: null,
   };
 }
 
-/**
- * Lotação válida para um jogo: nunca abaixo do mínimo que ele exige, nunca
- * acima do que ele suporta. Trocar de jogo passa por aqui — sem isso, sair de
- * um jogo de até 10 para um de até 8 deixaria a sala com um teto impossível.
- */
-export function clampCapacity(gameId: GameId, desired: number): number {
-  const game = getGame(gameId);
-  if (!Number.isFinite(desired)) return game.maxPlayers;
-  return Math.min(game.maxPlayers, Math.max(game.minPlayers, Math.round(desired)));
+/** Teto real da sala: o menor entre o limite do jogo e o da plataforma. */
+export function roomCapacity(gameId: GameId): number {
+  return Math.min(getGame(gameId).maxPlayers, MAX_PLAYERS);
 }
 
 export type PartyAction =
@@ -57,10 +52,11 @@ export type PartyAction =
   | { type: "PLAYER_JOIN"; player: Player }
   | { type: "PLAYER_LEAVE"; playerId: string }
   | { type: "PLAYER_UPDATE"; playerId: string; patch: Partial<Omit<Player, "id">> }
+  /** Um jogador assume o comando da sala. Só pega se estiver vago. */
+  | { type: "CLAIM_HOST"; playerId: string }
   | { type: "SET_GAME"; gameId: GameId }
   | { type: "SET_DIFFICULTY"; difficulty: Difficulty }
   | { type: "SET_THEME"; themeId?: ThemeId; themeMode?: ThemeMode }
-  | { type: "SET_MAX_PLAYERS"; maxPlayers: number }
   | { type: "SCORE"; playerId: string; delta: number }
   /** `order` e `now` vêm do host: o reducer continua puro e testável. */
   | { type: "START_GAME"; order?: number[]; now?: number }
@@ -68,6 +64,8 @@ export type PartyAction =
   | { type: "ADVANCE"; forfeit?: boolean; now?: number; punishmentIndex?: number }
   /** Ninguém topou a prenda: sorteia outra sem sair da roleta. */
   | { type: "REROLL_PUNISHMENT"; punishmentIndex: number }
+  | { type: "PAUSE"; now?: number }
+  | { type: "RESUME"; now?: number }
   | { type: "RESET_TO_LOBBY" };
 
 /**
@@ -121,10 +119,7 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
   }
 
   if (state.phase !== "LOBBY") return state;
-  // O teto é o do host, nunca acima do limite absoluto da plataforma.
-  if (state.players.length >= Math.min(state.settings.maxPlayers, MAX_PLAYERS)) {
-    return state;
-  }
+  if (state.players.length >= roomCapacity(state.settings.gameId)) return state;
 
   const nickname = sanitizeNickname(player.nickname);
   if (!nickname || isNicknameTaken(state.players, nickname)) return state;
@@ -133,6 +128,18 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
     ...state,
     players: [...state.players, { ...player, nickname, score: 0 }],
   };
+}
+
+/**
+ * Tira um jogador da sala. Se era o host, o comando passa para quem entrou
+ * primeiro — sem isso a sala ficaria sem ninguém podendo pausar ou pular.
+ */
+function leavePlayer(state: PartyState, playerId: string): PartyState {
+  const players = state.players.filter((player) => player.id !== playerId);
+  if (players.length === state.players.length) return state;
+  const hostPlayerId =
+    state.hostPlayerId === playerId ? (players[0]?.id ?? null) : state.hostPlayerId;
+  return { ...state, players, hostPlayerId };
 }
 
 function updatePlayer(
@@ -164,22 +171,37 @@ function rotateTheme(settings: PartySettings): PartySettings {
   return { ...settings, themeId: nextThemeId(settings.themeId) };
 }
 
-/** Abre uma rodada: zera as respostas e arma o cronômetro. */
-function startRound(state: PartyState, round: number, now: number): PartyState {
+/**
+ * Entra numa fase e arma o prazo dela.
+ *
+ * É o único lugar que escreve `phase`, justamente para que NENHUMA fase possa
+ * ser criada sem prazo — se isso acontecesse, o jogo pararia ali esperando um
+ * clique que ninguém vai dar.
+ */
+function enterPhase(
+  state: PartyState,
+  phase: PartyPhase,
+  now: number,
+  patch: Partial<PartyState> = {},
+): PartyState {
+  const duration = phaseDuration(state.settings.gameId, phase);
   return {
     ...state,
-    phase: "ROUND_ACTIVE",
+    ...patch,
+    phase,
+    // Fase sem duração declarada (LOBBY, GAME_OVER) espera decisão humana.
+    phaseDeadline: duration > 0 ? now + duration : 0,
+    pausedAt: null,
+  };
+}
+
+/** Abre uma rodada: zera as respostas e gira a cor, se o modo for automático. */
+function startRound(state: PartyState, round: number, now: number): PartyState {
+  return enterPhase(state, "ROUND_ACTIVE", now, {
     round,
     settings: rotateTheme(state.settings),
-    quiz: state.quiz
-      ? {
-          ...state.quiz,
-          answers: {},
-          deadline: now + ROUND_SECONDS * 1000,
-          punishmentIndex: null,
-        }
-      : null,
-  };
+    quiz: state.quiz ? { ...state.quiz, answers: {}, punishmentIndex: null } : null,
+  });
 }
 
 /** +1 para cada acerto. Aplicado uma única vez, ao revelar a resposta. */
@@ -212,25 +234,23 @@ function advance(
 
     case "ROUND_ACTIVE":
       // Pontua ao revelar — depois disso as respostas viram histórico da rodada.
-      return { ...applyScores(state), phase: "REVEAL_ANSWER" };
+      return enterPhase(applyScores(state), "REVEAL_ANSWER", now);
 
     case "REVEAL_ANSWER": {
       // Quem não respondeu conta como erro; a prenda é a mesma para todos.
       const alguemErrou = state.quiz ? roundOutcome(state).wrong.length > 0 : forfeit;
-      if (!game.hasForfeit || !alguemErrou) return { ...state, phase: "LEADERBOARD" };
-      return {
-        ...state,
-        phase: "FORFEIT_WHEEL",
+      if (!game.hasForfeit || !alguemErrou) return enterPhase(state, "LEADERBOARD", now);
+      return enterPhase(state, "FORFEIT_WHEEL", now, {
         quiz: state.quiz ? { ...state.quiz, punishmentIndex } : null,
-      };
+      });
     }
 
     case "FORFEIT_WHEEL":
-      return { ...state, phase: "LEADERBOARD" };
+      return enterPhase(state, "LEADERBOARD", now);
 
     case "LEADERBOARD":
       return state.round >= totalRounds
-        ? { ...state, phase: "GAME_OVER" }
+        ? enterPhase(state, "GAME_OVER", now)
         : startRound(state, state.round + 1, now);
 
     default:
@@ -248,34 +268,22 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
       return joinPlayer(state, action.player);
 
     case "PLAYER_LEAVE":
-      return {
-        ...state,
-        players: state.players.filter((player) => player.id !== action.playerId),
-      };
+      return leavePlayer(state, action.playerId);
 
     case "PLAYER_UPDATE":
       return updatePlayer(state, action.playerId, action.patch);
 
-    case "SET_GAME": {
-      if (state.phase !== "LOBBY") return state;
-      return {
-        ...state,
-        settings: {
-          ...state.settings,
-          gameId: action.gameId,
-          // O teto atual pode não caber no jogo novo.
-          maxPlayers: clampCapacity(action.gameId, state.settings.maxPlayers),
-        },
-      };
+    // Primeiro a chegar leva. Não há disputa: quem criou a sala guarda um
+    // token local e reivindica assim que entra.
+    case "CLAIM_HOST": {
+      if (state.hostPlayerId && state.hostPlayerId !== action.playerId) return state;
+      if (!state.players.some((player) => player.id === action.playerId)) return state;
+      return { ...state, hostPlayerId: action.playerId };
     }
 
-    case "SET_MAX_PLAYERS": {
+    case "SET_GAME":
       if (state.phase !== "LOBBY") return state;
-      const maxPlayers = clampCapacity(state.settings.gameId, action.maxPlayers);
-      // Não dá para encolher a sala abaixo de quem já entrou.
-      if (maxPlayers < state.players.length) return state;
-      return { ...state, settings: { ...state.settings, maxPlayers } };
-    }
+      return { ...state, settings: { ...state.settings, gameId: action.gameId } };
 
     case "SET_DIFFICULTY":
       if (state.phase !== "LOBBY") return state;
@@ -307,17 +315,14 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
       if (!canStart(state)) return state;
       const game = getGame(state.settings.gameId);
       const deck = getDeck(state.settings.difficulty);
-      return {
-        ...state,
-        phase: "GAME_INTRO",
+      return enterPhase(state, "GAME_INTRO", action.now ?? Date.now(), {
         round: 0,
         quiz: {
           order: action.order ?? sequentialOrder(deck.length, game.rounds),
           answers: {},
-          deadline: 0,
           punishmentIndex: null,
         },
-      };
+      });
     }
 
     case "ANSWER": {
@@ -348,6 +353,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
     }
 
     case "ADVANCE":
+      // Pausado, o relógio não corre — mas o host ainda pode pular na mão.
       return advance(
         state,
         action.forfeit ?? false,
@@ -355,12 +361,31 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
         action.punishmentIndex ?? 0,
       );
 
+    case "PAUSE": {
+      if (state.pausedAt !== null || state.phaseDeadline === 0) return state;
+      return { ...state, pausedAt: action.now ?? Date.now() };
+    }
+
+    // Empurra o prazo pelo tempo que ficou parado. Sem isso, despausar depois
+    // de um minuto faria a fase vencer na hora.
+    case "RESUME": {
+      if (state.pausedAt === null) return state;
+      const parado = (action.now ?? Date.now()) - state.pausedAt;
+      return {
+        ...state,
+        pausedAt: null,
+        phaseDeadline: state.phaseDeadline + Math.max(0, parado),
+      };
+    }
+
     case "RESET_TO_LOBBY":
       return {
         ...state,
         phase: "LOBBY",
         round: 0,
         quiz: null,
+        phaseDeadline: 0,
+        pausedAt: null,
         players: state.players.map((player) => ({ ...player, score: 0 })),
       };
 

@@ -1,4 +1,22 @@
-import type { PartyState, Player } from "../types";
+import type { Difficulty, GameId, PartyState, Player, ThemeId, ThemeMode } from "../types";
+
+/**
+ * O que o host pode mandar do celular dele.
+ *
+ * É um subconjunto fechado de propósito: `HYDRATE` carregaria um estado
+ * inteiro, e aceitar isso pela rede deixaria qualquer participante reescrever
+ * a sala. O host manda intenções; quem calcula continua sendo a TV.
+ */
+export type HostCommand =
+  | { type: "SET_GAME"; gameId: GameId }
+  | { type: "SET_DIFFICULTY"; difficulty: Difficulty }
+  | { type: "SET_THEME"; themeId?: ThemeId; themeMode?: ThemeMode }
+  | { type: "START_GAME" }
+  | { type: "ADVANCE" }
+  | { type: "REROLL_PUNISHMENT" }
+  | { type: "PAUSE" }
+  | { type: "RESUME" }
+  | { type: "RESET_TO_LOBBY" };
 
 /**
  * Eventos que trafegam entre TV e celulares.
@@ -13,6 +31,10 @@ export type PartyEvent =
   | { type: "PLAYER_UPDATE"; playerId: string; patch: Partial<Omit<Player, "id">> }
   /** Player → host. "marquei a alternativa N". O host decide se vale. */
   | { type: "ANSWER"; playerId: string; optionIndex: number }
+  /** Host → TV. A TV confere se `playerId` é mesmo o host antes de aplicar. */
+  | { type: "HOST_ACTION"; playerId: string; command: HostCommand }
+  /** Player → host. "eu sou o dono desta sala" (token guardado no aparelho). */
+  | { type: "CLAIM_HOST"; playerId: string }
   /** Host → todos. Estado completo e autoritativo. */
   | { type: "STATE"; state: PartyState }
   /** Player → host. "acabei de chegar, me manda o estado". */

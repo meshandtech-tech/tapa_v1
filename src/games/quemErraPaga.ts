@@ -68,10 +68,20 @@ export function everyoneAnswered(state: PartyState): boolean {
   return state.players.every((player) => answers[player.id] !== undefined);
 }
 
-/** Segundos restantes, nunca negativo. */
+/** Segundos restantes na fase atual, nunca negativo. */
 export function secondsLeft(state: PartyState, now: number): number {
-  if (!state.quiz) return 0;
-  return Math.max(0, Math.ceil((state.quiz.deadline - now) / 1000));
+  if (state.phaseDeadline === 0) return 0;
+  // Pausado, o relógio congela no instante da pausa.
+  const referencia = state.pausedAt ?? now;
+  return Math.max(0, Math.ceil((state.phaseDeadline - referencia) / 1000));
+}
+
+/** Fração já consumida da fase (0 a 1), para a barra de progresso da TV. */
+export function phaseProgress(state: PartyState, now: number, total: number): number {
+  if (state.phaseDeadline === 0 || total <= 0) return 0;
+  const referencia = state.pausedAt ?? now;
+  const restante = Math.max(0, state.phaseDeadline - referencia);
+  return Math.min(1, Math.max(0, 1 - restante / total));
 }
 
 function randomInt(max: number): number {

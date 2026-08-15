@@ -4,7 +4,12 @@ import { createStorageEventAdapter } from "./StorageEventAdapter";
 import { createSupabaseRealtimeAdapter } from "./SupabaseRealtimeAdapter";
 import type { PartyChannel } from "./PartyChannel";
 
-export type { PartyChannel, PartyEvent, PartyEventHandler } from "./PartyChannel";
+export type {
+  HostCommand,
+  PartyChannel,
+  PartyEvent,
+  PartyEventHandler,
+} from "./PartyChannel";
 
 /** Como a sala está conectada agora. A UI usa isto para avisar o host. */
 export type TransportKind = "supabase" | "local";

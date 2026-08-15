@@ -46,6 +46,6 @@ describe("decks de perguntas", () => {
 
   it("getDeck cai no deck médio se a dificuldade não existir", () => {
     // @ts-expect-error validando o caminho defensivo com entrada inválida
-    expect(getDeck("inexistente")).toBe(QUESTION_DECKS.medio);
+    expect(getDeck("inexistente")).toBe(QUESTION_DECKS.medium);
   });
 });

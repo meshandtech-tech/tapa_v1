@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getDeck } from "../data/questions";
 import { createPartyState, partyReducer } from "../party/partyReducer";
-import { PLAYER_COLORS, ROUND_SECONDS, type PartyState, type Player } from "../party/types";
+import { phaseDuration } from "./registry";
+import { PLAYER_COLORS, type PartyState, type Player } from "../party/types";
 import {
   currentQuestion,
   drawDifferentPunishment,
@@ -45,7 +46,7 @@ describe("pergunta da rodada", () => {
     state = partyReducer(state, { type: "START_GAME", order: [4, 2] });
     state = partyReducer(state, { type: "ADVANCE", now: 0 });
 
-    const deck = getDeck("medio");
+    const deck = getDeck("medium");
     expect(currentQuestion(state)?.id).toBe(deck[4].id);
   });
 
@@ -56,13 +57,13 @@ describe("pergunta da rodada", () => {
 
 describe("acerto e erro", () => {
   it("acerta quem marcou a alternativa correta", () => {
-    const question = getDeck("medio")[0];
+    const question = getDeck("medium")[0];
     expect(isCorrectAnswer(question, question.correctAnswer as number)).toBe(true);
   });
 
   // É o ponto da brincadeira: a mesa inteira paga.
   it("na pegadinha ninguém acerta, escolha o que escolher", () => {
-    const pegadinha = getDeck("medio").find((q) => q.correctAnswer === null)!;
+    const pegadinha = getDeck("medium").find((q) => q.correctAnswer === null)!;
     for (const option of [0, 1, 2, 3]) {
       expect(isCorrectAnswer(pegadinha, option)).toBe(false);
     }
@@ -136,9 +137,17 @@ describe("pontuação", () => {
 
 describe("cronômetro", () => {
   it("arma o prazo ao abrir a rodada", () => {
+    const rodada = phaseDuration("quem-erra-paga", "ROUND_ACTIVE");
     const state = emJogo(2, 10_000);
-    expect(state.quiz?.deadline).toBe(10_000 + ROUND_SECONDS * 1000);
-    expect(secondsLeft(state, 10_000)).toBe(ROUND_SECONDS);
+    expect(state.phaseDeadline).toBe(10_000 + rodada);
+    expect(secondsLeft(state, 10_000)).toBe(rodada / 1000);
+  });
+
+  it("congela enquanto pausado", () => {
+    let state = emJogo(2, 0);
+    state = partyReducer(state, { type: "PAUSE", now: 5_000 });
+    // 15s restavam quando pausou — e continuam restando 10s depois.
+    expect(secondsLeft(state, 15_000)).toBe(15);
   });
 
   it("nunca fica negativo", () => {

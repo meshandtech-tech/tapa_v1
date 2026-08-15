@@ -4,13 +4,13 @@ import { createGameState, currentPlayer, gameReducer } from "./gameReducer";
 import type { GameState } from "../types/game";
 
 const PLAYERS = ["Ana", "Bruno"] as const;
-const DECK = getDeck("medio");
+const DECK = getDeck("medium");
 
 function startGame(): GameState {
   return gameReducer(createGameState(PLAYERS), {
     type: "START_NEW",
     players: PLAYERS,
-    difficulty: "medio",
+    difficulty: "medium",
   });
 }
 
@@ -34,7 +34,7 @@ describe("gameReducer", () => {
     const trio = gameReducer(createGameState(["Ana", "Bruno", "Cadu"]), {
       type: "START_NEW",
       players: ["Ana", "Bruno", "Cadu"],
-      difficulty: "medio",
+      difficulty: "medium",
     });
     expect(currentPlayer(trio)).toBe("Ana");
     const second = gameReducer(trio, { type: "ADMIN_NEXT" });
@@ -121,13 +121,13 @@ describe("gameReducer", () => {
   });
 
   it("cada dificuldade joga o seu próprio deck", () => {
-    const facil = gameReducer(createGameState(PLAYERS), {
+    const easy = gameReducer(createGameState(PLAYERS), {
       type: "START_NEW",
       players: PLAYERS,
-      difficulty: "facil",
+      difficulty: "easy",
     });
-    expect(facil.difficulty).toBe("facil");
-    expect(getDeck("facil")[0].id).not.toBe(getDeck("dificil")[0].id);
+    expect(easy.difficulty).toBe("easy");
+    expect(getDeck("easy")[0].id).not.toBe(getDeck("hard")[0].id);
   });
 
   it("ação desconhecida devolve o mesmo estado, nunca lança", () => {

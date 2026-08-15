@@ -6,6 +6,7 @@ import {
   leaderboard,
   nextAvailableColor,
   partyReducer,
+  roomCapacity,
   type PartyAction,
 } from "./partyReducer";
 import { currentQuestion } from "../games/quemErraPaga";
@@ -195,61 +196,113 @@ describe("início do jogo", () => {
 describe("configurações", () => {
   it("só mudam no lobby", () => {
     let state = partyReducer(withPlayers(2), { type: "START_GAME" });
-    state = partyReducer(state, { type: "SET_DIFFICULTY", difficulty: "dificil" });
-    expect(state.settings.difficulty).toBe("medio");
+    state = partyReducer(state, { type: "SET_DIFFICULTY", difficulty: "hard" });
+    expect(state.settings.difficulty).toBe("medium");
   });
 });
 
 describe("lotação da sala", () => {
-  it("nasce no máximo do jogo padrão", () => {
-    expect(createPartyState("1234", 0).settings.maxPlayers).toBe(10);
+  // A contagem é derivada do roster; não existe mais teto configurável.
+  it("aceita até o limite da plataforma", () => {
+    expect(withPlayers(MAX_PLAYERS).players).toHaveLength(MAX_PLAYERS);
   });
 
-  it("o host define o teto", () => {
-    const state = partyReducer(createPartyState("1234", 0), {
-      type: "SET_MAX_PLAYERS",
-      maxPlayers: 4,
-    });
-    expect(state.settings.maxPlayers).toBe(4);
-  });
-
-  it("recusa quem chega depois de lotar", () => {
-    let state = partyReducer(withPlayers(3), { type: "SET_MAX_PLAYERS", maxPlayers: 3 });
-    state = partyReducer(state, {
+  it("recusa o jogador seguinte ao encher", () => {
+    const cheio = withPlayers(MAX_PLAYERS);
+    const state = partyReducer(cheio, {
       type: "PLAYER_JOIN",
       player: makePlayer("intruso", { color: PLAYER_COLORS[5] }),
     });
-    expect(state.players).toHaveLength(3);
+    expect(state.players).toHaveLength(MAX_PLAYERS);
   });
 
-  it("não encolhe abaixo de quem já entrou", () => {
-    const state = partyReducer(withPlayers(4), { type: "SET_MAX_PLAYERS", maxPlayers: 2 });
-    expect(state.settings.maxPlayers).toBe(10);
+  it("respeita o teto do jogo quando ele é menor", () => {
+    expect(roomCapacity("pitch-no-escuro")).toBe(8);
+    expect(roomCapacity("quem-erra-paga")).toBe(MAX_PLAYERS);
+  });
+});
+
+describe("papel de host", () => {
+  it("nasce sem host", () => {
+    expect(createPartyState("1234", 0).hostPlayerId).toBeNull();
   });
 
-  // Sair de um jogo de até 10 para um de até 8 deixaria um teto impossível.
-  it("reajusta o teto ao trocar de jogo", () => {
-    let state = partyReducer(createPartyState("1234", 0), {
-      type: "SET_MAX_PLAYERS",
-      maxPlayers: 10,
-    });
-    state = partyReducer(state, { type: "SET_GAME", gameId: "pitch-no-escuro" });
-    expect(state.settings.maxPlayers).toBe(8);
+  it("o primeiro a reivindicar leva", () => {
+    const state = partyReducer(withPlayers(3), { type: "CLAIM_HOST", playerId: "p1" });
+    expect(state.hostPlayerId).toBe("p1");
   });
 
-  it("respeita o mínimo do jogo", () => {
-    let state = partyReducer(createPartyState("1234", 0), {
-      type: "SET_GAME",
-      gameId: "advogado-do-diabo",
-    });
-    state = partyReducer(state, { type: "SET_MAX_PLAYERS", maxPlayers: 1 });
-    expect(state.settings.maxPlayers).toBe(3);
+  it("recusa um segundo pretendente", () => {
+    let state = partyReducer(withPlayers(3), { type: "CLAIM_HOST", playerId: "p1" });
+    state = partyReducer(state, { type: "CLAIM_HOST", playerId: "p2" });
+    expect(state.hostPlayerId).toBe("p1");
   });
 
-  it("só muda no lobby", () => {
-    let state = partyReducer(withPlayers(2), { type: "START_GAME" });
-    state = partyReducer(state, { type: "SET_MAX_PLAYERS", maxPlayers: 5 });
-    expect(state.settings.maxPlayers).toBe(10);
+  it("ignora quem não está na sala", () => {
+    const state = partyReducer(withPlayers(2), { type: "CLAIM_HOST", playerId: "fantasma" });
+    expect(state.hostPlayerId).toBeNull();
+  });
+
+  // Sem transferência, a sala ficaria sem ninguém podendo pausar ou pular.
+  it("passa o comando quando o host sai", () => {
+    let state = partyReducer(withPlayers(3), { type: "CLAIM_HOST", playerId: "p1" });
+    state = partyReducer(state, { type: "PLAYER_LEAVE", playerId: "p1" });
+    expect(state.hostPlayerId).toBe("p0");
+  });
+
+  it("fica sem host se a sala esvazia", () => {
+    let state = partyReducer(withPlayers(1), { type: "CLAIM_HOST", playerId: "p0" });
+    state = partyReducer(state, { type: "PLAYER_LEAVE", playerId: "p0" });
+    expect(state.hostPlayerId).toBeNull();
+  });
+});
+
+describe("auto-host", () => {
+  it("toda fase do jogo nasce com prazo", () => {
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 1000 });
+    expect(state.phaseDeadline).toBe(1000 + 6000); // GAME_INTRO
+
+    state = partyReducer(state, { type: "ADVANCE", now: 7000 });
+    expect(state.phase).toBe("ROUND_ACTIVE");
+    expect(state.phaseDeadline).toBe(7000 + 20000);
+  });
+
+  // LOBBY e GAME_OVER esperam decisão humana, e é de propósito.
+  it("lobby e fim de jogo não têm prazo", () => {
+    expect(createPartyState("1234", 0).phaseDeadline).toBe(0);
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 0 });
+    state = partyReducer(state, { type: "RESET_TO_LOBBY" });
+    expect(state.phaseDeadline).toBe(0);
+  });
+
+  it("pausar congela e retomar devolve o tempo que faltava", () => {
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 1000 });
+    expect(state.phaseDeadline).toBe(7000);
+
+    state = partyReducer(state, { type: "PAUSE", now: 3000 });
+    expect(state.pausedAt).toBe(3000);
+
+    // Parado por 10s: o prazo anda 10s junto, senão a fase venceria na volta.
+    state = partyReducer(state, { type: "RESUME", now: 13000 });
+    expect(state.pausedAt).toBeNull();
+    expect(state.phaseDeadline).toBe(17000);
+  });
+
+  it("não pausa duas vezes nem retoma sem pausa", () => {
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 0 });
+    state = partyReducer(state, { type: "PAUSE", now: 100 });
+    const congelado = partyReducer(state, { type: "PAUSE", now: 500 });
+    expect(congelado.pausedAt).toBe(100);
+
+    const semPausa = partyReducer(withPlayers(2), { type: "RESUME", now: 100 });
+    expect(semPausa.pausedAt).toBeNull();
+  });
+
+  it("avançar limpa a pausa", () => {
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 0 });
+    state = partyReducer(state, { type: "PAUSE", now: 100 });
+    state = partyReducer(state, { type: "ADVANCE", now: 200 });
+    expect(state.pausedAt).toBeNull();
   });
 });
 

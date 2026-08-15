@@ -21,6 +21,25 @@ const PHASES: readonly PartyPhase[] = [
 
 const stateKey = (pin: string) => `tapa:party:${pin}:state`;
 const playerKey = (pin: string) => `tapa:party:${pin}:me`;
+const hostKey = (pin: string) => `tapa:party:${pin}:host`;
+
+/**
+ * Marca ESTE aparelho como o criador da sala. É o que permite ao host ser um
+ * jogador comum e ainda assim reivindicar o comando ao entrar pelo celular.
+ */
+export function markHostDevice(pin: string): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(hostKey(pin), "1");
+  } catch {
+    // Sem o token o host vira jogador comum — chato, não fatal.
+  }
+}
+
+export function ownsHostToken(pin: string): boolean {
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem(hostKey(pin)) === "1";
+}
 
 function isPlayer(value: unknown): value is Player {
   if (!value || typeof value !== "object") return false;
@@ -44,7 +63,6 @@ function isQuizState(value: unknown): value is QuizState | null {
   return (
     Array.isArray(quiz.order) &&
     quiz.order.every((index) => Number.isInteger(index) && index >= 0) &&
-    Number.isFinite(quiz.deadline) &&
     (quiz.punishmentIndex === null || Number.isInteger(quiz.punishmentIndex)) &&
     !!quiz.answers &&
     typeof quiz.answers === "object" &&
@@ -72,12 +90,13 @@ export function parsePartyState(raw: string | null): PartyState | null {
       !DIFFICULTIES.includes(candidate.settings.difficulty) ||
       !isThemeId(candidate.settings.themeId) ||
       (candidate.settings.themeMode !== "manual" && candidate.settings.themeMode !== "auto") ||
-      !Number.isInteger(candidate.settings.maxPlayers) ||
-      candidate.settings.maxPlayers < 1 ||
       !Number.isInteger(candidate.round) ||
       candidate.round! < 0 ||
       !Number.isFinite(candidate.createdAt) ||
-      !isQuizState(candidate.quiz)
+      !isQuizState(candidate.quiz) ||
+      (candidate.hostPlayerId !== null && typeof candidate.hostPlayerId !== "string") ||
+      !Number.isFinite(candidate.phaseDeadline) ||
+      (candidate.pausedAt !== null && !Number.isFinite(candidate.pausedAt))
     ) {
       return null;
     }
@@ -105,6 +124,7 @@ export function clearPartyState(pin: string): void {
   if (typeof localStorage === "undefined") return;
   localStorage.removeItem(stateKey(pin));
   localStorage.removeItem(playerKey(pin));
+  localStorage.removeItem(hostKey(pin));
 }
 
 /** Identidade do jogador NESTE dispositivo — sobrevive a um F5 no celular. */

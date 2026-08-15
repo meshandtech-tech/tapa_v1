@@ -4,7 +4,7 @@ import type { Question } from "../types/game";
 // Decks do jogo "Quem Erra, Paga". Para editar o conteúdo, mexa só nos textos,
 // nas alternativas e em correctAnswer (0 = A, 1 = B, 2 = C, 3 = D).
 
-const facil = [
+const easy = [
   { id: 101, question: "Qual bebida leva cachaça, limão, açúcar e gelo?", options: ["Caipiroska", "Caipirinha", "Mojito", "Batida"], correctAnswer: 1 },
   { id: 102, question: "Quantas cartas tem um baralho tradicional, sem os coringas?", options: ["48", "50", "52", "54"], correctAnswer: 2 },
   { id: 103, question: "Em que país fica a ilha de Ibiza?", options: ["Itália", "Grécia", "Espanha", "Portugal"], correctAnswer: 2 },
@@ -21,7 +21,7 @@ const facil = [
   { id: 112, question: "Em \"Round 6\", qual é a primeira brincadeira da competição?", options: ["Cabo de guerra", "Batatinha frita 1, 2, 3", "Bafo", "Bolinha de gude"], correctAnswer: 1 },
 ] as const satisfies readonly Question[];
 
-const medio = [
+const medium = [
   { id: 201, question: "Além de tequila e triple sec, o que leva uma Margarita?", options: ["Limão", "Laranja", "Abacaxi", "Maracujá"], correctAnswer: 0 },
   { id: 202, question: "Quem escreveu \"Dom Casmurro\"?", options: ["José de Alencar", "Machado de Assis", "Aluísio Azevedo", "Lima Barreto"], correctAnswer: 1 },
   { id: 203, question: "Quantos ossos tem o corpo humano adulto?", options: ["186", "196", "206", "216"], correctAnswer: 2 },
@@ -37,7 +37,7 @@ const medio = [
   { id: 212, question: "Quantas casas tem um tabuleiro de xadrez?", options: ["36", "49", "64", "81"], correctAnswer: 2 },
 ] as const satisfies readonly Question[];
 
-const dificil = [
+const hard = [
   { id: 301, question: "Qual é a graduação alcoólica mínima da cachaça no Brasil?", options: ["35%", "38%", "40%", "45%"], correctAnswer: 1 },
   { id: 302, question: "Quem pintou \"O Jardim das Delícias Terrenas\"?", options: ["Hieronymus Bosch", "Pieter Bruegel", "Jan van Eyck", "Albrecht Dürer"], correctAnswer: 0 },
   { id: 303, question: "Em que ano caiu o Muro de Berlim?", options: ["1985", "1989", "1991", "1987"], correctAnswer: 1 },
@@ -54,13 +54,13 @@ const dificil = [
 ] as const satisfies readonly Question[];
 
 export const QUESTION_DECKS: Record<Difficulty, readonly Question[]> = {
-  facil,
-  medio,
-  dificil,
+  easy,
+  medium,
+  hard,
 };
 
 export function getDeck(difficulty: Difficulty): readonly Question[] {
-  return QUESTION_DECKS[difficulty] ?? QUESTION_DECKS.medio;
+  return QUESTION_DECKS[difficulty] ?? QUESTION_DECKS.medium;
 }
 
 export function validateQuestions(items: readonly Question[]): void {

@@ -1,19 +1,22 @@
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { Dices, LogIn, WifiOff } from "lucide-react";
+import { Dices, Gamepad2, LogIn, Play, RotateCcw, WifiOff } from "lucide-react";
 import { isValidPin } from "../party/pin";
-import { isNicknameTaken } from "../party/partyReducer";
+import { canStart, isNicknameTaken } from "../party/partyReducer";
+import { clearPartyState } from "../party/partyStorage";
 import { usePartyPlayer } from "../party/usePartyPlayer";
 import { usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
+import { HostControls } from "../party/HostControls";
 import { QuemErraPagaPlayer } from "../games/QuemErraPagaPlayer";
 import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type Player } from "../party/types";
-import { getGame } from "../games/registry";
+import { GAMES, getGame } from "../games/registry";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
+import { DifficultySlider } from "../ui/DifficultySlider";
 import { Logo } from "../ui/Logo";
 import { cn } from "../ui/cn";
 
@@ -31,7 +34,8 @@ export function PlayerLobbyScreen() {
 
 function PlayerLobby({ pin }: { pin: string }) {
   const navigate = useNavigate();
-  const { state, me, meInParty, connection, join, updateMe, answer } = usePartyPlayer(pin);
+  const { state, me, meInParty, isHost, connection, join, updateMe, answer, sendHostCommand } =
+    usePartyPlayer(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
   usePartyTheme(state);
@@ -52,6 +56,25 @@ function PlayerLobby({ pin }: { pin: string }) {
   const trimmed = nickname.trim();
   const nameTaken = isNicknameTaken(players, trimmed, me?.id);
   const canJoin = trimmed.length > 0 && !nameTaken && connection === "connected";
+
+  /** Gaveta de exceções. Com o auto-host, quase nunca é usada. */
+  const HostSection = () =>
+    state ? (
+      <HostControls
+        state={state}
+        onSkipPhase={() => sendHostCommand({ type: "ADVANCE" })}
+        onPause={() => sendHostCommand({ type: "PAUSE" })}
+        onResume={() => sendHostCommand({ type: "RESUME" })}
+        onReroll={() => sendHostCommand({ type: "REROLL_PUNISHMENT" })}
+        onRestart={() => sendHostCommand({ type: "RESET_TO_LOBBY" })}
+        onEndParty={() => {
+          clearPartyState(pin);
+          navigate("/");
+        }}
+        onThemeChange={(themeId) => sendHostCommand({ type: "SET_THEME", themeId })}
+        onThemeModeChange={(themeMode) => sendHostCommand({ type: "SET_THEME", themeMode })}
+      />
+    ) : null;
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -108,6 +131,20 @@ function PlayerLobby({ pin }: { pin: string }) {
           secondsLeft={computeSecondsLeft(state, now)}
           onAnswer={answer}
         />
+        {state.phase === "GAME_OVER" && isHost ? (
+          <div className="flex w-full max-w-md flex-col gap-3">
+            <Button size="md" variant="solid" onClick={() => sendHostCommand({ type: "START_GAME" })}>
+              <RotateCcw strokeWidth={3} className="size-5" />
+              Jogar de novo
+            </Button>
+            {/* Volta ao lobby com todo mundo dentro — ninguém refaz a sala. */}
+            <Button size="md" variant="paper" onClick={() => sendHostCommand({ type: "RESET_TO_LOBBY" })}>
+              <Gamepad2 strokeWidth={3} className="size-5" />
+              Escolher outro jogo
+            </Button>
+          </div>
+        ) : null}
+        {isHost ? <HostSection /> : null}
       </Shell>
     );
   }
@@ -133,20 +170,22 @@ function PlayerLobby({ pin }: { pin: string }) {
 
           <div className="mt-5 border-t-4 border-dashed border-ink pt-5">
             <p className="font-hand text-xl">
-              {state?.phase === "LOBBY"
-                ? `Aguardando o host começar ${game?.title ?? ""}...`
-                : `O jogo começou: ${game?.title ?? ""}`}
+              {isHost
+                ? "Você manda na sala. Configura aí embaixo."
+                : `Aguardando o host começar ${game?.title ?? ""}...`}
             </p>
-            <motion.div
-              className="mt-3 flex justify-center gap-2"
-              animate={{ opacity: [0.35, 1, 0.35] }}
-              transition={{ repeat: Infinity, duration: 1.6 }}
-              aria-hidden="true"
-            >
-              <span className="size-3 rounded-full bg-ink" />
-              <span className="size-3 rounded-full bg-ink" />
-              <span className="size-3 rounded-full bg-ink" />
-            </motion.div>
+            {!isHost ? (
+              <motion.div
+                className="mt-3 flex justify-center gap-2"
+                animate={{ opacity: [0.35, 1, 0.35] }}
+                transition={{ repeat: Infinity, duration: 1.6 }}
+                aria-hidden="true"
+              >
+                <span className="size-3 rounded-full bg-ink" />
+                <span className="size-3 rounded-full bg-ink" />
+                <span className="size-3 rounded-full bg-ink" />
+              </motion.div>
+            ) : null}
           </div>
 
           <div className="mt-5 flex flex-wrap justify-center gap-2">
@@ -175,6 +214,72 @@ function PlayerLobby({ pin }: { pin: string }) {
             Trocar rosto
           </Button>
         </Card>
+
+        {/* Configuração da partida — só para quem manda na sala. */}
+        {isHost && state ? (
+          <Card tilt="tilt-3" className="flex w-full max-w-md flex-col gap-5 p-6">
+            <div>
+              <h3 className="mb-3 font-display text-2xl font-bold uppercase">Jogo</h3>
+              <div className="flex flex-col gap-2">
+                {GAMES.map((option) => {
+                  const Icon = option.icon;
+                  const active = option.id === state.settings.gameId;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      disabled={option.comingSoon}
+                      onClick={() => sendHostCommand({ type: "SET_GAME", gameId: option.id })}
+                      aria-pressed={active}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-3 border-4 border-ink p-3 text-left",
+                        "font-action text-base uppercase transition-transform",
+                        "focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                        "disabled:cursor-not-allowed disabled:opacity-40",
+                        active ? "bg-ink text-paper shadow-brutal" : "bg-paper text-ink",
+                      )}
+                    >
+                      <span
+                        className="grid size-10 shrink-0 place-items-center border-4 border-ink"
+                        style={{ backgroundColor: option.identity.accent }}
+                      >
+                        <Icon strokeWidth={2.5} className="size-5" color={option.identity.onAccent} />
+                      </span>
+                      <span className="flex-1">{option.title}</span>
+                      {option.comingSoon ? (
+                        <span className="font-hand text-xs normal-case">em breve</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {getGame(state.settings.gameId).hasDifficulty ? (
+              <div>
+                <h3 className="mb-3 font-display text-2xl font-bold uppercase">Dificuldade</h3>
+                <DifficultySlider
+                  value={state.settings.difficulty}
+                  onChange={(difficulty) => sendHostCommand({ type: "SET_DIFFICULTY", difficulty })}
+                />
+              </div>
+            ) : null}
+
+            <Button
+              size="md"
+              variant="solid"
+              disabled={!canStart(state)}
+              onClick={() => sendHostCommand({ type: "START_GAME" })}
+            >
+              <Play strokeWidth={3} className="size-6" />
+              {canStart(state)
+                ? "Começar"
+                : `Faltam ${getGame(state.settings.gameId).minPlayers - players.length}`}
+            </Button>
+          </Card>
+        ) : null}
+
+        {isHost ? <HostSection /> : null}
       </Shell>
     );
   }

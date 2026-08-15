@@ -4,7 +4,7 @@ import type { AnswerRecord, GameState, PlayerId, Question } from "../types/game"
 
 export function createGameState(
   players: readonly PlayerId[],
-  difficulty: Difficulty = "medio",
+  difficulty: Difficulty = "medium",
 ): GameState {
   return {
     version: 1,

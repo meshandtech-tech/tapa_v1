@@ -4,14 +4,14 @@ import type { ThemeId } from "../theme/presets";
 
 export type { GameId, ThemeId, ThemeMode };
 
-export type Difficulty = "facil" | "medio" | "dificil";
+export type Difficulty = "easy" | "medium" | "hard";
 
-export const DIFFICULTIES: readonly Difficulty[] = ["facil", "medio", "dificil"];
+export const DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard"];
 
 export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
-  facil: "Fácil",
-  medio: "Médio",
-  dificil: "Difícil",
+  easy: "Fácil",
+  medium: "Médio",
+  hard: "Difícil",
 };
 
 /**
@@ -68,27 +68,20 @@ export interface PartySettings {
   themeId: ThemeId;
   /** `auto` gira o preset a cada entrada em ROUND_ACTIVE. */
   themeMode: ThemeMode;
-  /**
-   * Lotação escolhida pelo host. Sempre dentro da faixa que o jogo aceita
-   * (registry) — trocar de jogo reajusta este valor.
-   */
-  maxPlayers: number;
 }
-
-/** Segundos para responder cada pergunta. */
-export const ROUND_SECONDS = 20;
 
 /**
  * Estado do "Quem Erra, Paga". Todo mundo responde a MESMA pergunta ao mesmo
  * tempo — não há rodízio de turno.
+ *
+ * O prazo da rodada NÃO mora aqui: virou `phaseDeadline` no estado da party,
+ * porque toda fase passou a ter prazo próprio (auto-host).
  */
 export interface QuizState {
   /** Ordem sorteada das perguntas desta partida (índices no deck). */
   order: number[];
   /** Resposta da rodada corrente: id do jogador → índice da alternativa. */
   answers: Record<string, number>;
-  /** Instante em que o tempo acaba (epoch ms). */
-  deadline: number;
   /** Prenda sorteada para quem errou. Definida ao entrar em FORFEIT_WHEEL. */
   punishmentIndex: number | null;
 }
@@ -104,4 +97,17 @@ export interface PartyState {
   createdAt: number;
   /** Preenchido em START_GAME; volta a null ao retornar ao lobby. */
   quiz: QuizState | null;
+  /**
+   * Quem manda na sala. O host é um jogador como os outros — joga, pontua —
+   * e só ganha um painel de controles no próprio celular.
+   * `null` enquanto ninguém reivindicou.
+   */
+  hostPlayerId: string | null;
+  /**
+   * Instante em que a fase atual expira e o jogo segue sozinho.
+   * `0` = fase sem prazo (LOBBY e GAME_OVER esperam decisão humana).
+   */
+  phaseDeadline: number;
+  /** Instante em que o host pausou. `null` = correndo. */
+  pausedAt: number | null;
 }
