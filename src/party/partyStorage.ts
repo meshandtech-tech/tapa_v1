@@ -6,6 +6,7 @@ import {
   type PartyPhase,
   type PartyState,
   type Player,
+  type DevilState,
   type QuizState,
 } from "./types";
 
@@ -51,6 +52,31 @@ function isQuizState(value: unknown): value is QuizState | null {
   );
 }
 
+/** `null` é válido: só existe depois que o Advogado do Diabo começa. */
+function isDevilState(value: unknown): value is DevilState | null {
+  if (value === null || value === undefined) return true;
+  if (typeof value !== "object") return false;
+  const devil = value as Partial<DevilState>;
+  const strings = (list: unknown) =>
+    Array.isArray(list) && list.every((item) => typeof item === "string");
+  return (
+    strings(devil.order) &&
+    strings(devil.usedTopics) &&
+    strings(devil.candidates) &&
+    Number.isInteger(devil.index) &&
+    Number.isInteger(devil.winner) &&
+    Array.isArray(devil.customTopics) &&
+    devil.customTopics.every(
+      (topic) => !!topic && typeof topic.id === "string" && typeof topic.text === "string",
+    ) &&
+    !!devil.votes && typeof devil.votes === "object" &&
+    Object.values(devil.votes).every((nota) => Number.isInteger(nota)) &&
+    !!devil.scores && typeof devil.scores === "object" &&
+    Object.values(devil.scores).every((nota) => Number.isFinite(nota)) &&
+    typeof devil.disclaimerAccepted === "boolean"
+  );
+}
+
 /**
  * Só devolve estado se TUDO validar. Dado corrompido no localStorage vira
  * `null` e a party recomeça limpa, em vez de quebrar a tela no meio da festa.
@@ -75,6 +101,7 @@ export function parsePartyState(raw: string | null): PartyState | null {
       candidate.round! < 0 ||
       !Number.isFinite(candidate.createdAt) ||
       !isQuizState(candidate.quiz) ||
+      !isDevilState(candidate.devil) ||
       (candidate.hostPlayerId !== null && typeof candidate.hostPlayerId !== "string") ||
       !Number.isFinite(candidate.phaseDeadline) ||
       (candidate.pausedAt !== null && !Number.isFinite(candidate.pausedAt))

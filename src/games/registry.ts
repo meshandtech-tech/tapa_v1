@@ -15,6 +15,12 @@ export type PhaseDurations = Partial<Record<PartyPhase, number>>;
 
 /** Tempo para responder cada pergunta. Mexa aqui para mudar o quiz inteiro. */
 export const QUIZ_ANSWER_TIME = 30;
+/** Tempo de preparação do Advogado do Diabo, antes de apresentar. */
+export const DEVIL_PREPARATION_TIME = 50;
+/** Duração da apresentação. Curto de propósito: tese difícil cansa rápido. */
+export const DEVIL_PRESENTATION_TIME = 60;
+/** Quantas teses aparecem na roleta a cada rodada. */
+export const DEVIL_WHEEL_SIZE = 8;
 
 const DEFAULT_DURATIONS: PhaseDurations = {
   GAME_INTRO: 6000,
@@ -47,9 +53,54 @@ export interface GameDefinition {
   rounds: number;
   identity: GameIdentity;
   durations: PhaseDurations;
+  /** Sequência de fases deste jogo. Cada fase aponta para a próxima. */
+  flow: Partial<Record<PartyPhase, PartyPhase>>;
   /** Jogo ainda sem telas — aparece na seleção marcado como "em breve". */
   comingSoon?: boolean;
 }
+
+/**
+ * Fluxo do Advogado do Diabo.
+ *
+ * O tema é sorteado ANTES do apresentador, de propósito: a sala inteira lê a
+ * tese e reage, e só então descobre quem vai ter que defendê-la. Inverter isso
+ * mata a piada.
+ *
+ * As fases com duração `0` esperam o host — são os momentos em que o grupo
+ * está falando (fim de apresentação, votação, resultado).
+ */
+const DEVIL_FLOW: Partial<Record<PartyPhase, PartyPhase>> = {
+  GAME_INTRO: "TOPIC_SPIN",
+  TOPIC_SPIN: "TOPIC_REVEAL",
+  TOPIC_REVEAL: "PLAYER_SPIN",
+  PLAYER_SPIN: "PLAYER_REVEAL",
+  PLAYER_REVEAL: "PREPARATION",
+  PREPARATION: "COUNTDOWN",
+  COUNTDOWN: "PRESENTATION",
+  PRESENTATION: "VOTING",
+  VOTING: "SCORE_REVEAL",
+  // SCORE_REVEAL volta para TOPIC_SPIN ou termina — decidido no reducer.
+};
+
+const DEVIL_DURATIONS: PhaseDurations = {
+  GAME_INTRO: 0, // espera o host aceitar o aviso
+  TOPIC_SPIN: 7000, // a roleta gira ~5,2s e sobra respiro
+  TOPIC_REVEAL: 4000,
+  PLAYER_SPIN: 4000,
+  PLAYER_REVEAL: 3500,
+  PREPARATION: DEVIL_PREPARATION_TIME * 1000,
+  COUNTDOWN: 3200,
+  PRESENTATION: DEVIL_PRESENTATION_TIME * 1000,
+  VOTING: 0, // o host fecha
+  SCORE_REVEAL: 0, // o host chama o próximo
+};
+
+const QUIZ_FLOW: Partial<Record<PartyPhase, PartyPhase>> = {
+  GAME_INTRO: "ROUND_ACTIVE",
+  ROUND_ACTIVE: "REVEAL_ANSWER",
+  // REVEAL_ANSWER escolhe entre roleta e placar conforme quem errou.
+  FORFEIT_WHEEL: "LEADERBOARD",
+};
 
 export const GAMES: readonly GameDefinition[] = [
   {
@@ -66,6 +117,7 @@ export const GAMES: readonly GameDefinition[] = [
     rounds: 10,
     identity: GAME_IDENTITIES["quem-erra-paga"],
     durations: DEFAULT_DURATIONS,
+    flow: QUIZ_FLOW,
   },
   {
     id: "advogado-do-diabo",
@@ -78,10 +130,11 @@ export const GAMES: readonly GameDefinition[] = [
     maxPlayers: 10,
     hasForfeit: false,
     hasDifficulty: true,
-    rounds: 6,
+    // Uma rodada por jogador: o número real vem do roster, não daqui.
+    rounds: 10,
     identity: GAME_IDENTITIES["advogado-do-diabo"],
-    durations: { ...DEFAULT_DURATIONS, ROUND_ACTIVE: 90000, REVEAL_ANSWER: 8000 },
-    comingSoon: true,
+    durations: DEVIL_DURATIONS,
+    flow: DEVIL_FLOW,
   },
   {
     id: "pitch-no-escuro",
@@ -97,6 +150,7 @@ export const GAMES: readonly GameDefinition[] = [
     rounds: 5,
     identity: GAME_IDENTITIES["pitch-no-escuro"],
     durations: { ...DEFAULT_DURATIONS, ROUND_ACTIVE: 60000 },
+    flow: QUIZ_FLOW,
     comingSoon: true,
   },
 ] as const;

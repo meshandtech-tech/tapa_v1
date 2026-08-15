@@ -486,7 +486,7 @@ describe("máquina de fases", () => {
 
   it("pula a roleta em jogo que não tem prendas, mesmo com forfeit", () => {
     let state = withPlayers(3);
-    state = partyReducer(state, { type: "SET_GAME", gameId: "advogado-do-diabo" });
+    state = partyReducer(state, { type: "SET_GAME", gameId: "pitch-no-escuro" });
     state = partyReducer(state, { type: "START_GAME" });
     state = partyReducer(state, { type: "ADVANCE" });
     state = partyReducer(state, { type: "ADVANCE" });

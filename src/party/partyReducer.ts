@@ -1,8 +1,16 @@
 import { getDeck } from "../data/questions";
+import {
+  createDevilState,
+  currentPresenter,
+  drawCandidates,
+  everyonePresented,
+  roundAverage,
+} from "../games/advogadoDoDiabo";
 import { roundOutcome, sequentialOrder } from "../games/quemErraPaga";
 import { DEFAULT_GAME_ID, getGame, phaseDuration } from "../games/registry";
 import { DEFAULT_THEME_ID, nextThemeId } from "../theme/presets";
 import {
+  MAX_CUSTOM_TOPICS,
   MAX_PLAYERS,
   NICKNAME_MAX_LENGTH,
   PLAYER_COLORS,
@@ -12,9 +20,23 @@ import {
   type PartyState,
   type PartySettings,
   type Player,
+  type CustomTopic,
+  type DevilState,
   type ThemeId,
   type ThemeMode,
 } from "./types";
+
+/**
+ * Guarda a lista de teses do host mesmo antes do jogo começar — o `devil`
+ * ainda não existe no lobby, mas o host já pode escrever.
+ */
+function withCustomTopics(state: PartyState, customTopics: CustomTopic[]): DevilState {
+  if (state.devil) return { ...state.devil, customTopics };
+  return {
+    order: [], index: -1, candidates: [], winner: 0, usedTopics: [],
+    customTopics, votes: {}, scores: {}, disclaimerAccepted: false,
+  };
+}
 
 export function createPartyState(
   pin: string,
@@ -36,6 +58,7 @@ export function createPartyState(
     round: 0,
     createdAt: now,
     quiz: null,
+    devil: null,
     hostPlayerId: null,
     phaseDeadline: 0,
     pausedAt: null,
@@ -64,6 +87,14 @@ export type PartyAction =
   | { type: "ADVANCE"; forfeit?: boolean; now?: number; punishmentIndex?: number }
   /** Ninguém topou a prenda: sorteia outra sem sair da roleta. */
   | { type: "REROLL_PUNISHMENT"; punishmentIndex: number }
+  /** Nota de 1 a 5 para a apresentação da rodada. */
+  | { type: "VOTE"; playerId: string; rating: number }
+  /** O grupo topa a tese que saiu; sem isto o host pode pedir outra. */
+  | { type: "REROLL_TOPIC" }
+  | { type: "ACCEPT_DISCLAIMER" }
+  | { type: "ADD_CUSTOM_TOPIC"; topic: CustomTopic }
+  | { type: "EDIT_CUSTOM_TOPIC"; id: string; text: string; aboutPlayerId?: string }
+  | { type: "REMOVE_CUSTOM_TOPIC"; id: string }
   | { type: "PAUSE"; now?: number }
   | { type: "RESUME"; now?: number }
   | { type: "RESET_TO_LOBBY" };
@@ -73,18 +104,29 @@ export type PartyAction =
  * Nada aqui lança: durante uma festa, um estado inesperado tem de virar
  * "nada acontece", nunca uma tela branca.
  */
-const TRANSITIONS: Record<PartyPhase, readonly PartyPhase[]> = {
+const TRANSITIONS: Partial<Record<PartyPhase, readonly PartyPhase[]>> = {
+  // Quem Erra, Paga
   LOBBY: ["GAME_INTRO"],
-  GAME_INTRO: ["ROUND_ACTIVE"],
+  GAME_INTRO: ["ROUND_ACTIVE", "TOPIC_SPIN"],
   ROUND_ACTIVE: ["REVEAL_ANSWER"],
   REVEAL_ANSWER: ["FORFEIT_WHEEL", "LEADERBOARD"],
   FORFEIT_WHEEL: ["LEADERBOARD"],
   LEADERBOARD: ["ROUND_ACTIVE", "GAME_OVER"],
+  // Advogado do Diabo
+  TOPIC_SPIN: ["TOPIC_REVEAL"],
+  TOPIC_REVEAL: ["PLAYER_SPIN", "TOPIC_SPIN"], // TOPIC_SPIN = o grupo pediu outra tese
+  PLAYER_SPIN: ["PLAYER_REVEAL"],
+  PLAYER_REVEAL: ["PREPARATION"],
+  PREPARATION: ["COUNTDOWN", "TOPIC_SPIN"],
+  COUNTDOWN: ["PRESENTATION"],
+  PRESENTATION: ["VOTING"],
+  VOTING: ["SCORE_REVEAL"],
+  SCORE_REVEAL: ["TOPIC_SPIN", "GAME_OVER"],
   GAME_OVER: [],
 };
 
 export function canTransition(from: PartyPhase, to: PartyPhase): boolean {
-  return TRANSITIONS[from].includes(to);
+  return (TRANSITIONS[from] ?? []).includes(to);
 }
 
 export function canStart(state: PartyState): boolean {
@@ -230,12 +272,84 @@ function applyScores(state: PartyState): PartyState {
   };
 }
 
+/**
+ * Fluxo do "Advogado do Diabo".
+ *
+ * O tema sai ANTES do apresentador: a sala lê a tese, reage, e só então
+ * descobre quem terá que defendê-la.
+ */
+function advanceDevil(state: PartyState, now: number): PartyState {
+  const devil = state.devil;
+  if (!devil) return state;
+  const proxima = getGame(state.settings.gameId).flow[state.phase];
+
+  switch (state.phase) {
+    case "GAME_INTRO":
+    case "SCORE_REVEAL": {
+      // Acabou a fila: ninguém apresenta duas vezes.
+      if (state.phase === "SCORE_REVEAL" && everyonePresented(state)) {
+        return enterPhase(state, "GAME_OVER", now);
+      }
+      const candidates = drawCandidates(state);
+      return enterPhase(state, "TOPIC_SPIN", now, {
+        devil: { ...devil, candidates, winner: pickWinner(candidates.length), votes: {} },
+      });
+    }
+
+    case "TOPIC_SPIN": {
+      const escolhido = devil.candidates[devil.winner];
+      return enterPhase(state, "TOPIC_REVEAL", now, {
+        devil: {
+          ...devil,
+          // Marca como usado já aqui: se o grupo pedir outro, este não volta.
+          usedTopics: escolhido ? [...devil.usedTopics, escolhido] : devil.usedTopics,
+        },
+      });
+    }
+
+    case "TOPIC_REVEAL":
+      // Só agora a fila anda — o apresentador desta rodada fica definido.
+      return enterPhase(state, "PLAYER_SPIN", now, {
+        devil: { ...devil, index: devil.index + 1 },
+        round: state.round + 1,
+      });
+
+    case "PRESENTATION":
+      return enterPhase(state, "VOTING", now, { devil: { ...devil, votes: {} } });
+
+    case "VOTING": {
+      const media = roundAverage(state);
+      const apresentador = currentPresenter(state);
+      return enterPhase(state, "SCORE_REVEAL", now, {
+        devil:
+          apresentador && media !== null
+            ? { ...devil, scores: { ...devil.scores, [apresentador.id]: media } }
+            : devil,
+      });
+    }
+
+    default:
+      return proxima ? enterPhase(state, proxima, now) : state;
+  }
+}
+
+function pickWinner(total: number): number {
+  if (total <= 0) return 0;
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const buffer = new Uint32Array(1);
+    crypto.getRandomValues(buffer);
+    return buffer[0] % total;
+  }
+  return Math.floor(Math.random() * total);
+}
+
 function advance(
   state: PartyState,
   forfeit: boolean,
   now: number,
   punishmentIndex: number,
 ): PartyState {
+  if (state.settings.gameId === "advogado-do-diabo") return advanceDevil(state, now);
   const game = getGame(state.settings.gameId);
   // A ordem sorteada manda no total de rodadas: o deck pode ser menor que
   // `game.rounds`, e aí a partida acaba junto com as perguntas.
@@ -326,10 +440,22 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
 
     case "START_GAME": {
       if (!canStart(state)) return state;
+      const now = action.now ?? Date.now();
+
+      if (state.settings.gameId === "advogado-do-diabo") {
+        // Os temas do host sobrevivem a um "jogar de novo".
+        return enterPhase(state, "GAME_INTRO", now, {
+          round: 0,
+          quiz: null,
+          devil: createDevilState(state.players, state.devil?.customTopics ?? []),
+        });
+      }
+
       const game = getGame(state.settings.gameId);
       const deck = getDeck(state.settings.difficulty);
-      return enterPhase(state, "GAME_INTRO", action.now ?? Date.now(), {
+      return enterPhase(state, "GAME_INTRO", now, {
         round: 0,
+        devil: null,
         quiz: {
           order: action.order ?? sequentialOrder(deck.length, game.rounds),
           answers: {},
@@ -368,6 +494,76 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
       };
     }
 
+    case "VOTE": {
+      if (state.phase !== "VOTING" || !state.devil) return state;
+      // Quem apresenta não vota em si mesmo, e ninguém vota duas vezes.
+      if (currentPresenter(state)?.id === action.playerId) return state;
+      if (state.devil.votes[action.playerId] !== undefined) return state;
+      if (!state.players.some((player) => player.id === action.playerId)) return state;
+      if (!Number.isInteger(action.rating) || action.rating < 1 || action.rating > 5) return state;
+      return {
+        ...state,
+        devil: {
+          ...state.devil,
+          votes: { ...state.devil.votes, [action.playerId]: action.rating },
+        },
+      };
+    }
+
+    /**
+     * O grupo recusou a tese. Troca o TEMA e mantém o apresentador — quem foi
+     * sorteado não é punido por uma tese que a mesa achou pesada demais.
+     */
+    case "REROLL_TOPIC": {
+      if (!state.devil) return state;
+      if (state.phase !== "TOPIC_REVEAL" && state.phase !== "PREPARATION") return state;
+      const candidates = drawCandidates(state);
+      if (candidates.length === 0) return state;
+      // Em TOPIC_REVEAL o apresentador ainda não foi definido; da PREPARATION
+      // em diante já foi, e a fila precisa recuar — senão o próximo
+      // TOPIC_REVEAL incrementa de novo e pula a vez de alguém.
+      const jaEscolheu = state.phase !== "TOPIC_REVEAL";
+      return enterPhase(state, "TOPIC_SPIN", Date.now(), {
+        devil: {
+          ...state.devil,
+          candidates,
+          winner: pickWinner(candidates.length),
+          index: jaEscolheu ? state.devil.index - 1 : state.devil.index,
+        },
+        round: jaEscolheu ? Math.max(0, state.round - 1) : state.round,
+      });
+    }
+
+    case "ACCEPT_DISCLAIMER":
+      if (!state.devil) return state;
+      return { ...state, devil: { ...state.devil, disclaimerAccepted: true } };
+
+    case "ADD_CUSTOM_TOPIC": {
+      if (state.phase !== "LOBBY") return state;
+      const atuais = state.devil?.customTopics ?? [];
+      if (atuais.length >= MAX_CUSTOM_TOPICS) return state;
+      if (!action.topic.text.trim()) return state;
+      const lista = [...atuais, { ...action.topic, text: action.topic.text.trim() }];
+      return { ...state, devil: withCustomTopics(state, lista) };
+    }
+
+    case "EDIT_CUSTOM_TOPIC": {
+      if (state.phase !== "LOBBY" || !state.devil) return state;
+      if (!action.text.trim()) return state;
+      const lista = state.devil.customTopics.map((topic) =>
+        topic.id === action.id
+          ? { ...topic, text: action.text.trim(), aboutPlayerId: action.aboutPlayerId }
+          : topic,
+      );
+      return { ...state, devil: withCustomTopics(state, lista) };
+    }
+
+    case "REMOVE_CUSTOM_TOPIC": {
+      if (state.phase !== "LOBBY" || !state.devil) return state;
+      const lista = state.devil.customTopics.filter((topic) => topic.id !== action.id);
+      return { ...state, devil: withCustomTopics(state, lista) };
+    }
+
     case "ADVANCE":
       // Pausado, o relógio não corre — mas o host ainda pode pular na mão.
       return advance(
@@ -400,6 +596,8 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
         phase: "LOBBY",
         round: 0,
         quiz: null,
+        // Preserva as teses escritas pelo host ao voltar para o lobby.
+        devil: state.devil ? withCustomTopics(state, state.devil.customTopics) : null,
         phaseDeadline: 0,
         pausedAt: null,
         players: state.players.map((player) => ({ ...player, score: 0 })),
