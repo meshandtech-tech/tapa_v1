@@ -1,4 +1,12 @@
-import type { Difficulty, GameId, PartyState, Player, ThemeId, ThemeMode } from "../types";
+import type {
+  CustomTopic,
+  Difficulty,
+  GameId,
+  PartyState,
+  Player,
+  ThemeId,
+  ThemeMode,
+} from "../types";
 
 /**
  * O que o host pode mandar do celular dele.
@@ -16,6 +24,9 @@ export type HostCommand =
   | { type: "REROLL_PUNISHMENT" }
   | { type: "VOTE"; rating: number }
   | { type: "REROLL_TOPIC" }
+  | { type: "ADD_CUSTOM_TOPIC"; topic: CustomTopic }
+  | { type: "EDIT_CUSTOM_TOPIC"; id: string; text: string; aboutPlayerId?: string }
+  | { type: "REMOVE_CUSTOM_TOPIC"; id: string }
   | { type: "PAUSE" }
   | { type: "RESUME" }
   | { type: "RESET_TO_LOBBY" };

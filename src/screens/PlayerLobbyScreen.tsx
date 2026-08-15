@@ -10,6 +10,7 @@ import { usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
 import { HostControls } from "../party/HostControls";
 import { AdvogadoDoDiaboPlayer } from "../games/AdvogadoDoDiaboPlayer";
+import { CustomTopics } from "../games/CustomTopics";
 import { DevilHostActions } from "../games/DevilHostActions";
 import { QuemErraPagaPlayer } from "../games/QuemErraPagaPlayer";
 import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
@@ -331,6 +332,10 @@ function PlayerLobby({ pin }: { pin: string }) {
                 : `Faltam ${getGame(state.settings.gameId).minPlayers - players.length}`}
             </Button>
           </Card>
+        ) : null}
+
+        {isHost && state?.settings.gameId === "advogado-do-diabo" ? (
+          <CustomTopics state={state} send={sendHostCommand} />
         ) : null}
 
         {isHost ? <HostSection /> : null}
