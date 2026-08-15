@@ -1,10 +1,15 @@
+// Carinhas desenhadas à mão, no espírito do fanzine. Os asteriscos que estavam
+// aqui antes lembravam demais o ícone do Claude Code — nada a ver com o Tapa.
+//
+// `left` fica entre 8% e 82%: encostadas na borda elas eram cortadas pela
+// metade num celular de 390px, e meia carinha só parece sujeira.
 const doodles = [
-  { left: "4%", top: "10%", size: "2.4rem", delay: "0s", glyph: "★" },
-  { left: "12%", top: "72%", size: "3rem", delay: "-2s", glyph: "✳" },
-  { left: "24%", top: "18%", size: "1.6rem", delay: "-4s", glyph: "✚" },
-  { left: "76%", top: "12%", size: "2.8rem", delay: "-1s", glyph: "✦" },
-  { left: "88%", top: "66%", size: "2rem", delay: "-3s", glyph: "✳" },
-  { left: "95%", top: "28%", size: "3.4rem", delay: "-5s", glyph: "★" },
+  { left: "8%", top: "10%", size: "2.6rem", delay: "0s", glyph: ":)" },
+  { left: "14%", top: "72%", size: "2.6rem", delay: "-2s", glyph: "^_^" },
+  { left: "26%", top: "18%", size: "1.8rem", delay: "-4s", glyph: ":D" },
+  { left: "70%", top: "12%", size: "2.8rem", delay: "-1s", glyph: ";)" },
+  { left: "80%", top: "66%", size: "2.2rem", delay: "-3s", glyph: ":P" },
+  { left: "82%", top: "30%", size: "3rem", delay: "-5s", glyph: ":)" },
 ] as const;
 
 interface DecorativeDoodlesProps {

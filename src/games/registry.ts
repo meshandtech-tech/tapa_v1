@@ -64,7 +64,7 @@ export const GAMES: readonly GameDefinition[] = [
     description:
       "Sorteia uma tese absurda e você tem que defender. A galera reage e dá nota.",
     icon: Drama,
-    minPlayers: 3,
+    minPlayers: 2,
     maxPlayers: 10,
     hasForfeit: false,
     hasDifficulty: true,
@@ -80,7 +80,7 @@ export const GAMES: readonly GameDefinition[] = [
     description:
       "Slides que você nunca viu trocam sozinhos a cada 20 segundos. Boa sorte explicando.",
     icon: Presentation,
-    minPlayers: 3,
+    minPlayers: 2,
     maxPlayers: 8,
     hasForfeit: false,
     hasDifficulty: false,

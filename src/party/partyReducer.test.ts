@@ -10,6 +10,7 @@ import {
   type PartyAction,
 } from "./partyReducer";
 import { currentQuestion } from "../games/quemErraPaga";
+import { GAMES } from "../games/registry";
 import { MAX_PLAYERS, PLAYER_COLORS, type PartyState, type Player } from "./types";
 
 function makePlayer(id: string, overrides: Partial<Player> = {}): Player {
@@ -183,12 +184,18 @@ describe("início do jogo", () => {
     expect(state.phase).toBe("GAME_INTRO");
   });
 
-  it("respeita o mínimo maior de outro jogo", () => {
-    let state = partyReducer(withPlayers(2), {
-      type: "SET_GAME",
-      gameId: "advogado-do-diabo",
-    });
-    state = partyReducer(state, { type: "START_GAME" });
+  // Todo jogo da plataforma começa com dupla — decisão de produto, não acaso.
+  it("todos os jogos começam com duas pessoas", () => {
+    for (const game of GAMES) {
+      expect(game.minPlayers).toBe(2);
+      let state = partyReducer(withPlayers(2), { type: "SET_GAME", gameId: game.id });
+      state = partyReducer(state, { type: "START_GAME" });
+      expect(state.phase).toBe("GAME_INTRO");
+    }
+  });
+
+  it("não começa com uma pessoa só", () => {
+    const state = partyReducer(withPlayers(1), { type: "START_GAME" });
     expect(state.phase).toBe("LOBBY");
   });
 });

@@ -1,6 +1,8 @@
 import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
-import { LogIn, Sparkles, Users } from "lucide-react";
+// PartyPopper no lugar do Sparkles: o brilho de quatro pontas lembrava demais
+// o ícone do Claude Code, e não tem nada a ver com festa.
+import { LogIn, PartyPopper, Users } from "lucide-react";
 import { DecorativeDoodles } from "../components/DecorativeDoodles";
 import { GAMES } from "../games/registry";
 import { generateFreePin } from "../party/pin";
@@ -44,7 +46,7 @@ export function LandingScreen() {
 
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Button size="tv" variant="paper" tilt="tilt-3" onClick={() => createParty()}>
-            <Sparkles strokeWidth={3} className="size-7" />
+            <PartyPopper strokeWidth={3} className="size-7" />
             Criar Party
           </Button>
           <Button size="tv" variant="knockout" tilt="tilt-2" onClick={() => navigate("/join")}>
