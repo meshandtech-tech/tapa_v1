@@ -16,8 +16,8 @@ const EVENT = "party";
  * Duas diferenças em relação ao BroadcastChannel que o adapter precisa cobrir:
  *
  * 1. `send()` só funciona depois do status SUBSCRIBED, e a conexão leva
- *    algumas centenas de ms. Mas `usePartyHost` publica o STATE e
- *    `usePartyPlayer` pede REQUEST_STATE já no mount — sem fila, esses
+ *    algumas centenas de ms. Mas a autoridade publica o STATE e quem entra
+ *    pede REQUEST_STATE já no mount — sem fila, esses
  *    primeiros eventos evaporariam e o jogador ficaria preso em "procurando
  *    a sala". Por isso tudo que sai antes da conexão fica numa fila.
  *

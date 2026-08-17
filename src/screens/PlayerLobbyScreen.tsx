@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Check, Dices, Gamepad2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
 import { isValidPin } from "../party/pin";
 import { canStart, isNicknameTaken, roomCapacity } from "../party/partyReducer";
 import { clearPartyState } from "../party/partyStorage";
-import { usePartyPlayer } from "../party/usePartyPlayer";
+import { usePartyRoom } from "../party/usePartyRoom";
 import { usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
 import { HostControls } from "../party/HostControls";
@@ -15,7 +15,7 @@ import { DevilHostActions } from "../games/DevilHostActions";
 import { QuemErraPagaPlayer } from "../games/QuemErraPagaPlayer";
 import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type Player } from "../party/types";
-import { GAMES, getGame } from "../games/registry";
+import { GAMES, getGame, isGameId } from "../games/registry";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -37,8 +37,9 @@ export function PlayerLobbyScreen() {
 
 function PlayerLobby({ pin }: { pin: string }) {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { state, me, meInParty, isHost, connection, join, updateMe, answer, vote, sendHostCommand } =
-    usePartyPlayer(pin);
+    usePartyRoom(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
   usePartyTheme(state);
@@ -60,6 +61,12 @@ function PlayerLobby({ pin }: { pin: string }) {
   const trimmed = nickname.trim();
   const nameTaken = isNicknameTaken(players, trimmed, me?.id);
   const canJoin = trimmed.length > 0 && !nameTaken && connection === "connected";
+
+  // O jogo escolhido na landing chega pela query string.
+  const preselected = params.get("game");
+  useEffect(() => {
+    if (isHost && isGameId(preselected)) sendHostCommand({ type: "SET_GAME", gameId: preselected });
+  }, [isHost, preselected, sendHostCommand]);
 
   /** Gaveta de exceções. Com o auto-host, quase nunca é usada. */
   const HostSection = () =>

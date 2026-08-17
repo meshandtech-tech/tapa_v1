@@ -37,6 +37,29 @@ const PHASES: readonly PartyPhase[] = [
 
 const stateKey = (pin: string) => `tapa:party:${pin}:state`;
 const playerKey = (pin: string) => `tapa:party:${pin}:me`;
+const ownerKey = (pin: string) => `tapa:party:${pin}:owner`;
+
+/**
+ * Marca ESTE aparelho como dono da sala — quem criou é quem comanda.
+ *
+ * Uma tentativa anterior de token falhou porque a sala nascia no computador e
+ * as pessoas entravam pelo celular, aparelhos diferentes com storages
+ * diferentes. Aqui a causa some: criar e entrar acontecem no MESMO aparelho,
+ * porque criar já leva direto para a tela de jogador.
+ */
+export function markRoomOwner(pin: string): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(ownerKey(pin), "1");
+  } catch {
+    // Sem o token o aparelho vira jogador comum e outro assume. Chato, não fatal.
+  }
+}
+
+export function ownsRoom(pin: string): boolean {
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem(ownerKey(pin)) === "1";
+}
 
 function isPlayer(value: unknown): value is Player {
   if (!value || typeof value !== "object") return false;
@@ -147,6 +170,7 @@ export function clearPartyState(pin: string): void {
   if (typeof localStorage === "undefined") return;
   localStorage.removeItem(stateKey(pin));
   localStorage.removeItem(playerKey(pin));
+  localStorage.removeItem(ownerKey(pin));
 }
 
 /** Identidade do jogador NESTE dispositivo — sobrevive a um F5 no celular. */

@@ -6,7 +6,7 @@ import { LogIn, PartyPopper, Users } from "lucide-react";
 import { DecorativeDoodles } from "../components/DecorativeDoodles";
 import { GAMES } from "../games/registry";
 import { generateFreePin } from "../party/pin";
-import { loadPartyState } from "../party/partyStorage";
+import { loadPartyState, markRoomOwner } from "../party/partyStorage";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -20,7 +20,10 @@ export function LandingScreen() {
     // Evita cair num PIN cuja sala antiga ainda está salva — senão o host
     // reidrataria o roster da festa passada em vez de abrir uma sala limpa.
     const pin = generateFreePin((candidate) => loadPartyState(candidate) !== null);
-    navigate(gameId ? `/host/${pin}?game=${gameId}` : `/host/${pin}`);
+    // Quem cria comanda: este aparelho passa a ser a autoridade da sala, e vai
+    // direto para a tela de JOGADOR — a TV virou opcional.
+    markRoomOwner(pin);
+    navigate(gameId ? `/play/${pin}?game=${gameId}` : `/play/${pin}`);
   };
 
   return (

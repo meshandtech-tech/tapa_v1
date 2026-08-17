@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { Check, Copy, Crown, Pause, Smartphone, TriangleAlert, Users } from "lucide-react";
 import { AdvogadoDoDiaboHost } from "../games/AdvogadoDoDiaboHost";
 import { QuemErraPagaHost } from "../games/QuemErraPagaHost";
 import { phaseProgress, secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
-import { getGame, isGameId, phaseDuration } from "../games/registry";
+import { getGame, phaseDuration } from "../games/registry";
 import { activeTransport } from "../party/channel";
 import { buildInviteUrl, isValidPin } from "../party/pin";
 import { roomCapacity } from "../party/partyReducer";
-import { usePartyHost } from "../party/usePartyHost";
+import { usePartyRoom } from "../party/usePartyRoom";
 import { useGameIdentity, usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
 import { DIFFICULTY_LABELS } from "../party/types";
@@ -23,11 +23,10 @@ const transport = activeTransport();
 
 export function HostLobbyScreen() {
   const { pin = "" } = useParams();
-  const [params] = useSearchParams();
   const navigate = useNavigate();
 
   if (!isValidPin(pin)) return <Navigate to="/" replace />;
-  return <HostLobby pin={pin} preselectedGame={params.get("game")} onExit={() => navigate("/")} />;
+  return <HostLobby pin={pin} onExit={() => navigate("/")} />;
 }
 
 /**
@@ -38,26 +37,38 @@ export function HostLobbyScreen() {
  * a tela que o grupo inteiro está olhando, e ninguém deveria ficar preso
  * clicando nela em vez de jogar.
  */
-function HostLobby({
-  pin,
-  preselectedGame,
-  onExit,
-}: {
-  pin: string;
-  preselectedGame: string | null;
-  onExit: () => void;
-}) {
-  const { state, dispatch } = usePartyHost(pin);
+function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
+  // Espectador: a TV só exibe. Nunca comanda e nunca vira autoridade.
+  const { state } = usePartyRoom(pin, { spectator: true });
   const [copied, setCopied] = useState(false);
 
   usePartyTheme(state);
   // Enquanto o jogo roda, a paleta é a do jogo; no lobby volta a da party.
   useGameIdentity(state);
 
-  // O jogo escolhido na landing chega pela query string.
-  useEffect(() => {
-    if (isGameId(preselectedGame)) dispatch({ type: "SET_GAME", gameId: preselectedGame });
-  }, [preselectedGame, dispatch]);
+  const now = useNow((state?.phaseDeadline ?? 0) > 0);
+
+  /**
+   * A TV é opcional e passiva: quem comanda é o celular de quem criou a sala.
+   * Até esse aparelho transmitir o primeiro estado, não há nada para exibir.
+   */
+  if (!state) {
+    return (
+      <div className="zine-grain flex min-h-dvh flex-col items-center justify-center gap-6 bg-accent px-6 text-center">
+        <Logo size="md" />
+        <Knockout tilt="tilt-1" className="px-[3vw] py-[3vh]">
+          <p className="font-hand text-2xl uppercase tracking-widest">Tela grande da sala</p>
+          <p className="font-display text-[clamp(4rem,12vw,8rem)] font-extrabold leading-none tracking-[0.15em]">
+            {pin}
+          </p>
+        </Knockout>
+        <p className="max-w-xl font-hand text-2xl text-on-accent">
+          Esperando a sala abrir. Quem criou a party comanda pelo celular — esta
+          tela só mostra o jogo.
+        </p>
+      </div>
+    );
+  }
 
   const game = getGame(state.settings.gameId);
   const inviteUrl = buildInviteUrl(pin, window.location.origin);
@@ -66,7 +77,6 @@ function HostLobby({
   const host = state.players.find((player) => player.id === state.hostPlayerId) ?? null;
   const emJogo = state.phase !== "LOBBY";
 
-  const now = useNow(state.phaseDeadline > 0);
   const secondsLeft = computeSecondsLeft(state, now);
   const total = phaseDuration(state.settings.gameId, state.phase);
   const progress = phaseProgress(state, now, total);
