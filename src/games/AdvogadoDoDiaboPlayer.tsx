@@ -53,30 +53,53 @@ export function AdvogadoDoDiaboPlayer({
             Você vai defender teses que talvez ache absurdas. Não representa a
             sua opinião — é improviso. Se o tema pesar, o host pede outro.
           </p>
-          <p className="mt-4 font-action text-sm uppercase opacity-70">Olha a TV</p>
+          <p className="mt-4 font-action text-sm uppercase opacity-70">
+            O host começa quando todo mundo estiver pronto
+          </p>
         </Aviso>
       );
 
+    /** Sorteios: o celular acompanha sozinho, sem depender de outra tela. */
     case "TOPIC_SPIN":
-    case "TOPIC_REVEAL":
     case "PLAYER_SPIN":
       return (
         <Aviso>
-          <h2 className="font-display text-2xl font-bold uppercase">
-            {state.phase === "PLAYER_SPIN" ? "Sorteando quem defende" : "Sorteando a tese"}
+          <h2 className="font-display text-2xl font-extrabold uppercase">
+            {state.phase === "PLAYER_SPIN" ? "Sorteando o advogado" : "Sorteando a tese"}
           </h2>
-          <p className="mt-3 font-hand text-lg">Olha a TV.</p>
           <motion.div
-            className="mt-4 flex justify-center gap-2"
-            animate={{ opacity: [0.35, 1, 0.35] }}
-            transition={{ repeat: Infinity, duration: 1.4 }}
+            className="mt-5 flex justify-center gap-2"
+            animate={{ opacity: [0.3, 1, 0.3] }}
+            transition={{ repeat: Infinity, duration: 1.2 }}
             aria-hidden="true"
           >
-            <span className="size-3 rounded-full bg-ink" />
-            <span className="size-3 rounded-full bg-ink" />
-            <span className="size-3 rounded-full bg-ink" />
+            <span className="size-4 rounded-full bg-ink" />
+            <span className="size-4 rounded-full bg-ink" />
+            <span className="size-4 rounded-full bg-ink" />
           </motion.div>
         </Aviso>
+      );
+
+    /** A tese já saiu: todo celular mostra, TV ou não. */
+    case "TOPIC_REVEAL":
+      return (
+        <div className="flex w-full max-w-md flex-col gap-3">
+          <p className="text-center font-action text-sm uppercase text-on-accent">A tese é</p>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", stiffness: 240, damping: 16 }}
+          >
+            <Card className="p-6 text-center">
+              <p className="font-display text-2xl font-extrabold uppercase leading-tight">
+                {tema}
+              </p>
+            </Card>
+          </motion.div>
+          <p className="text-center font-hand text-base text-on-accent opacity-80">
+            Agora sorteia quem vai defender...
+          </p>
+        </div>
       );
 
     case "PLAYER_REVEAL":
@@ -84,21 +107,27 @@ export function AdvogadoDoDiaboPlayer({
     case "COUNTDOWN":
     case "PRESENTATION": {
       if (!souEu) {
+        // Quem assiste também vê tudo: quem está na berlinda, a tese e o tempo.
         return (
-          <Aviso>
-            <h2 className="font-display text-3xl font-bold uppercase">
-              {presenter?.nickname}
-            </h2>
-            <p className="mt-2 font-action text-sm uppercase text-accent-dark">
-              {state.phase === "PRESENTATION" ? "está defendendo" : "está se preparando"}
-            </p>
-            <p className="mt-4 font-ui text-base leading-snug">{tema}</p>
-            {state.phase === "PRESENTATION" ? (
-              <p className="mt-4 font-display text-5xl font-extrabold tabular-nums">
-                {secondsLeft}
+          <div className="flex w-full max-w-md flex-col gap-3">
+            <Card className="p-5 text-center">
+              <h2 className="font-display text-3xl font-extrabold uppercase">
+                {presenter?.nickname}
+              </h2>
+              <p className="mt-1 font-action text-sm uppercase text-accent-dark">
+                {state.phase === "PRESENTATION" ? "está defendendo" : "está se preparando"}
               </p>
-            ) : null}
-          </Aviso>
+            </Card>
+            <Card className="p-5 text-center">
+              <p className="font-display text-lg font-extrabold uppercase leading-tight">{tema}</p>
+            </Card>
+            <Knockout className="flex items-center justify-center gap-3 p-4">
+              <Timer strokeWidth={3} className="size-7" />
+              <span className="font-display text-5xl font-extrabold tabular-nums">
+                {secondsLeft}
+              </span>
+            </Knockout>
+          </div>
         );
       }
       // Sou eu. A tese e o relógio precisam estar grandes e sozinhos na tela.
@@ -198,7 +227,7 @@ export function AdvogadoDoDiaboPlayer({
     default:
       return (
         <Aviso>
-          <p className="font-hand text-lg">Olha a TV.</p>
+          <p className="font-hand text-lg">Aguenta aí...</p>
         </Aviso>
       );
   }
