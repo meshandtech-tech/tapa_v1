@@ -69,8 +69,15 @@ function PlayerLobby({ pin }: { pin: string }) {
     if (isHost && isGameId(preselected)) sendHostCommand({ type: "SET_GAME", gameId: preselected });
   }, [isHost, preselected, sendHostCommand]);
 
-  /** Gaveta de exceções. Com o auto-host, quase nunca é usada. */
-  const HostSection = () =>
+  /**
+   * Gaveta de exceções. Com o auto-host, quase nunca é usada.
+   *
+   * É um ELEMENTO, não um componente declarado aqui dentro. Como função, cada
+   * render criava uma identidade nova, o React remontava o HostControls e o
+   * `useState` da gaveta zerava — com o relógio renderizando a cada 250ms, ela
+   * fechava sozinha antes de dar para tocar em qualquer botão.
+   */
+  const hostSection =
     state ? (
       <HostControls
         state={state}
@@ -207,7 +214,7 @@ function PlayerLobby({ pin }: { pin: string }) {
             </Button>
           </div>
         ) : null}
-        {isHost ? <HostSection /> : null}
+        {isHost ? hostSection : null}
       </Shell>
     );
   }
@@ -351,7 +358,7 @@ function PlayerLobby({ pin }: { pin: string }) {
           <CustomTopics state={state} send={sendHostCommand} />
         ) : null}
 
-        {isHost ? <HostSection /> : null}
+        {isHost ? hostSection : null}
       </Shell>
     );
   }

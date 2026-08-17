@@ -16,6 +16,15 @@ export const RATINGS = [
   { value: 5, emoji: "🔥", label: "Incrível" },
 ] as const;
 
+/** Cartão de aviso. Fora do componente: definido dentro, remontaria a cada render. */
+function Aviso({ children }: { children: React.ReactNode }) {
+  return (
+    <Card tilt="tilt-2" className="w-full max-w-md p-6 text-center">
+      {children}
+    </Card>
+  );
+}
+
 /**
  * O celular no Advogado do Diabo.
  *
@@ -38,12 +47,6 @@ export function AdvogadoDoDiaboPlayer({
   const souEu = presenter?.id === me.id;
   const tema = currentTopicText(state);
   const meuVoto = state.devil?.votes[me.id];
-
-  const Aviso = ({ children }: { children: React.ReactNode }) => (
-    <Card tilt="tilt-2" className="w-full max-w-md p-6 text-center">
-      {children}
-    </Card>
-  );
 
   switch (state.phase) {
     case "GAME_INTRO":
