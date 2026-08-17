@@ -165,12 +165,17 @@ summary:focus-visible {
    --------------------------------------------------------------------------- */
 
 /* Desalinho artesanal. Aplicado pelo ÍNDICE do item, nunca por Math.random(),
-   porque random em render faz o elemento tremer a cada re-render. */
+   porque random em render faz o elemento tremer a cada re-render.
+
+   Os ângulos encolheram de ±2° para ±0,5° quando a tipografia virou Helvetica:
+   com fonte desenhada à mão a inclinação lia como escolha de design, com uma
+   grotesca geométrica ela passa a parecer erro de renderização. Meio grau
+   ainda tira a rigidez sem levantar a suspeita de bug. */
 .tilt-0 { transform: rotate(0deg); }
-.tilt-1 { transform: rotate(-2deg); }
-.tilt-2 { transform: rotate(1.5deg); }
-.tilt-3 { transform: rotate(-1deg); }
-.tilt-4 { transform: rotate(2deg); }
+.tilt-1 { transform: rotate(-0.5deg); }
+.tilt-2 { transform: rotate(0.4deg); }
+.tilt-3 { transform: rotate(-0.3deg); }
+.tilt-4 { transform: rotate(0.5deg); }
 
 @media (prefers-reduced-motion: reduce) {
   .tilt-1, .tilt-2, .tilt-3, .tilt-4 { transform: none; }

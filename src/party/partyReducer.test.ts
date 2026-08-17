@@ -563,3 +563,36 @@ describe("utilitários", () => {
     expect(leaderboard(state).map((player) => player.id)).toEqual(["p1", "p2", "p0"]);
   });
 });
+
+describe("jogar de novo", () => {
+  /**
+   * Regressão: o botão "Jogar de novo" do fim de jogo mandava START_GAME, mas
+   * canStart só aceitava LOBBY — o reducer ignorava em silêncio e o botão não
+   * fazia absolutamente nada.
+   */
+  it("recomeça direto do fim de jogo", () => {
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 0 });
+    state = { ...state, phase: "GAME_OVER" };
+    expect(canStart(state)).toBe(true);
+
+    state = partyReducer(state, { type: "START_GAME", now: 100 });
+    expect(state.phase).toBe("GAME_INTRO");
+    expect(state.round).toBe(0);
+  });
+
+  it("zera o placar ao recomeçar, senão a partida nova nasce viciada", () => {
+    // Pontos ganhos DURANTE a partida, que é como eles aparecem de verdade.
+    let state = partyReducer(withPlayers(2), { type: "START_GAME", now: 0 });
+    state = partyReducer(state, { type: "SCORE", playerId: "p0", delta: 7 });
+    state = { ...state, phase: "GAME_OVER" };
+    expect(state.players[0].score).toBe(7);
+
+    state = partyReducer(state, { type: "START_GAME", now: 100 });
+    expect(state.players.every((player) => player.score === 0)).toBe(true);
+  });
+
+  it("não recomeça no meio de uma partida", () => {
+    const emJogo = partyReducer(withPlayers(2), { type: "START_GAME", now: 0 });
+    expect(canStart(emJogo)).toBe(false);
+  });
+});

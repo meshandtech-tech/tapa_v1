@@ -129,9 +129,14 @@ export function canTransition(from: PartyPhase, to: PartyPhase): boolean {
   return (TRANSITIONS[from] ?? []).includes(to);
 }
 
+/**
+ * Dá para começar? Vale no lobby E no fim de jogo — "jogar de novo" não
+ * deveria obrigar o grupo a voltar ao lobby antes.
+ */
 export function canStart(state: PartyState): boolean {
   const game = getGame(state.settings.gameId);
-  return state.phase === "LOBBY" && state.players.length >= game.minPlayers;
+  const podeIniciar = state.phase === "LOBBY" || state.phase === "GAME_OVER";
+  return podeIniciar && state.players.length >= game.minPlayers;
 }
 
 /** Primeira cor livre da paleta; volta ao início se a sala estiver cheia de cores. */
@@ -441,19 +446,24 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
     case "START_GAME": {
       if (!canStart(state)) return state;
       const now = action.now ?? Date.now();
+      // Partida nova, placar zerado — senão "jogar de novo" começa viciado
+      // com os pontos da anterior.
+      const players = state.players.map((player) => ({ ...player, score: 0 }));
 
       if (state.settings.gameId === "advogado-do-diabo") {
         // Os temas do host sobrevivem a um "jogar de novo".
         return enterPhase(state, "GAME_INTRO", now, {
+          players,
           round: 0,
           quiz: null,
-          devil: createDevilState(state.players, state.devil?.customTopics ?? []),
+          devil: createDevilState(players, state.devil?.customTopics ?? []),
         });
       }
 
       const game = getGame(state.settings.gameId);
       const deck = getDeck(state.settings.difficulty);
       return enterPhase(state, "GAME_INTRO", now, {
+        players,
         round: 0,
         devil: null,
         quiz: {
