@@ -12,11 +12,12 @@ import { HostControls } from "../party/HostControls";
 import { InviteCard } from "../party/InviteCard";
 import { AdvogadoDoDiaboPlayer } from "../games/AdvogadoDoDiaboPlayer";
 import { CustomTopics } from "../games/CustomTopics";
+import { GamePicker } from "../games/GamePicker";
 import { DevilHostActions } from "../games/DevilHostActions";
 import { QuemErraPagaPlayer } from "../games/QuemErraPagaPlayer";
 import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
-import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type Player } from "../party/types";
-import { GAMES, getGame, isGameId } from "../games/registry";
+import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type PartyState, type Player } from "../party/types";
+import { getGame, isGameId } from "../games/registry";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -294,40 +295,11 @@ function PlayerLobby({ pin }: { pin: string }) {
         {isHost && state ? (
           <Card tilt="tilt-3" className="flex w-full max-w-md flex-col gap-5 p-6">
             <div>
-              <h3 className="mb-3 font-display text-2xl font-bold uppercase">Jogo</h3>
-              <div className="flex flex-col gap-2">
-                {GAMES.map((option) => {
-                  const Icon = option.icon;
-                  const active = option.id === state.settings.gameId;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      disabled={option.comingSoon}
-                      onClick={() => sendHostCommand({ type: "SET_GAME", gameId: option.id })}
-                      aria-pressed={active}
-                      className={cn(
-                        "flex cursor-pointer items-center gap-3 border-4 border-ink p-3 text-left",
-                        "font-action text-base uppercase transition-transform",
-                        "focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ink",
-                        "disabled:cursor-not-allowed disabled:opacity-40",
-                        active ? "bg-ink text-paper shadow-brutal" : "bg-paper text-ink",
-                      )}
-                    >
-                      <span
-                        className="grid size-10 shrink-0 place-items-center border-4 border-ink"
-                        style={{ backgroundColor: option.identity.accent }}
-                      >
-                        <Icon strokeWidth={2.5} className="size-5" color={option.identity.onAccent} />
-                      </span>
-                      <span className="flex-1">{option.title}</span>
-                      {option.comingSoon ? (
-                        <span className="font-hand text-xs normal-case">em breve</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
+              <h3 className="mb-3 font-display text-2xl font-extrabold uppercase">Escolha o jogo</h3>
+              <GamePicker
+                selected={state.settings.gameId}
+                onSelect={(gameId) => sendHostCommand({ type: "SET_GAME", gameId })}
+              />
             </div>
 
             {getGame(state.settings.gameId).hasDifficulty ? (
@@ -340,17 +312,6 @@ function PlayerLobby({ pin }: { pin: string }) {
               </div>
             ) : null}
 
-            <Button
-              size="md"
-              variant="solid"
-              disabled={!canStart(state)}
-              onClick={() => sendHostCommand({ type: "START_GAME" })}
-            >
-              <Play strokeWidth={3} className="size-6" />
-              {canStart(state)
-                ? "Começar"
-                : `Faltam ${getGame(state.settings.gameId).minPlayers - players.length}`}
-            </Button>
           </Card>
         ) : null}
 
@@ -359,6 +320,16 @@ function PlayerLobby({ pin }: { pin: string }) {
         ) : null}
 
         {isHost ? hostSection : null}
+
+        {/* Começar mora no rodapé, sempre à mão: a configuração é alta e o
+            botão principal ficava enterrado no meio da rolagem. */}
+        {isHost && state ? (
+          <StartBar
+            state={state}
+            players={players.length}
+            onStart={() => sendHostCommand({ type: "START_GAME" })}
+          />
+        ) : null}
       </Shell>
     );
   }
@@ -435,6 +406,45 @@ function PlayerLobby({ pin }: { pin: string }) {
         </form>
       </Card>
     </Shell>
+  );
+}
+
+/**
+ * Barra fixa com a ação principal do lobby.
+ *
+ * Também diz o que está faltando: um botão desabilitado sem explicação é o
+ * tipo de coisa que trava uma festa enquanto todo mundo espera o host.
+ */
+function StartBar({
+  state,
+  players,
+  onStart,
+}: {
+  state: PartyState;
+  players: number;
+  onStart: () => void;
+}) {
+  const game = getGame(state.settings.gameId);
+  const pronto = canStart(state);
+  const faltam = Math.max(0, game.minPlayers - players);
+
+  return (
+    <div
+      className="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t-4 border-ink
+                 bg-accent px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3"
+    >
+      <div className="flex w-full max-w-md flex-col gap-1">
+        <Button size="md" variant="solid" disabled={!pronto} onClick={onStart}>
+          <Play strokeWidth={3} className="size-6" />
+          {pronto ? `Começar ${game.title}` : "Aguardando gente"}
+        </Button>
+        <p className="text-center font-hand text-sm text-on-accent">
+          {pronto
+            ? `${players} ${players === 1 ? "jogador" : "jogadores"} na sala`
+            : `Faltam ${faltam} ${faltam === 1 ? "pessoa" : "pessoas"} para este jogo`}
+        </p>
+      </div>
+    </div>
   );
 }
 
