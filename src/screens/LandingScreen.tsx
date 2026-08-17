@@ -39,9 +39,12 @@ export function LandingScreen() {
 
         <Logo size="hero" className="mt-4" />
 
+        {/* Não fala mais em TV: ela virou opcional, e o caminho normal agora é
+            criar pelo celular e mandar o código no grupo. */}
         <p className="max-w-2xl text-center font-hand text-2xl text-on-accent sm:text-3xl">
-          Cria a sala na TV, todo mundo entra pelo celular e a bagunça começa.
-          Sem instalar nada.
+          Cria a <strong className="font-extrabold">party</strong>, compartilha o
+          código, todo mundo entra pelo celular e a bagunça começa. Sem instalar
+          nada.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-4">
