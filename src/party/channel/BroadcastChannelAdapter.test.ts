@@ -12,9 +12,24 @@ function makeChannel(pin: string): PartyChannel {
   return channel;
 }
 
-/** BroadcastChannel entrega de forma assíncrona; espera um tick de macrotask. */
-function flush(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+/**
+ * Espera até a condição valer, ou desiste.
+ *
+ * A entrega do BroadcastChannel no Node passa por MessagePort e NÃO garante
+ * chegar dentro de um tick de macrotask. Esperar um `setTimeout(0)` fixo
+ * funcionava quase sempre e falhava com a suíte inteira sob carga — um flake
+ * intermitente que corroía a confiança no verde.
+ */
+async function until(condicao: () => boolean, limite = 2000): Promise<void> {
+  const fim = Date.now() + limite;
+  while (!condicao() && Date.now() < fim) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+/** Para os casos que verificam que NADA chega: aí um tempo fixo é o certo. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 60));
 }
 
 const PLAYER: Player = {
@@ -38,7 +53,7 @@ describe("BroadcastChannelAdapter", () => {
     host.subscribe((event) => received.push(event));
 
     player.broadcast({ type: "PLAYER_JOIN", player: PLAYER });
-    await flush();
+    await until(() => received.length > 0);
 
     expect(received).toEqual([{ type: "PLAYER_JOIN", player: PLAYER }]);
   });
@@ -49,7 +64,7 @@ describe("BroadcastChannelAdapter", () => {
     player.subscribe((event) => received.push(event));
 
     player.broadcast({ type: "REQUEST_STATE" });
-    await flush();
+    await settle();
 
     expect(received).toEqual([]);
   });
@@ -61,7 +76,7 @@ describe("BroadcastChannelAdapter", () => {
     sala1234.subscribe((event) => received.push(event));
 
     sala9999.broadcast({ type: "REQUEST_STATE" });
-    await flush();
+    await settle();
 
     expect(received).toEqual([]);
   });
@@ -76,7 +91,7 @@ describe("BroadcastChannelAdapter", () => {
     host.subscribe((event) => received.push(event));
 
     player.broadcast({ type: "REQUEST_STATE" });
-    await flush();
+    await until(() => received.length > 0);
 
     expect(received).toHaveLength(1);
   });
@@ -89,7 +104,7 @@ describe("BroadcastChannelAdapter", () => {
 
     unsubscribe();
     player.broadcast({ type: "REQUEST_STATE" });
-    await flush();
+    await settle();
 
     expect(received).toEqual([]);
   });
@@ -123,11 +138,11 @@ describe("BroadcastChannelAdapter", () => {
     });
 
     player.broadcast({ type: "REQUEST_STATE" });
-    await flush();
+    await settle();
     expect(playerView.players).toHaveLength(0);
 
     player.broadcast({ type: "PLAYER_JOIN", player: PLAYER });
-    await flush();
+    await until(() => hostState.players.length > 0);
 
     expect(hostState.players).toHaveLength(1);
     expect(playerView.players).toEqual(hostState.players);
