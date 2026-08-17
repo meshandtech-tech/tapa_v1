@@ -9,6 +9,7 @@ import { usePartyRoom } from "../party/usePartyRoom";
 import { usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
 import { HostControls } from "../party/HostControls";
+import { InviteCard } from "../party/InviteCard";
 import { AdvogadoDoDiaboPlayer } from "../games/AdvogadoDoDiaboPlayer";
 import { CustomTopics } from "../games/CustomTopics";
 import { DevilHostActions } from "../games/DevilHostActions";
@@ -276,6 +277,11 @@ function PlayerLobby({ pin }: { pin: string }) {
             Trocar rosto
           </Button>
         </Card>
+
+        {/* Sem isto, quem cria a sala pelo celular não tem como chamar ninguém. */}
+        {state?.phase === "LOBBY" ? (
+          <InviteCard pin={pin} variant="phone" className="max-w-md" />
+        ) : null}
 
         {/* Configuração da partida — só para quem manda na sala. */}
         {isHost && state ? (

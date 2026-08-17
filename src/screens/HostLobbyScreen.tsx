@@ -1,15 +1,14 @@
-import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { QRCodeSVG } from "qrcode.react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { Check, Copy, Crown, Pause, Smartphone, TriangleAlert, Users } from "lucide-react";
+import { Check, Crown, Pause, TriangleAlert, Users } from "lucide-react";
 import { AdvogadoDoDiaboHost } from "../games/AdvogadoDoDiaboHost";
 import { QuemErraPagaHost } from "../games/QuemErraPagaHost";
 import { phaseProgress, secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { getGame, phaseDuration } from "../games/registry";
 import { activeTransport } from "../party/channel";
-import { buildInviteUrl, isValidPin } from "../party/pin";
+import { isValidPin } from "../party/pin";
 import { roomCapacity } from "../party/partyReducer";
+import { InviteCard } from "../party/InviteCard";
 import { usePartyRoom } from "../party/usePartyRoom";
 import { useGameIdentity, usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
@@ -40,7 +39,6 @@ export function HostLobbyScreen() {
 function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
   // Espectador: a TV só exibe. Nunca comanda e nunca vira autoridade.
   const { state } = usePartyRoom(pin, { spectator: true });
-  const [copied, setCopied] = useState(false);
 
   usePartyTheme(state);
   // Enquanto o jogo roda, a paleta é a do jogo; no lobby volta a da party.
@@ -71,7 +69,6 @@ function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
   }
 
   const game = getGame(state.settings.gameId);
-  const inviteUrl = buildInviteUrl(pin, window.location.origin);
   const capacity = roomCapacity(state.settings.gameId);
   const missing = Math.max(0, game.minPlayers - state.players.length);
   const host = state.players.find((player) => player.id === state.hostPlayerId) ?? null;
@@ -81,15 +78,6 @@ function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
   const total = phaseDuration(state.settings.gameId, state.phase);
   const progress = phaseProgress(state, now, total);
 
-  const copyInvite = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  };
 
   return (
     <div
@@ -143,33 +131,7 @@ function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
         <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
           {/* Como entrar. */}
           <div className="flex flex-col gap-5">
-            <Knockout tilt="tilt-1" className="p-6 text-center">
-              <p className="font-hand text-xl uppercase tracking-widest">Entre com o PIN</p>
-              <p className="font-display text-[clamp(4rem,12vw,7rem)] font-extrabold leading-none tracking-[0.15em]">
-                {pin}
-              </p>
-            </Knockout>
-
-            <Card tilt="tilt-2" className="flex flex-col items-center gap-4 p-6">
-              <p className="flex items-center gap-2 font-hand text-xl uppercase">
-                <Smartphone strokeWidth={2.5} className="size-6" />
-                Ou aponte a câmera
-              </p>
-              <div className="border-4 border-ink bg-paper p-3">
-                <QRCodeSVG value={inviteUrl} size={180} level="M" bgColor="#ffffff" fgColor="#000000" />
-              </div>
-              <code className="w-full break-all text-center font-ui text-sm">{inviteUrl}</code>
-              <button
-                type="button"
-                onClick={copyInvite}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 border-4 border-ink
-                           bg-paper px-4 py-2 font-action text-base uppercase shadow-brutal
-                           focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ink"
-              >
-                {copied ? <Check strokeWidth={3} className="size-5" /> : <Copy strokeWidth={3} className="size-5" />}
-                {copied ? "Link copiado" : "Copiar convite"}
-              </button>
-            </Card>
+            <InviteCard pin={pin} variant="tv" />
 
             {transport === "local" ? (
               <Card variant="dashed" className="flex gap-3 p-4">
