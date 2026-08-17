@@ -85,9 +85,10 @@ const DEVIL_FLOW: Partial<Record<PartyPhase, PartyPhase>> = {
 const DEVIL_DURATIONS: PhaseDurations = {
   GAME_INTRO: 0, // espera o host aceitar o aviso
   TOPIC_SPIN: 7000, // a roleta gira ~5,2s e sobra respiro
-  TOPIC_REVEAL: 4000,
+  // Tempo de LER a tese e reagir. Quatro segundos não davam.
+  TOPIC_REVEAL: 7000,
   PLAYER_SPIN: 4000,
-  PLAYER_REVEAL: 3500,
+  PLAYER_REVEAL: 4000,
   PREPARATION: DEVIL_PREPARATION_TIME * 1000,
   COUNTDOWN: 3200,
   PRESENTATION: DEVIL_PRESENTATION_TIME * 1000,

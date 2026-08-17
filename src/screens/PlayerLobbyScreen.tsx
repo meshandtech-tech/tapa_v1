@@ -433,7 +433,12 @@ function PlayerLobby({ pin }: { pin: string }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="zine-grain flex min-h-dvh flex-col items-center justify-center gap-6 bg-accent px-4 py-8">
+    // pb generoso: a barra fixa do host flutua por cima e cobriria o final do
+    // conteúdo — na votação, justamente a última nota.
+    <div
+      className="zine-grain flex min-h-dvh flex-col items-center justify-center gap-6
+                 bg-accent px-4 pb-32 pt-8"
+    >
       <Logo size="sm" />
       {children}
     </div>

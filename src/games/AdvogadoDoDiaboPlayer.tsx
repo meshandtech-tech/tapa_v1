@@ -3,7 +3,9 @@ import { Check, Flame, Timer } from "lucide-react";
 import type { PartyState, Player } from "../party/types";
 import { Card, Knockout } from "../ui/Card";
 import { cn } from "../ui/cn";
-import { currentPresenter, currentTopicText } from "./advogadoDoDiabo";
+import { SlotMachine } from "../ui/SlotMachine";
+import { Wheel } from "../ui/Wheel";
+import { currentPresenter, currentTopicText, remainingPresenters } from "./advogadoDoDiabo";
 
 /** As cinco notas. O número é o que vale; o emoji só ajuda a escolher rápido. */
 export const RATINGS = [
@@ -59,26 +61,38 @@ export function AdvogadoDoDiaboPlayer({
         </Aviso>
       );
 
-    /** Sorteios: o celular acompanha sozinho, sem depender de outra tela. */
+    /**
+     * A MESMA roleta da tela grande, no celular. Três pontinhos piscando não
+     * são um sorteio — são uma espera. O suspense é o jogo.
+     */
     case "TOPIC_SPIN":
-    case "PLAYER_SPIN":
       return (
-        <Aviso>
-          <h2 className="font-display text-2xl font-extrabold uppercase">
-            {state.phase === "PLAYER_SPIN" ? "Sorteando o advogado" : "Sorteando a tese"}
+        <div className="flex w-full max-w-md flex-col items-center gap-4">
+          <h2 className="font-display text-2xl font-extrabold uppercase text-on-accent">
+            Sorteando a tese
           </h2>
-          <motion.div
-            className="mt-5 flex justify-center gap-2"
-            animate={{ opacity: [0.3, 1, 0.3] }}
-            transition={{ repeat: Infinity, duration: 1.2 }}
-            aria-hidden="true"
-          >
-            <span className="size-4 rounded-full bg-ink" />
-            <span className="size-4 rounded-full bg-ink" />
-            <span className="size-4 rounded-full bg-ink" />
-          </motion.div>
-        </Aviso>
+          <Wheel
+            items={(state.devil?.candidates ?? []).map((_, i) => String(i + 1))}
+            winnerIndex={state.devil?.winner ?? 0}
+          />
+        </div>
       );
+
+    /** Caça-níquel de nomes, igual à tela grande. */
+    case "PLAYER_SPIN": {
+      const candidatos = [...remainingPresenters(state), presenter]
+        .filter((p): p is NonNullable<typeof p> => !!p)
+        .map((p) => p.nickname);
+      const vencedor = Math.max(0, candidatos.indexOf(presenter?.nickname ?? ""));
+      return (
+        <div className="flex w-full max-w-md flex-col items-center gap-4">
+          <h2 className="font-display text-2xl font-extrabold uppercase text-on-accent">
+            Quem vai defender?
+          </h2>
+          <SlotMachine items={candidatos} winnerIndex={vencedor} />
+        </div>
+      );
+    }
 
     /** A tese já saiu: todo celular mostra, TV ou não. */
     case "TOPIC_REVEAL":
@@ -102,7 +116,24 @@ export function AdvogadoDoDiaboPlayer({
         </div>
       );
 
+    /** Só a revelação. SEM relógio — senão parece que a preparação já começou. */
     case "PLAYER_REVEAL":
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 240, damping: 15 }}
+          className="w-full max-w-md"
+        >
+          <Knockout tilt="tilt-1" className="p-8 text-center">
+            <p className="font-action text-sm uppercase">O advogado do diabo é</p>
+            <p className="mt-3 font-display text-5xl font-extrabold uppercase leading-none">
+              {souEu ? "VOCÊ" : presenter?.nickname}
+            </p>
+          </Knockout>
+        </motion.div>
+      );
+
     case "PREPARATION":
     case "COUNTDOWN":
     case "PRESENTATION": {
