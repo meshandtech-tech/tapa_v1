@@ -41,7 +41,14 @@ export type PartyPhase =
   | "COUNTDOWN"
   | "PRESENTATION"
   | "VOTING"
-  | "SCORE_REVEAL";
+  | "SCORE_REVEAL"
+  // Telefone Sem Fio de Desenho
+  | "DRAW_STEP"
+  | "GUESS_STEP"
+  /** "Passando os cadernos..." — respiro curto entre um passo e o seguinte. */
+  | "PASSING"
+  | "REVEAL_INTRO"
+  | "REVEAL_PAGE";
 
 /**
  * Cores de identidade dos jogadores — marcadores de fanzine.
@@ -135,6 +142,70 @@ export interface DevilState {
   disclaimerAccepted: boolean;
 }
 
+/** Como a contribuição chegou. `timeout` e `failed` seguem valendo página. */
+export type SubmissionStatus = "submitted" | "timeout" | "failed";
+
+export interface DrawingPageDraw {
+  type: "drawing";
+  playerId: string;
+  /** Endereço no Storage. `null` = entregou em branco ou o envio falhou. */
+  url: string | null;
+  /**
+   * Traços serializados. Só preenchido quando não há Storage — dev local sem
+   * Supabase, ou upload que falhou de vez. É o que impede a corrente de
+   * quebrar por causa de wi-fi ruim.
+   */
+  strokes?: string;
+  status: SubmissionStatus;
+}
+
+export interface DrawingPageGuess {
+  type: "guess";
+  playerId: string;
+  text: string;
+  status: SubmissionStatus;
+}
+
+/** Uma página do caderno. O índice na lista é o passo em que foi feita. */
+export type DrawingPage = DrawingPageDraw | DrawingPageGuess;
+
+/** Um caderno. Nasce com um tema secreto e vai passando de mão em mão. */
+export interface DrawingChain {
+  /** Aleatório de propósito: vira o caminho no Storage, e índice seria chutável. */
+  id: string;
+  ownerPlayerId: string;
+  promptId: string;
+  originalPrompt: string;
+  acceptedAnswers: string[];
+  pages: DrawingPage[];
+}
+
+/**
+ * Estado do Telefone Sem Fio de Desenho.
+ *
+ * `seatOrder` é embaralhado UMA vez e congelado até a partida acabar: quem
+ * recebe qual caderno sai de `(corrente + passo) % N`, então nada precisa ser
+ * guardado sobre atribuições — elas se recalculam a partir daqui. Recalcular a
+ * ordem quando alguém reconecta embaralharia a partida inteira no meio.
+ */
+export interface DrawingState {
+  matchId: string;
+  seatOrder: string[];
+  stepIndex: number;
+  /** Total de contribuições. Par sempre, para terminar em frase escrita. */
+  stepCount: number;
+  chains: DrawingChain[];
+  usedPromptIds: string[];
+  /** Quem já entregou o passo corrente. É a trava contra entrega dupla. */
+  submitted: string[];
+  revealChainIndex: number;
+  revealPageIndex: number;
+  /** O host ligou o avanço automático do slideshow? */
+  revealAutoPlay: boolean;
+  /** Cadernos que o host validou na mão ("carro" e "automóvel"). */
+  manualMatches: string[];
+}
+
 export interface PartyState {
   version: 1;
   pin: string;
@@ -148,6 +219,8 @@ export interface PartyState {
   quiz: QuizState | null;
   /** Idem, para o "Advogado do Diabo". Só um dos dois vive por vez. */
   devil: DevilState | null;
+  /** Idem, para o Telefone Sem Fio de Desenho. */
+  drawing: DrawingState | null;
   /**
    * Quem manda na sala. O host é um jogador como os outros — joga, pontua —
    * e só ganha um painel de controles no próprio celular.

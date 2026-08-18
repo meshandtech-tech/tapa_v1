@@ -5,8 +5,10 @@ import {
   drawDifferentPunishment,
   drawOrder,
   drawPunishment,
-  everyoneAnswered,
 } from "../games/quemErraPaga";
+import { phaseCompleteEarly, submitGrace } from "../games/completion";
+import { drawPrompts } from "../data/drawingPrompts";
+import { randomId, shuffle } from "../games/drawing/random";
 import { getGame } from "../games/registry";
 import { createPartyChannel, type HostCommand, type PartyChannel } from "./channel";
 import { createPartyState, partyReducer, type PartyAction } from "./partyReducer";
@@ -40,6 +42,21 @@ function enrichCommand(
   const now = Date.now();
   switch (command.type) {
     case "START_GAME": {
+      if (state.settings.gameId === "drawing-telephone") {
+        // Tudo o que é sorteio acontece AQUI, uma vez, na autoridade: ordem da
+        // mesa, temas e os ids dos cadernos. O reducer só recebe o resultado.
+        const seatOrder = shuffle(state.players.map((player) => player.id));
+        return {
+          type: "START_GAME",
+          now,
+          seatOrder,
+          prompts: drawPrompts(seatOrder.length, state.drawing?.usedPromptIds ?? []),
+          // Id imprevisível por caderno: é ele que vira caminho no Storage, e
+          // índice sequencial deixaria as URLs dos outros chutáveis.
+          chainIds: seatOrder.map(() => randomId()),
+          matchId: randomId(),
+        };
+      }
       const game = getGame(state.settings.gameId);
       const deck = getDeck(state.settings.difficulty);
       return { type: "START_GAME", now, order: drawOrder(deck.length, game.rounds) };
@@ -136,6 +153,18 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
             break;
           case "VOTE":
             dispatch({ type: "VOTE", playerId: event.playerId, rating: event.rating });
+            break;
+          case "SUBMIT_DRAWING":
+            dispatch({
+              type: "SUBMIT_DRAWING",
+              playerId: event.playerId,
+              url: event.url,
+              ...(event.strokes ? { strokes: event.strokes } : {}),
+              ...(event.status ? { status: event.status } : {}),
+            });
+            break;
+          case "SUBMIT_GUESS":
+            dispatch({ type: "SUBMIT_GUESS", playerId: event.playerId, text: event.text });
             break;
           case "CLAIM_HOST":
             dispatch({ type: "CLAIM_HOST", playerId: event.playerId });
@@ -236,9 +265,10 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
    */
   const running = authority && !!state && state.phaseDeadline > 0 && state.pausedAt === null;
   const clock = useNow(running);
-  const venceu = running && !!state && clock >= state.phaseDeadline;
-  const todosResponderam =
-    authority && state?.phase === "ROUND_ACTIVE" && everyoneAnswered(state);
+  // A folga existe para o desenho: o traço já estava pronto, só a rede que
+  // demorou a subir a imagem. Ver `submitGrace`.
+  const venceu = running && !!state && clock >= state.phaseDeadline + submitGrace(state);
+  const todosResponderam = authority && !!state && phaseCompleteEarly(state);
 
   // Mantém a tela acesa enquanto este aparelho comanda uma fase cronometrada:
   // celular bloqueado congela os temporizadores e a partida trava para todos.
@@ -320,6 +350,36 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
     [send],
   );
 
+  /**
+   * Entrega do desenho. Sobe o ENDEREÇO da imagem, nunca a imagem — e vai uma
+   * vez só: `recordPage` no reducer ignora a segunda, então dedo batendo duas
+   * vezes no botão não vira duas páginas.
+   */
+  const submitDrawing = useCallback(
+    (payload: { url: string | null; strokes?: string; status?: "submitted" | "timeout" | "failed" }) => {
+      const current = meRef.current;
+      if (!current) return;
+      send(
+        { type: "SUBMIT_DRAWING", playerId: current.id, ...payload },
+        () => channelRef.current?.broadcast({
+          type: "SUBMIT_DRAWING", playerId: current.id, ...payload,
+        }),
+      );
+    },
+    [send],
+  );
+
+  const submitGuess = useCallback(
+    (text: string) => {
+      const current = meRef.current;
+      if (!current) return;
+      send({ type: "SUBMIT_GUESS", playerId: current.id, text }, () =>
+        channelRef.current?.broadcast({ type: "SUBMIT_GUESS", playerId: current.id, text }),
+      );
+    },
+    [send],
+  );
+
   const sendHostCommand = useCallback(
     (command: HostCommand) => {
       const current = meRef.current;
@@ -349,6 +409,8 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
     updateMe,
     answer,
     vote,
+    submitDrawing,
+    submitGuess,
     sendHostCommand,
     closeParty,
   };

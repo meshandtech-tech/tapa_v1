@@ -1,4 +1,14 @@
+import type { DrawingPrompt } from "../data/drawingPrompts";
 import { getDeck } from "../data/questions";
+import { DRAWING_TELEPHONE_CONFIG } from "../games/drawing/config";
+import { stepType } from "../games/drawing/routing";
+import {
+  comparisonPageIndex,
+  createDrawingState,
+  drawingScores,
+  fillMissingPages,
+  recordPage,
+} from "../games/drawing/state";
 import {
   createDevilState,
   currentPresenter,
@@ -22,6 +32,8 @@ import {
   type Player,
   type CustomTopic,
   type DevilState,
+  type DrawingState,
+  type SubmissionStatus,
   type ThemeId,
   type ThemeMode,
 } from "./types";
@@ -59,6 +71,7 @@ export function createPartyState(
     createdAt: now,
     quiz: null,
     devil: null,
+    drawing: null,
     hostPlayerId: null,
     phaseDeadline: 0,
     pausedAt: null,
@@ -82,7 +95,16 @@ export type PartyAction =
   | { type: "SET_THEME"; themeId?: ThemeId; themeMode?: ThemeMode }
   | { type: "SCORE"; playerId: string; delta: number }
   /** `order` e `now` vêm do host: o reducer continua puro e testável. */
-  | { type: "START_GAME"; order?: number[]; now?: number }
+  | {
+      type: "START_GAME";
+      order?: number[];
+      now?: number;
+      /** Só para o jogo de desenho — sorteados pela autoridade. */
+      seatOrder?: string[];
+      prompts?: DrawingPrompt[];
+      chainIds?: string[];
+      matchId?: string;
+    }
   | { type: "ANSWER"; playerId: string; optionIndex: number; now?: number }
   | { type: "ADVANCE"; forfeit?: boolean; now?: number; punishmentIndex?: number }
   /** Ninguém topou a prenda: sorteia outra sem sair da roleta. */
@@ -95,6 +117,19 @@ export type PartyAction =
   | { type: "ADD_CUSTOM_TOPIC"; topic: CustomTopic }
   | { type: "EDIT_CUSTOM_TOPIC"; id: string; text: string; aboutPlayerId?: string }
   | { type: "REMOVE_CUSTOM_TOPIC"; id: string }
+  /** Entrega de um desenho. `url` vazio = branco, ou upload que não foi. */
+  | {
+      type: "SUBMIT_DRAWING";
+      playerId: string;
+      url: string | null;
+      strokes?: string;
+      status?: SubmissionStatus;
+    }
+  | { type: "SUBMIT_GUESS"; playerId: string; text: string }
+  /** Liga ou desliga o avanço automático do slideshow da revelação. */
+  | { type: "SET_REVEAL_AUTOPLAY"; autoPlay: boolean; now?: number }
+  /** O host bancou que o palpite valia, mesmo sem casar na comparação. */
+  | { type: "COUNT_AS_MATCH"; chainId: string }
   | { type: "PAUSE"; now?: number }
   | { type: "RESUME"; now?: number }
   | { type: "RESET_TO_LOBBY" };
@@ -107,7 +142,7 @@ export type PartyAction =
 const TRANSITIONS: Partial<Record<PartyPhase, readonly PartyPhase[]>> = {
   // Quem Erra, Paga
   LOBBY: ["GAME_INTRO"],
-  GAME_INTRO: ["ROUND_ACTIVE", "TOPIC_SPIN"],
+  GAME_INTRO: ["ROUND_ACTIVE", "TOPIC_SPIN", "DRAW_STEP"],
   ROUND_ACTIVE: ["REVEAL_ANSWER"],
   REVEAL_ANSWER: ["FORFEIT_WHEEL", "LEADERBOARD"],
   FORFEIT_WHEEL: ["LEADERBOARD"],
@@ -122,6 +157,12 @@ const TRANSITIONS: Partial<Record<PartyPhase, readonly PartyPhase[]>> = {
   PRESENTATION: ["VOTING"],
   VOTING: ["SCORE_REVEAL"],
   SCORE_REVEAL: ["TOPIC_SPIN", "GAME_OVER"],
+  // Telefone Sem Fio de Desenho
+  DRAW_STEP: ["PASSING"],
+  GUESS_STEP: ["PASSING"],
+  PASSING: ["DRAW_STEP", "GUESS_STEP", "REVEAL_INTRO"],
+  REVEAL_INTRO: ["REVEAL_PAGE"],
+  REVEAL_PAGE: ["REVEAL_PAGE", "GAME_OVER"],
   GAME_OVER: [],
 };
 
@@ -243,8 +284,13 @@ function enterPhase(
   phase: PartyPhase,
   now: number,
   patch: Partial<PartyState> = {},
+  /**
+   * Sobrepõe a duração declarada no registry. Existe por causa da revelação:
+   * a MESMA fase espera o host ou anda sozinha, conforme o auto-play.
+   */
+  duracao?: number,
 ): PartyState {
-  const duration = phaseDuration(state.settings.gameId, phase);
+  const duration = duracao ?? phaseDuration(state.settings.gameId, phase);
   return {
     ...state,
     ...patch,
@@ -338,6 +384,97 @@ function advanceDevil(state: PartyState, now: number): PartyState {
   }
 }
 
+/**
+ * Fluxo do Telefone Sem Fio de Desenho.
+ *
+ * Corre praticamente sozinho: cada passo fecha quando todo mundo entregou ou
+ * quando o prazo vence, sem ninguém apertar nada. O host só volta a mandar na
+ * revelação, que é onde o grupo está rindo e o ritmo tem de ser humano.
+ */
+function advanceDrawing(state: PartyState, now: number): PartyState {
+  const drawing = state.drawing;
+  if (!drawing) return state;
+
+  switch (state.phase) {
+    case "GAME_INTRO":
+      return enterPhase(state, "DRAW_STEP", now, {
+        drawing: { ...drawing, stepIndex: 0, submitted: [] },
+        round: 1,
+      });
+
+    case "DRAW_STEP":
+    case "GUESS_STEP":
+      // Quem não entregou vira página em branco. Um desenho vazio no meio do
+      // caderno é parte do caos; travar a sala esperando não é.
+      return enterPhase(state, "PASSING", now, { drawing: fillMissingPages(drawing) });
+
+    case "PASSING": {
+      const proximo = drawing.stepIndex + 1;
+      if (proximo >= drawing.stepCount) {
+        return enterPhase(state, "REVEAL_INTRO", now, {
+          drawing: { ...drawing, revealChainIndex: 0, revealPageIndex: 0 },
+        });
+      }
+      return enterPhase(
+        state,
+        stepType(proximo) === "draw" ? "DRAW_STEP" : "GUESS_STEP",
+        now,
+        { drawing: { ...drawing, stepIndex: proximo, submitted: [] }, round: proximo + 1 },
+      );
+    }
+
+    case "REVEAL_INTRO":
+      return enterRevealPage(state, drawing, 0, 0, now);
+
+    case "REVEAL_PAGE": {
+      if (drawing.revealPageIndex < comparisonPageIndex(drawing.stepCount)) {
+        return enterRevealPage(
+          state, drawing, drawing.revealChainIndex, drawing.revealPageIndex + 1, now,
+        );
+      }
+      const proximoCaderno = drawing.revealChainIndex + 1;
+      if (proximoCaderno < drawing.chains.length) {
+        return enterRevealPage(state, drawing, proximoCaderno, 0, now);
+      }
+      return enterPhase(applyDrawingScores(state, drawing), "GAME_OVER", now);
+    }
+
+    default:
+      return state;
+  }
+}
+
+/** Uma página do slideshow. Espera o host, ou anda sozinha no auto-play. */
+function enterRevealPage(
+  state: PartyState,
+  drawing: DrawingState,
+  chainIndex: number,
+  pageIndex: number,
+  now: number,
+): PartyState {
+  return enterPhase(
+    state,
+    "REVEAL_PAGE",
+    now,
+    { drawing: { ...drawing, revealChainIndex: chainIndex, revealPageIndex: pageIndex } },
+    drawing.revealAutoPlay ? DRAWING_TELEPHONE_CONFIG.revealPageMs : 0,
+  );
+}
+
+/**
+ * Placar final: um ponto por caderno cuja palavra chegou inteira do outro lado.
+ *
+ * Recalculado dos cadernos, nunca somado ao longo da revelação — assim rever
+ * uma página, ou o host validar um palpite na mão, não pontua duas vezes.
+ */
+function applyDrawingScores(state: PartyState, drawing: DrawingState): PartyState {
+  const pontos = drawingScores(drawing);
+  return {
+    ...state,
+    players: state.players.map((player) => ({ ...player, score: pontos[player.id] ?? 0 })),
+  };
+}
+
 function pickWinner(total: number): number {
   if (total <= 0) return 0;
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
@@ -355,6 +492,7 @@ function advance(
   punishmentIndex: number,
 ): PartyState {
   if (state.settings.gameId === "advogado-do-diabo") return advanceDevil(state, now);
+  if (state.settings.gameId === "drawing-telephone") return advanceDrawing(state, now);
   const game = getGame(state.settings.gameId);
   // A ordem sorteada manda no total de rodadas: o deck pode ser menor que
   // `game.rounds`, e aí a partida acaba junto com as perguntas.
@@ -456,7 +594,27 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
           players,
           round: 0,
           quiz: null,
+          drawing: null,
           devil: createDevilState(players, state.devil?.customTopics ?? []),
+        });
+      }
+
+      if (state.settings.gameId === "drawing-telephone") {
+        // Ordem sorteada UMA vez e congelada: recalcular quando alguém
+        // reconecta embaralharia a partida inteira no meio.
+        const seatOrder = action.seatOrder ?? players.map((player) => player.id);
+        return enterPhase(state, "GAME_INTRO", now, {
+          players,
+          round: 0,
+          quiz: null,
+          devil: null,
+          drawing: createDrawingState(
+            players,
+            seatOrder,
+            action.prompts ?? [],
+            action.chainIds ?? [],
+            action.matchId ?? String(now),
+          ),
         });
       }
 
@@ -466,6 +624,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
         players,
         round: 0,
         devil: null,
+        drawing: null,
         quiz: {
           order: action.order ?? sequentialOrder(deck.length, game.rounds),
           answers: {},
@@ -574,6 +733,67 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
       return { ...state, devil: withCustomTopics(state, lista) };
     }
 
+    /**
+     * Entrega de desenho. A trava contra entrega dupla vive no `recordPage`:
+     * dedo batendo duas vezes no botão não pode virar duas páginas.
+     */
+    case "SUBMIT_DRAWING": {
+      if (state.phase !== "DRAW_STEP" || !state.drawing) return state;
+      return {
+        ...state,
+        drawing: recordPage(state.drawing, action.playerId, {
+          type: "drawing",
+          playerId: action.playerId,
+          url: action.url,
+          ...(action.strokes ? { strokes: action.strokes } : {}),
+          status: action.status ?? "submitted",
+        }),
+      };
+    }
+
+    case "SUBMIT_GUESS": {
+      if (state.phase !== "GUESS_STEP" || !state.drawing) return state;
+      const texto = action.text.trim().slice(0, 60);
+      if (!texto) return state;
+      return {
+        ...state,
+        drawing: recordPage(state.drawing, action.playerId, {
+          type: "guess",
+          playerId: action.playerId,
+          text: texto,
+          status: "submitted",
+        }),
+      };
+    }
+
+    /**
+     * Ligar o auto-play tem de rearmar a página corrente, senão o slideshow
+     * ficaria parado esperando um toque que o host acabou de dispensar.
+     */
+    case "SET_REVEAL_AUTOPLAY": {
+      if (!state.drawing) return state;
+      const drawing = { ...state.drawing, revealAutoPlay: action.autoPlay };
+      if (state.phase !== "REVEAL_PAGE") return { ...state, drawing };
+      const now = action.now ?? Date.now();
+      return enterPhase(
+        state, "REVEAL_PAGE", now, { drawing },
+        action.autoPlay ? DRAWING_TELEPHONE_CONFIG.revealPageMs : 0,
+      );
+    }
+
+    case "COUNT_AS_MATCH": {
+      if (!state.drawing) return state;
+      if (state.drawing.manualMatches.includes(action.chainId)) return state;
+      if (!state.drawing.chains.some((chain) => chain.id === action.chainId)) return state;
+      return {
+        ...state,
+        drawing: {
+          ...state.drawing,
+          manualMatches: [...state.drawing.manualMatches, action.chainId],
+        },
+      };
+    }
+
     case "ADVANCE":
       // Pausado, o relógio não corre — mas o host ainda pode pular na mão.
       return advance(
@@ -606,6 +826,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
         phase: "LOBBY",
         round: 0,
         quiz: null,
+        drawing: null,
         // Preserva as teses escritas pelo host ao voltar para o lobby.
         devil: state.devil ? withCustomTopics(state, state.devil.customTopics) : null,
         phaseDeadline: 0,
