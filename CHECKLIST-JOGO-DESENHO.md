@@ -22,32 +22,32 @@ Plano completo: `PLANO-JOGO-DESENHO.txt`
 - [x] `partyReducer.ts` — `advanceDrawing`, submissões idempotentes, timeout
 - [x] `state.test.ts` — 51 testes: submissão dupla vira no-op, timeout segue,
       tema não repete na mesma partida
-- [ ] `PartyChannel.ts` — eventos de submissão e comandos de revelação
-- [ ] `usePartyRoom.ts` — generalizar o "todos já responderam" (hoje preso ao quiz)
+- [x] `PartyChannel.ts` — eventos de submissão e comandos de revelação
+- [x] `usePartyRoom.ts` — generalizar o "todos já responderam" (hoje preso ao quiz)
 
 ## Desenho
 
-- [ ] `DrawingCanvas.tsx` — Pointer Events, DPR, ref + rAF, traço suavizado
-- [ ] `export.ts` — WebP com queda para PNG
-- [ ] `upload.ts` — Supabase Storage com repetição, queda para traços pelo canal
-- [ ] `draft.ts` — rascunho local, volta depois de um F5
+- [x] `DrawingCanvas.tsx` — Pointer Events, DPR, ref + rAF, traço suavizado
+- [x] `export.ts` — WebP com queda para PNG
+- [x] `lib/storage.ts` — Supabase Storage com repetição, queda para traços pelo canal
+- [x] `draft.ts` — rascunho local, volta depois de um F5
 - [ ] **Bucket no Supabase** — instruções no `.env.example` *(precisa de você)*
 
 ## Telas
 
 - [x] `identity.ts` — paleta papel + `playerTheme(color)` por jogador
-- [ ] `DrawStepScreen.tsx`
-- [ ] `GuessStepScreen.tsx` — teclado do mobile sem salto de página
-- [ ] `WaitingCard.tsx` — `6 / 8 PRONTOS`, avatares acendendo
-- [ ] `PassingScreen.tsx`
-- [ ] `RevealScreen.tsx` — slideshow, autoria, começou × terminou, compartilhar
-- [ ] `DrawingHostActions.tsx`
-- [ ] `registry.ts` + `App.tsx` + `PlayerLobbyScreen.tsx` — ligar tudo
+- [x] `DrawStepScreen.tsx`
+- [x] `GuessStepScreen.tsx` — teclado do mobile sem salto de página
+- [x] `WaitingCard.tsx` — `6 / 8 PRONTOS`, avatares acendendo
+- [x] `PassingScreen.tsx`
+- [x] `RevealScreen.tsx` — slideshow, autoria, começou × terminou, compartilhar
+- [x] `DrawingHostActions.tsx`
+- [x] `registry.ts` + `PlayerLobbyScreen.tsx` + `PlayerLobbyScreen.tsx` — ligar tudo
 
 ## Fechamento
 
 - [ ] `npm test` verde (baseline eram 131)
-- [ ] `npm run build` limpo (`tsc -b` é a checagem estática; não há lint)
+- [x] `npm run build` limpo (`tsc -b` é a checagem estática; não há lint)
 - [ ] Partida completa no navegador com 4 jogadores, depois 5 (ímpar)
 - [ ] Desenho: mouse, toque, desfazer, borracha, limpar, rotação de tela
 - [ ] F5 antes de enviar (rascunho volta) e depois de enviar (não reenvia)

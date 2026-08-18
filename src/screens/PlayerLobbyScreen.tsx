@@ -6,7 +6,7 @@ import { isValidPin } from "../party/pin";
 import { canStart, isNicknameTaken, roomCapacity } from "../party/partyReducer";
 import { clearPartyState } from "../party/partyStorage";
 import { usePartyRoom } from "../party/usePartyRoom";
-import { usePartyTheme } from "../party/usePartyTheme";
+import { useGameIdentity, usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
 import { HostControls } from "../party/HostControls";
 import { InviteCard } from "../party/InviteCard";
@@ -15,6 +15,8 @@ import { CustomTopics } from "../games/CustomTopics";
 import { GamePicker } from "../games/GamePicker";
 import { DevilHostActions } from "../games/DevilHostActions";
 import { QuemErraPagaPlayer } from "../games/QuemErraPagaPlayer";
+import { DrawingHostActions } from "../games/drawing/DrawingHostActions";
+import { TelefoneSemFioPlayer } from "../games/drawing/TelefoneSemFioPlayer";
 import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type PartyState, type Player } from "../party/types";
 import { getGame, isGameId } from "../games/registry";
@@ -40,11 +42,25 @@ export function PlayerLobbyScreen() {
 function PlayerLobby({ pin }: { pin: string }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const { state, me, meInParty, isHost, connection, join, updateMe, answer, vote, sendHostCommand } =
-    usePartyRoom(pin);
+  const {
+    state, me, meInParty, isHost, connection,
+    join, updateMe, answer, vote, submitDrawing, submitGuess, sendHostCommand,
+  } = usePartyRoom(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
   usePartyTheme(state);
+
+  /**
+   * No jogo de desenho a tela ganha a cor de QUEM está jogando nela.
+   *
+   * Passa `null` para os outros jogos de propósito: eles nunca tiveram a
+   * identidade aplicada no celular, e ligar isso agora mudaria a cara de dois
+   * jogos que já estão na rua como efeito colateral de um terceiro.
+   */
+  useGameIdentity(
+    state?.settings.gameId === "drawing-telephone" ? state : null,
+    meInParty,
+  );
 
   // O relógio precisa correr em toda fase cronometrada, não só na rodada do quiz.
   const now = useNow((state?.phaseDeadline ?? 0) > 0);
@@ -176,6 +192,15 @@ function PlayerLobby({ pin }: { pin: string }) {
             secondsLeft={computeSecondsLeft(state, now)}
             onVote={vote}
           />
+        ) : state.settings.gameId === "drawing-telephone" ? (
+          <TelefoneSemFioPlayer
+            pin={pin}
+            state={state}
+            me={meInParty}
+            secondsLeft={computeSecondsLeft(state, now)}
+            onSubmitDrawing={submitDrawing}
+            onSubmitGuess={submitGuess}
+          />
         ) : (
           <QuemErraPagaPlayer
             state={state}
@@ -200,6 +225,10 @@ function PlayerLobby({ pin }: { pin: string }) {
 
         {isHost && state.settings.gameId === "advogado-do-diabo" ? (
           <DevilHostActions state={state} send={sendHostCommand} />
+        ) : null}
+
+        {isHost && state.settings.gameId === "drawing-telephone" ? (
+          <DrawingHostActions state={state} send={sendHostCommand} />
         ) : null}
 
         {state.phase === "GAME_OVER" && isHost ? (

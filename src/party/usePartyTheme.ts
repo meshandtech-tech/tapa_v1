@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { presentationTheme } from "../games/identity";
+import { playerTheme, presentationTheme } from "../games/identity";
 import { getGame } from "../games/registry";
 import { useTheme } from "../theme/useTheme";
 import { getPreset } from "../theme/presets";
-import type { PartyState } from "./types";
+import type { PartyState, Player } from "./types";
 
 /**
  * Espelha a cor da party no documento deste aparelho.
@@ -36,7 +36,7 @@ export function usePartyTheme(state: PartyState | null): void {
  * Escreve nas mesmas CSS vars que o ThemeProvider, então é literalmente a
  * mesma operação de trocar de tema; nenhuma tela precisa saber disso.
  */
-export function useGameIdentity(state: PartyState | null): void {
+export function useGameIdentity(state: PartyState | null, me: Player | null = null): void {
   const emJogo = !!state && state.phase !== "LOBBY";
   const gameId = state?.settings.gameId;
   const themeId = state?.settings.themeId;
@@ -45,11 +45,20 @@ export function useGameIdentity(state: PartyState | null): void {
    * o sinal de que agora é a vez de outra pessoa.
    */
   const apresentador = gameId === "advogado-do-diabo" ? (state?.devil?.index ?? -1) : -1;
+  /**
+   * No jogo de desenho a cor é PESSOAL: enquanto eu desenho, a tela é da minha
+   * cor — eu me reconheço no meu ambiente. Na revelação passa a ser a cor de
+   * quem fez aquela página, e é isso que deixa o caminho do caderno legível de
+   * relance: dá para ver o desenho trocando de mão pela troca de cor.
+   */
+  const corPessoal = drawingColor(state, me);
 
   useEffect(() => {
     const root = document.documentElement;
     const paleta =
-      emJogo && apresentador >= 0
+      emJogo && corPessoal
+        ? playerTheme(corPessoal)
+        : emJogo && apresentador >= 0
         ? presentationTheme(apresentador)
         : emJogo && gameId
           ? getGame(gameId).identity
@@ -66,5 +75,27 @@ export function useGameIdentity(state: PartyState | null): void {
       "--tapa-on-accent-contrast",
       paleta.onAccent === "#ffffff" ? "#000000" : "#ffffff",
     );
-  }, [emJogo, gameId, themeId, apresentador]);
+  }, [emJogo, gameId, themeId, apresentador, corPessoal]);
+}
+
+/** De quem é a cor da tela agora, no jogo de desenho. `null` = usa a do jogo. */
+function drawingColor(state: PartyState | null, me: Player | null): string | null {
+  if (!state || state.settings.gameId !== "drawing-telephone" || !state.drawing) return null;
+
+  if (state.phase === "DRAW_STEP" || state.phase === "GUESS_STEP" || state.phase === "PASSING") {
+    return me?.color ?? null;
+  }
+
+  if (state.phase === "REVEAL_PAGE") {
+    const chain = state.drawing.chains[state.drawing.revealChainIndex];
+    // A página 0 é o tema original, que não tem autor — ali vale a cor do dono.
+    if (state.drawing.revealPageIndex === 0) {
+      return state.players.find((player) => player.id === chain?.ownerPlayerId)?.color ?? null;
+    }
+    const page = chain?.pages[state.drawing.revealPageIndex - 1];
+    if (!page) return null;
+    return state.players.find((player) => player.id === page.playerId)?.color ?? null;
+  }
+
+  return null;
 }
