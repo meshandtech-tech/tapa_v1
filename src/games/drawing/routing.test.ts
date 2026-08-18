@@ -14,6 +14,16 @@ import {
  */
 const TAMANHOS = [4, 5, 6, 7, 8, 9, 10];
 
+/**
+ * Salas abaixo do mínimo do jogo.
+ *
+ * Não é tamanho que a gente quer numa festa — com 2 ou 3 pessoas o desenho
+ * quase não tem tempo de se perder, que é a graça. Mas o roteamento tem de ser
+ * são aqui também, porque é isto que sustenta uma build de teste com menos
+ * gente: dá para conferir o jogo a dois sem inventar caminho paralelo.
+ */
+const TAMANHOS_DE_TESTE = [2, 3];
+
 /** Cada sala, com os passos que ela realmente joga. */
 function partida(n: number) {
   const passos = contributionStepCount(n);
@@ -40,7 +50,7 @@ describe("contagem de passos", () => {
   });
 });
 
-describe.each(TAMANHOS)("sala de %i jogadores", (n) => {
+describe.each([...TAMANHOS_DE_TESTE, ...TAMANHOS])("sala de %i jogadores", (n) => {
   const { passos, indices } = partida(n);
 
   it("começa desenhando e termina escrevendo", () => {
