@@ -1,0 +1,461 @@
+# Tapa — Novo jogo: Telefone Sem Fio de Desenho (`drawing-telephone`)
+
+## Context
+
+O Tapa tem hoje dois jogos jogáveis e uma arquitetura de sala que já resolve o
+difícil: um canal só, uma autoridade só (o celular de quem criou a sala), TV
+opcional, prazo de fase compartilhado. Este plano adiciona um terceiro jogo —
+desenhar → adivinhar → desenhar, com a revelação da corrente no fim — reusando
+essa infraestrutura inteira.
+
+**O que já existe e vai ser reusado, não reconstruído:**
+
+- Sala, PIN, QR e link de convite — [InviteCard.tsx](despedida_de_solteiro_/src/party/InviteCard.tsx)
+- Identidade do jogador e avatar — `Player.avatarSeed` + [Avatar.tsx](despedida_de_solteiro_/src/ui/Avatar.tsx),
+  DiceBear Open Peeps, determinístico por seed. Já gera rostos ilimitados com
+  botão de trocar; **não vou criar 12 presets** — o sistema atual entrega mais
+  variedade e colisão é praticamente impossível.
+- **Cor própria de cada jogador** — `Player.color` + `nextAvailableColor` já
+  garantem 10 cores sem repetir na sala. Ver §6.
+- Host, promoção automática e revezamento de autoridade — `ensureHost`,
+  `CLAIM_HOST`, `TAKEOVER_MS` em [usePartyRoom.ts](despedida_de_solteiro_/src/party/usePartyRoom.ts)
+- Auto-host por `phaseDeadline`, pausa/retomada, Wake Lock
+- Seleção de jogo — [GamePicker.tsx](despedida_de_solteiro_/src/games/GamePicker.tsx) lê o registry sozinho
+- Bloqueio de entrada tardia — `joinPlayer` já recusa quem chega fora do `LOBBY`
+- `navigator.share` — o `InviteCard` já usa; a revelação vai reusar (§8)
+
+**Decisões suas, tomadas:**
+
+1. **Desenhos vão para o Supabase Storage.**
+2. **Máquina de estado continua em broadcast** — sigilo no nível da interface.
+   É a opção mais rápida, e velocidade aqui é experiência (§9).
+3. **Revelação por toque do host, com auto-play opcional.**
+4. **Mínimo de 4 jogadores**, máximo 10.
+
+---
+
+## 1. O que este plano resolve
+
+Seu spec assume backend: object storage, RLS, subscriptions filtradas,
+`UNIQUE(sessionId, stepIndex, playerId)`. O Tapa **não tem tabela nenhuma** — o
+Supabase serve só de Realtime broadcast.
+
+Você disse que infra não é o limite, e é verdade — mas depois de olhar o
+caminho crítico, **a resposta certa continua sendo quase nenhuma infra nova**,
+por motivo de desempenho, não de preguiça: cada transição de fase que passasse
+por banco viraria ida e volta de rede num momento em que hoje é instantâneo.
+Banco só melhoraria o sigilo, e sigilo de verdade exigiria login anônimo em
+todo mundo — mais uma coisa para falhar na hora em que cinco amigos entram ao
+mesmo tempo no wi-fi do bar. Então: **Storage sim, tabelas não.**
+
+| Spec pede | Como fica |
+|---|---|
+| Object storage | **Único item de infra novo.** Bucket do Supabase Storage — §7 |
+| Estado servidor-autoritativo | A autoridade única já é isso: um `useReducer`, uma fonte |
+| `UNIQUE(session, step, player)` | `submitted: string[]` no reducer — segunda submissão vira no-op |
+| `phaseVersion` / compare-and-set | Desnecessário: **só um aparelho roda o reducer**, não há corrida |
+| Não vazar segredo | Nível da interface — §9, com o custo dito na cara |
+
+---
+
+## 2. Roteamento — o relógio
+
+Exatamente o que você descreveu: a corrente anda **um assento por rodada,
+sempre no mesmo sentido**. Uma função pura, sem sorteio por rodada:
+
+```ts
+assignee(chainIndex, step) = seatOrder[(chainIndex + step) % N]
+```
+
+`seatOrder` é embaralhado **uma vez** no `START_GAME` e congelado até a partida
+acabar. A corrente `c` pertence ao assento `c`, então no passo 0 cada um desenha
+o próprio prompt secreto; no passo 1 eu recebo o caderno do meu vizinho; no
+passo 2, o do vizinho do vizinho. O caderno gira, as pessoas ficam paradas.
+
+Total de passos, como você especificou:
+
+```ts
+const contributionSteps = playerCount % 2 === 0 ? playerCount : playerCount - 1;
+```
+
+**Verifiquei as invariantes na mão antes de escrever isto** — todas se provam a
+partir da fórmula, e é isso que os testes vão afirmar:
+
+- Passo par → `DRAW`, ímpar → `GUESS`. Passo 0 é desenho; `contributionSteps` é
+  sempre par, logo o último passo é ímpar = **sempre um palpite escrito**. ✓
+- Em cada passo, `c → (c+s) % N` é uma bijeção: todo jogador recebe exatamente
+  uma corrente, toda corrente recebe exatamente um jogador. ✓
+- Como `steps ≤ N`, os deslocamentos são distintos mod N — ninguém toca a mesma
+  corrente duas vezes. ✓
+- **Ninguém adivinha um prompt que já conhece:** `p` só conhece o prompt da
+  corrente `c` se `p == c` (o dono, no passo 0). Adivinhar exige `s` ímpar com
+  `(c+s) % N == c`, ou seja `s ≡ 0 (mod N)` — impossível para `0 < s < N`. ✓
+- Ninguém desenha o próprio palpite. ✓
+
+Exemplo com 5 jogadores (4 passos, `[A,B,C,D,E]`), corrente de A:
+`A desenha → B adivinha → C desenha → D adivinha`. E nunca toca nela.
+
+---
+
+## 3. Modelo de dados
+
+Segue o padrão de `quiz` e `devil`: mais um slot em `PartyState`, um por vez.
+
+```ts
+interface DrawingState {
+  matchId: string;
+  seatOrder: string[];        // congelado no START_GAME
+  stepIndex: number;
+  stepCount: number;          // contributionSteps
+  chains: DrawingChain[];     // uma por assento
+  usedPromptIds: string[];
+  submitted: string[];        // quem já entregou o passo corrente
+  revealChainIndex: number;
+  revealPageIndex: number;
+  revealAutoPlay: boolean;
+  manualMatches: string[];    // chainIds que o host validou na mão
+}
+
+interface DrawingChain {
+  id: string;                 // ALEATÓRIO — vira o caminho no Storage (§7)
+  ownerPlayerId: string;
+  promptId: string;
+  originalPrompt: string;
+  pages: DrawingPage[];       // índice = stepIndex
+}
+
+type DrawingPage =
+  | { type: "drawing"; playerId: string; url: string | null;
+      status: "submitted" | "timeout" | "failed" }
+  | { type: "guess"; playerId: string; text: string;
+      status: "submitted" | "timeout" };
+```
+
+Só URLs e texto curto entram no estado — nunca bitmap. Com 10 correntes × 10
+páginas dá ~20 KB, folgado sob o limite do Realtime, e mantém o arquivo inteiro
+replicado em todo aparelho. **É isso que faz a retomada de autoridade e o F5
+funcionarem** sem servidor: quem assume já tem tudo.
+
+Atribuição derivada, nunca pedida pelo cliente:
+
+```ts
+assignmentFor(state, playerId) → { chainId, stepIndex, stepType, previousPage }
+```
+
+---
+
+## 4. Fases
+
+Novos valores em `PartyPhase`: `DRAW_STEP`, `GUESS_STEP`, `PASSING`,
+`REVEAL_INTRO`, `REVEAL_PAGE`. Fluxo:
+
+```
+GAME_INTRO → DRAW_STEP → PASSING → GUESS_STEP → PASSING → DRAW_STEP → …
+           → REVEAL_INTRO → REVEAL_PAGE (×N) → GAME_OVER
+```
+
+`PASSING` alterna conforme a paridade do passo, decidido em `advanceDrawing()`
+no reducer — mesmo padrão de `advanceDevil()`.
+
+**Armadilha conhecida, e vou evitá-la:** `PHASES` em
+[partyStorage.ts:19](despedida_de_solteiro_/src/party/partyStorage.ts#L19) precisa
+listar as cinco fases novas, e `parsePartyState` precisa de um `isDrawingState`.
+Esquecer isso já derrubou salas inteiras num F5, sem erro visível, quando as
+fases do Advogado entraram.
+
+`enterPhase` ganha um parâmetro opcional de duração — é o que permite
+`REVEAL_PAGE` durar 0 (espera o host) ou ~4s (auto-play) sem duplicar fase.
+
+---
+
+## 5. Config central
+
+```ts
+// src/games/drawing/config.ts
+export const DRAWING_TELEPHONE_CONFIG = {
+  minPlayers: 4,
+  maxPlayers: 10,
+  drawingTimeSeconds: 90,   // DRAWING_TIME_SECONDS
+  guessTimeSeconds: 60,     // GUESS_TIME_SECONDS
+  transitionDurationMs: 1200,
+  revealPageMs: 4000,       // só quando auto-play está ligado
+  submitGraceMs: 3000,      // §6
+};
+```
+
+Nenhum componente repete esses números; `durations` no registry deriva daqui.
+
+---
+
+## 6. A cor de cada jogador
+
+Como você pediu: cada um tem a própria cor e ela acompanha a pessoa.
+`Player.color` e `nextAvailableColor` já existem e já garantem 10 cores sem
+repetir — falta **usar** isso durante o jogo.
+
+O mecanismo também já existe: `presentationTheme()` em
+[identity.ts:82](despedida_de_solteiro_/src/games/identity.ts#L82) troca a paleta
+inteira por CSS vars a cada apresentador do Advogado. Vou generalizar em
+`playerTheme(color)`, que deriva `accent / accentDark / accentSoft / onAccent`
+de uma cor de jogador — com contraste conferido, nunca gerado no chute.
+
+Onde aparece: fundo da minha tela de desenho e de palpite (eu me reconheço no
+meu ambiente), moldura do avatar no lobby e na espera, e — o mais importante —
+**a cor de quem contribuiu em cada página da revelação**, que é o que deixa a
+corrente legível de relance: dá para ver o desenho passando de mão em mão pela
+cor da página.
+
+---
+
+## 7. Desenho — "um Paint bem simples", e responsivo
+
+`src/games/drawing/` como módulo próprio:
+
+- **`strokes.ts`** (puro) — traço em **coordenadas normalizadas 0–1**,
+  simplificação, quantização, serialização e `replayStrokes(ctx, strokes)`.
+  Normalizado resolve rotação de tela e troca de viewport sem distorcer.
+- **`DrawingCanvas.tsx`** — Pointer Events (`pointerdown/move/up/cancel`),
+  `setPointerCapture`, `touch-action: none` **só na superfície**, escala por
+  `devicePixelRatio`. Suavização por curva quadrática entre pontos, para o traço
+  não sair poligonal. Pincel, borracha, desfazer, limpar (com confirmação
+  quando há conteúdo) e enviar. Sem biblioteca de desenho.
+- **`export.ts`** — canvas transparente composto sobre branco na exportação,
+  `toBlob("image/webp")` com detecção real do tipo devolvido e queda para PNG
+  (Safari antigo não codifica WebP).
+- **`upload.ts`** — envio ao Storage com repetição.
+- **`draft.ts`** — rascunho em localStorage por `pin/playerId/stepIndex/chainId`,
+  apagado ao confirmar. É o que devolve o desenho depois de um F5 acidental.
+
+**Prazo e entrega:** o cliente auto-envia ao vencer o prazo; a autoridade espera
+`submitGraceMs` antes de preencher os faltantes como `timeout`. Sem essa folga,
+um upload lento no wi-fi do bar perderia um desenho que a pessoa fez inteiro.
+
+Regra "sem letras nem números" é aviso visual, sem OCR — honra, como você pediu.
+
+### Storage
+
+Duas coisas no painel do Supabase, e só estas:
+
+1. Bucket **público** `tapa-desenhos`, limite de 1 MB por arquivo, MIME restrito
+   a `image/webp, image/png`.
+2. Policy de `INSERT` em `storage.objects` para o papel `anon` nesse bucket.
+   Continua valendo: **nunca a chave `service_role`**, só a anon.
+
+Se precisar, me manda `VITE_SUPABASE_URL` e a anon key — mas provavelmente já
+estão no `.env`, e aí não preciso de credencial nenhuma sua.
+
+Caminho usa o **`chainId` aleatório**, não o índice:
+
+```
+tapa-desenhos/{pin}/{matchId}/{chainId}/step-{stepIndex}.webp
+```
+
+Índice sequencial deixaria as URLs das outras correntes adivinháveis durante a
+partida. Com id aleatório, não dá para chutar.
+
+**Sem Supabase configurado** (dev local, BroadcastChannel), o upload cai
+automaticamente para os traços serializados pelo canal — o jogo continua
+inteiramente jogável offline. O mesmo caminho é a rede de segurança quando o
+upload falha de vez, então a corrente nunca quebra por wi-fi ruim. Custa pouco
+porque `strokes.ts` já existe para o rascunho local.
+
+---
+
+## 8. Telas — e a revelação, que é o produto
+
+- **`DrawStepScreen`** — cabeçalho compacto, prompt, cronômetro, canvas ocupando
+  o resto, barra inferior alcançável com uma mão. Respeita `env(safe-area-inset-*)`.
+- **`GuessStepScreen`** — desenho + input grande. Teclado do mobile: campo e
+  botão continuam visíveis, sem salto de página.
+- **`WaitingCard`** — `DESENHO ENVIADO ✓`, `6 / 8 PRONTOS`, avatares acendendo
+  na cor de cada um.
+- **`PassingScreen`** — ~1,2s, caderno passando.
+- **`RevealScreen`** — **o slideshow**. Uma página por tela, cheia: a palavra
+  original, depois desenho, depois palpite, na cor de quem contribuiu, com
+  avatar e nome (autoria só aparece aqui). Transição de virar página. Host
+  controla, com auto-play opcional. Pré-carrega a próxima imagem, então o
+  avanço nunca mostra tela em branco.
+  - Fecha cada caderno com **começou como × terminou como**, e
+    `SOBREVIVEU! 🎉` ou `PERDEU NO CAMINHO 😭`.
+  - `CONTAR COMO ACERTO` para o host, quando o palpite é obviamente equivalente.
+- **Compartilhar** — você pediu que fosse fácil de printar ou mandar. Em vez de
+  depender de print, a tela de fecho compõe a corrente inteira numa imagem alta
+  (reusando o `export.ts` que já vou escrever) e abre o `navigator.share` —
+  mesmo caminho que o `InviteCard` já usa para o WhatsApp. Cada tela do
+  slideshow também é desenhada para caber num print, sem controles cortando.
+
+Controles de emergência entram no `HostControls` que já existe.
+
+Identidade visual do jogo em `identity.ts`: papel off-white, tipografia preta —
+distinta dos cinco jogos saturados, e é a direção "caderno de rascunho". No
+lobby e na revelação vale essa; durante o desenho vale a cor do jogador (§6).
+
+---
+
+## 9. Orçamento de desempenho
+
+Você repetiu duas vezes que é experiência, então vale escrever o alvo em vez de
+prometer "rápido":
+
+- **Traço a 60 fps.** Ponteiro escreve em `ref`, desenho sai em
+  `requestAnimationFrame`, o React não re-renderiza durante o traço. Só estado
+  de alto nível (ferramenta, nº de traços, enviado) passa por `useState`.
+- **Zero rede enquanto se desenha.** Nenhuma coordenada trafega. Uma única
+  subida, no envio.
+- **Transição de fase instantânea** — broadcast, sem ida e volta a banco. Foi o
+  motivo real de manter a máquina de estado fora de tabelas.
+- **Revelação sem espera** — a próxima imagem é pré-carregada durante a página
+  atual, e o arquivo já está no estado de todo mundo.
+- **Bundle** — o módulo de desenho entra por `lazy import`, como já é feito com
+  as telas que usam avatar (~267 kB do Open Peeps). Quem só quer o quiz não
+  baixa o canvas.
+
+**O custo que aceitamos, dito na cara:** o sigilo é da interface, não do
+protocolo. Todo aparelho recebe o `PartyState` inteiro, e quem abrir o devtools
+vê os prompts das outras correntes. As URLs de desenho são impossíveis de
+adivinhar e nenhuma tela renderiza o que não é sua atribuição — para uma mesa
+de bar isso é proporcional, e é a mesma natureza da regra "não escreva letras".
+Se um dia incomodar, o caminho é login anônimo + tabela + RLS, e o acesso às
+correntes fica atrás de uma função só para essa troca ser contida.
+
+Segundo ponto: **10 jogadores dão partida longa** — 10 passos ≈ 12,5 min, mais
+10 cadernos de revelação. O auto-play ajuda; se cansar, baixar
+`drawingTimeSeconds` é um número só.
+
+---
+
+## 10. Arquivos
+
+**Novos** — `src/games/drawing/`: `config.ts`, `routing.ts`, `strokes.ts`,
+`export.ts`, `upload.ts`, `draft.ts`, `matching.ts`, `DrawingCanvas.tsx`,
+`DrawStepScreen.tsx`, `GuessStepScreen.tsx`, `PassingScreen.tsx`,
+`RevealScreen.tsx`, `WaitingCard.tsx`, `DrawingHostActions.tsx`.
+Mais `src/data/drawingPrompts.ts` (~120 prompts originais em PT-BR, desenháveis,
+com `acceptedAnswers`) e `src/lib/storage.ts`.
+
+**Modificados:** [types.ts](despedida_de_solteiro_/src/party/types.ts) (fases +
+`DrawingState`), [partyReducer.ts](despedida_de_solteiro_/src/party/partyReducer.ts)
+(`advanceDrawing`, `SUBMIT_DRAWING`, `SUBMIT_GUESS`, revelação),
+[partyStorage.ts](despedida_de_solteiro_/src/party/partyStorage.ts) (`PHASES` +
+validador), [registry.ts](despedida_de_solteiro_/src/games/registry.ts) (jogo novo),
+[identity.ts](despedida_de_solteiro_/src/games/identity.ts) (paleta papel +
+`playerTheme`),
+[PartyChannel.ts](despedida_de_solteiro_/src/party/channel/PartyChannel.ts) (eventos
+de submissão + comandos de revelação),
+[usePartyRoom.ts](despedida_de_solteiro_/src/party/usePartyRoom.ts) (generalizar o
+`todosResponderam`, hoje preso a `ROUND_ACTIVE`, num predicado por jogo),
+[PlayerLobbyScreen.tsx](despedida_de_solteiro_/src/screens/PlayerLobbyScreen.tsx)
+(rotear as fases novas), [App.tsx](despedida_de_solteiro_/src/App.tsx) (lazy import),
+`.env.example`.
+
+**Intocados:** os helpers puros dos dois jogos existentes e o `Wheel`.
+
+---
+
+## 11. Verificação
+
+Baseline atual: **131 testes, 8 arquivos, verdes**. Não existe script de lint no
+projeto — a checagem estática é `tsc -b`, que roda no `npm run build`.
+
+**Testes novos** (`routing.test.ts` é o mais importante — sua própria lista):
+para **4, 5, 6, 7, 8, 9 e 10 jogadores**, afirmar que todo jogador tem
+exatamente uma atribuição por passo, que nenhuma corrente recebe dois
+contribuidores no mesmo passo, que desenho e palpite alternam, que o primeiro
+passo é desenho e o último é palpite, que ninguém adivinha prompt que conhece,
+que ninguém repete corrente e que o giro é sempre no mesmo sentido. Mais
+`strokes.test.ts` (ida e volta da serialização, normalização sob mudança de
+viewport), `matching.test.ts` (acento, pontuação, caixa, espaço duplicado,
+`acceptedAnswers`) e casos no reducer: submissão dupla vira no-op, timeout
+preenche e segue, prompt não repete na mesma partida.
+
+**Corrente determinística de revelação**, como você pediu: um teste monta
+`CACHORRO PILOTANDO MOTO → desenho → URSO DE BICICLETA → desenho → HOMEM A
+CAVALO` e afirma a ordem cronológica exata com a autoria certa.
+
+**No navegador**, dirigindo instâncias separadas do Chrome em viewport de
+celular: partida completa com 4 jogadores do lobby ao placar; depois 5 (ímpar,
+onde a paridade corta um passo). Testar desenho com mouse e com toque simulado,
+ponteiro saindo do canvas, desfazer, borracha, limpar, rotação no meio do
+desenho, F5 antes de enviar (rascunho volta) e depois de enviar (não reenvia),
+teclado aberto na fase de palpite, um jogador que não envia nada, um desenho em
+branco, e a revelação nos dois modos.
+
+Lembrete que vale para mim, não para você: **ler o dado da tela, nunca montar no
+script** — foi assim que o QR sumiu sem eu perceber.
+
+---
+
+```beacon
+{
+  "features": [
+    {
+      "title": "Roteamento de correntes do jogo de desenho",
+      "category": "GAMES",
+      "priority": 0,
+      "layer": "frontend",
+      "kind": "FEATURE",
+      "description": "Funcao pura assignee(chain, step) = seatOrder[(chain+step) % N], o caderno andando um assento por rodada como um relogio. seatOrder congelado no START_GAME. Passos = N se par, N-1 se impar, garantindo primeiro passo desenho e ultimo palpite. Testado de 4 a 10 jogadores."
+    },
+    {
+      "title": "Estado e fases do jogo de desenho",
+      "category": "PARTY",
+      "priority": 0,
+      "layer": "frontend",
+      "kind": "FEATURE",
+      "description": "DrawingState em PartyState no mesmo padrao de quiz e devil. Fases DRAW_STEP, GUESS_STEP, PASSING, REVEAL_INTRO e REVEAL_PAGE, com validador em partyStorage para o F5 nao derrubar a sala.",
+      "dependsOn": ["Roteamento de correntes do jogo de desenho"]
+    },
+    {
+      "title": "Motor de desenho no celular",
+      "category": "GAMES",
+      "priority": 0,
+      "layer": "frontend",
+      "kind": "FEATURE",
+      "description": "Canvas estilo Paint simples com Pointer Events, coordenadas normalizadas 0-1, escala por devicePixelRatio, traco em ref com requestAnimationFrame e suavizacao por curva. Pincel, borracha, desfazer, limpar com confirmacao e enviar. Alvo de 60 fps sem rede durante o traco."
+    },
+    {
+      "title": "Storage de desenhos no Supabase",
+      "category": "PARTY",
+      "priority": 1,
+      "layer": "frontend",
+      "kind": "FEATURE",
+      "description": "Bucket publico tapa-desenhos com policy de insert para anon. Caminho usa chainId aleatorio para a URL nao ser adivinhavel. Sem Supabase, cai para tracos pelo canal e o jogo continua jogavel.",
+      "dependsOn": ["Motor de desenho no celular"]
+    },
+    {
+      "title": "Rascunho local e reconexao no desenho",
+      "category": "PARTY",
+      "priority": 1,
+      "layer": "frontend",
+      "kind": "FEATURE",
+      "description": "Rascunho em localStorage por pin, jogador, passo e corrente, restaurado apos F5 e apagado ao enviar. Folga de envio para upload lento nao virar timeout.",
+      "dependsOn": ["Motor de desenho no celular"]
+    },
+    {
+      "title": "Revelacao em slideshow compartilhavel",
+      "category": "GAMES",
+      "priority": 0,
+      "layer": "frontend",
+      "kind": "FEATURE",
+      "description": "Uma pagina por tela no ritmo do host, com auto-play opcional e autoria aparecendo so aqui. Comparacao comecou como contra terminou como, contar como acerto na mao, pre-carga da proxima imagem e composicao da corrente inteira numa imagem para navigator.share.",
+      "dependsOn": ["Estado e fases do jogo de desenho"]
+    },
+    {
+      "title": "Cor de identidade por jogador nas telas de jogo",
+      "category": "PARTY",
+      "priority": 1,
+      "layer": "frontend",
+      "kind": "FEATURE",
+      "description": "Generaliza presentationTheme em playerTheme(color), derivando a paleta de CSS vars da cor ja unica de cada Player. Pinta a tela de desenho e palpite, a moldura do avatar e cada pagina da revelacao, deixando o caminho do caderno legivel de relance."
+    },
+    {
+      "title": "Prompts originais e comparacao final",
+      "category": "DATA",
+      "priority": 1,
+      "layer": "frontend",
+      "kind": "FEATURE",
+      "description": "Base propria de ~120 prompts desenhaveis em PT-BR com acceptedAnswers, sem repetir na mesma partida. Comparacao normaliza caixa, espaco, pontuacao e acento."
+    }
+  ]
+}
+```
