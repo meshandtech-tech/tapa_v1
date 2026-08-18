@@ -16,11 +16,11 @@ Plano completo: `PLANO-JOGO-DESENHO.txt`
 
 ## Estado da party
 
-- [ ] `types.ts` — `DrawingState`, `DrawingChain`, `DrawingPage` + 5 fases novas
-- [ ] `partyStorage.ts` — `PHASES` e `isDrawingState` *(armadilha conhecida: fase
+- [x] `types.ts` — `DrawingState`, `DrawingChain`, `DrawingPage` + 5 fases novas
+- [x] `partyStorage.ts` — `PHASES` e `isDrawingState` *(armadilha conhecida: fase
       esquecida aqui derruba a sala num F5, sem erro visível)*
-- [ ] `partyReducer.ts` — `advanceDrawing`, submissões idempotentes, timeout
-- [ ] `partyReducer.test.ts` — submissão dupla vira no-op, timeout segue,
+- [x] `partyReducer.ts` — `advanceDrawing`, submissões idempotentes, timeout
+- [x] `state.test.ts` — 51 testes: submissão dupla vira no-op, timeout segue,
       tema não repete na mesma partida
 - [ ] `PartyChannel.ts` — eventos de submissão e comandos de revelação
 - [ ] `usePartyRoom.ts` — generalizar o "todos já responderam" (hoje preso ao quiz)
@@ -35,7 +35,7 @@ Plano completo: `PLANO-JOGO-DESENHO.txt`
 
 ## Telas
 
-- [ ] `identity.ts` — paleta papel + `playerTheme(color)` por jogador
+- [x] `identity.ts` — paleta papel + `playerTheme(color)` por jogador
 - [ ] `DrawStepScreen.tsx`
 - [ ] `GuessStepScreen.tsx` — teclado do mobile sem salto de página
 - [ ] `WaitingCard.tsx` — `6 / 8 PRONTOS`, avatares acendendo

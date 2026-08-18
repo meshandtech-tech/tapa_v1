@@ -7,6 +7,7 @@ import {
   type PartyState,
   type Player,
   type DevilState,
+  type DrawingState,
   type QuizState,
 } from "./types";
 
@@ -33,6 +34,11 @@ const PHASES: readonly PartyPhase[] = [
   "PRESENTATION",
   "VOTING",
   "SCORE_REVEAL",
+  "DRAW_STEP",
+  "GUESS_STEP",
+  "PASSING",
+  "REVEAL_INTRO",
+  "REVEAL_PAGE",
 ];
 
 const stateKey = (pin: string) => `tapa:party:${pin}:state`;
@@ -115,6 +121,47 @@ function isDevilState(value: unknown): value is DevilState | null {
   );
 }
 
+/** `null` é válido: só existe depois que o jogo de desenho começa. */
+function isDrawingState(value: unknown): value is DrawingState | null {
+  if (value === null || value === undefined) return true;
+  if (typeof value !== "object") return false;
+  const drawing = value as Partial<DrawingState>;
+  const strings = (list: unknown) =>
+    Array.isArray(list) && list.every((item) => typeof item === "string");
+
+  const paginaValida = (page: unknown) => {
+    if (!page || typeof page !== "object") return false;
+    const item = page as { type?: string; playerId?: string; url?: unknown; text?: unknown };
+    if (typeof item.playerId !== "string") return false;
+    if (item.type === "drawing") return item.url === null || typeof item.url === "string";
+    if (item.type === "guess") return typeof item.text === "string";
+    return false;
+  };
+
+  return (
+    typeof drawing.matchId === "string" &&
+    strings(drawing.seatOrder) &&
+    strings(drawing.usedPromptIds) &&
+    strings(drawing.submitted) &&
+    strings(drawing.manualMatches) &&
+    Number.isInteger(drawing.stepIndex) &&
+    Number.isInteger(drawing.stepCount) &&
+    Number.isInteger(drawing.revealChainIndex) &&
+    Number.isInteger(drawing.revealPageIndex) &&
+    typeof drawing.revealAutoPlay === "boolean" &&
+    Array.isArray(drawing.chains) &&
+    drawing.chains.every(
+      (chain) =>
+        !!chain &&
+        typeof chain.id === "string" &&
+        typeof chain.ownerPlayerId === "string" &&
+        typeof chain.originalPrompt === "string" &&
+        Array.isArray(chain.pages) &&
+        chain.pages.every(paginaValida),
+    )
+  );
+}
+
 /**
  * Só devolve estado se TUDO validar. Dado corrompido no localStorage vira
  * `null` e a party recomeça limpa, em vez de quebrar a tela no meio da festa.
@@ -140,6 +187,7 @@ export function parsePartyState(raw: string | null): PartyState | null {
       !Number.isFinite(candidate.createdAt) ||
       !isQuizState(candidate.quiz) ||
       !isDevilState(candidate.devil) ||
+      !isDrawingState(candidate.drawing) ||
       (candidate.hostPlayerId !== null && typeof candidate.hostPlayerId !== "string") ||
       !Number.isFinite(candidate.phaseDeadline) ||
       (candidate.pausedAt !== null && !Number.isFinite(candidate.pausedAt))

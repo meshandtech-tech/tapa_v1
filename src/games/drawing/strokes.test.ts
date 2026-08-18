@@ -124,15 +124,18 @@ describe("replayStrokes", () => {
 /** Dublê de canvas: guarda o que foi pedido, sem precisar de DOM. */
 function dubleDeContexto() {
   const composites: string[] = [];
+  let atual: GlobalCompositeOperation = "source-over";
   const api = {
     beginPath: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
     quadraticCurveTo: vi.fn(), stroke: vi.fn(), arc: vi.fn(), fill: vi.fn(),
     lineWidth: 0, lineCap: "butt", lineJoin: "miter",
     strokeStyle: "", fillStyle: "",
-    set globalCompositeOperation(valor: string) { composites.push(valor); this._c = valor; },
-    get globalCompositeOperation() { return this._c ?? "source-over"; },
-    _c: "source-over",
   } as unknown as ReplayContext;
+  // Propriedade acessada para saber a ORDEM das trocas, não só o valor final.
+  Object.defineProperty(api, "globalCompositeOperation", {
+    get: () => atual,
+    set: (valor: GlobalCompositeOperation) => { atual = valor; composites.push(valor); },
+  });
   return { api, composites };
 }
 

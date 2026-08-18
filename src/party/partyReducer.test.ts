@@ -184,13 +184,32 @@ describe("início do jogo", () => {
     expect(state.phase).toBe("GAME_INTRO");
   });
 
-  // Todo jogo da plataforma começa com dupla — decisão de produto, não acaso.
-  it("todos os jogos começam com duas pessoas", () => {
+  /**
+   * Cada jogo declara o próprio mínimo, e a regra é que atingi-lo baste.
+   *
+   * Antes isto afirmava "todo jogo começa com dupla". Deixou de valer quando
+   * entrou o Telefone Sem Fio, que precisa de 4: com menos gente a corrente é
+   * curta demais para o desenho se perder pelo caminho, que é a graça inteira.
+   */
+  it("todo jogo começa assim que o próprio mínimo é atingido", () => {
     for (const game of GAMES) {
-      expect(game.minPlayers).toBe(2);
-      let state = partyReducer(withPlayers(2), { type: "SET_GAME", gameId: game.id });
+      expect(game.minPlayers).toBeGreaterThanOrEqual(2);
+
+      let state = partyReducer(withPlayers(game.minPlayers), {
+        type: "SET_GAME", gameId: game.id,
+      });
       state = partyReducer(state, { type: "START_GAME" });
-      expect(state.phase).toBe("GAME_INTRO");
+      expect(state.phase, `${game.id} com ${game.minPlayers}`).toBe("GAME_INTRO");
+    }
+  });
+
+  it("nenhum jogo começa com uma pessoa a menos que o próprio mínimo", () => {
+    for (const game of GAMES) {
+      let state = partyReducer(withPlayers(game.minPlayers - 1), {
+        type: "SET_GAME", gameId: game.id,
+      });
+      state = partyReducer(state, { type: "START_GAME" });
+      expect(state.phase, `${game.id} com ${game.minPlayers - 1}`).toBe("LOBBY");
     }
   });
 

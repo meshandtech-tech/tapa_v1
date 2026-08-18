@@ -1,8 +1,13 @@
-import { Drama, Presentation, Target, type LucideIcon } from "lucide-react";
+import { Brush, Drama, Presentation, Target, type LucideIcon } from "lucide-react";
+import { DRAWING_TELEPHONE_CONFIG } from "./drawing/config";
 import { GAME_IDENTITIES, type GameIdentity } from "./identity";
 import type { PartyPhase } from "../party/types";
 
-export type GameId = "quem-erra-paga" | "advogado-do-diabo" | "pitch-no-escuro";
+export type GameId =
+  | "quem-erra-paga"
+  | "advogado-do-diabo"
+  | "pitch-no-escuro"
+  | "drawing-telephone";
 
 /**
  * Quanto cada fase dura antes do jogo seguir sozinho.
@@ -96,6 +101,31 @@ const DEVIL_DURATIONS: PhaseDurations = {
   SCORE_REVEAL: 0, // o host chama o próximo
 };
 
+/**
+ * Fluxo do jogo de desenho.
+ *
+ * Declarado para o registry ficar completo, mas quem decide de fato é
+ * `advanceDrawing` no reducer: `PASSING` vai para desenho OU palpite conforme
+ * a paridade do passo, e um mapa de "próxima fase" não expressa isso.
+ */
+const DRAWING_FLOW: Partial<Record<PartyPhase, PartyPhase>> = {
+  GAME_INTRO: "DRAW_STEP",
+  DRAW_STEP: "PASSING",
+  GUESS_STEP: "PASSING",
+  REVEAL_INTRO: "REVEAL_PAGE",
+};
+
+const DRAWING_DURATIONS: PhaseDurations = {
+  GAME_INTRO: 5000,
+  DRAW_STEP: DRAWING_TELEPHONE_CONFIG.drawingTimeSeconds * 1000,
+  GUESS_STEP: DRAWING_TELEPHONE_CONFIG.guessTimeSeconds * 1000,
+  PASSING: DRAWING_TELEPHONE_CONFIG.transitionDurationMs,
+  // `0` = espera o host. A revelação é o momento em que o grupo está rindo, e
+  // o ritmo tem de ser humano; o auto-play sobrepõe esta duração quando ligado.
+  REVEAL_INTRO: 0,
+  REVEAL_PAGE: 0,
+};
+
 const QUIZ_FLOW: Partial<Record<PartyPhase, PartyPhase>> = {
   GAME_INTRO: "ROUND_ACTIVE",
   ROUND_ACTIVE: "REVEAL_ANSWER",
@@ -136,6 +166,23 @@ export const GAMES: readonly GameDefinition[] = [
     identity: GAME_IDENTITIES["advogado-do-diabo"],
     durations: DEVIL_DURATIONS,
     flow: DEVIL_FLOW,
+  },
+  {
+    id: "drawing-telephone",
+    title: "Telefone Sem Fio",
+    tagline: "Desenhe, adivinhe, se perca",
+    description:
+      "Cada um desenha uma palavra secreta e passa adiante. No fim, veja o estrago que virou.",
+    icon: Brush,
+    minPlayers: DRAWING_TELEPHONE_CONFIG.minPlayers,
+    maxPlayers: DRAWING_TELEPHONE_CONFIG.maxPlayers,
+    hasForfeit: false,
+    hasDifficulty: false,
+    // O número real de passos vem do roster, não daqui.
+    rounds: DRAWING_TELEPHONE_CONFIG.maxPlayers,
+    identity: GAME_IDENTITIES["drawing-telephone"],
+    durations: DRAWING_DURATIONS,
+    flow: DRAWING_FLOW,
   },
   {
     id: "pitch-no-escuro",
