@@ -46,9 +46,11 @@ Plano completo: `PLANO-JOGO-DESENHO.txt`
 
 ## Fechamento
 
-- [ ] `npm test` verde (baseline eram 131)
+- [x] `npm test` verde — **277** (baseline eram 131)
 - [x] `npm run build` limpo (`tsc -b` é a checagem estática; não há lint)
-- [ ] Partida completa no navegador com 4 jogadores, depois 5 (ímpar)
-- [ ] Desenho: mouse, toque, desfazer, borracha, limpar, rotação de tela
-- [ ] F5 antes de enviar (rascunho volta) e depois de enviar (não reenvia)
-- [ ] Revelação nos dois ritmos + compartilhar
+- [x] Partida completa com 4 jogadores e depois 5 (ímpar), em perfis separados do Chrome
+- [x] Desenho: mouse, toque, desfazer, borracha, limpar (com confirmação), rotação de tela
+- [x] F5 antes de enviar (rascunho volta) e depois de enviar (não reenvia)
+- [x] Revelação nos dois ritmos, sincronizada nos cinco aparelhos
+- [ ] Compartilhar (precisa de gesto real + HTTPS; testar no celular)
+- [ ] **Criar o bucket `tapa-desenhos`** — hoje cai para traços pelo canal *(precisa de você)*

@@ -114,6 +114,18 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       };
 
       resize();
+      /**
+       * Pedir o quadro SEMPRE, e não só quando o tamanho muda.
+       *
+       * O `resize` sai cedo quando as medidas continuam as mesmas, e é
+       * exatamente o que acontece ao remontar: a limpeza cancelou o quadro
+       * pendente, a remontagem não pediu outro, e o rascunho recuperado ficava
+       * no canvas de fora da tela sem nunca chegar na visível. Quem tinha
+       * acabado de recarregar a página via uma folha em branco com o desenho
+       * ainda guardado.
+       */
+      requestPaint();
+
       const observer = new ResizeObserver(resize);
       observer.observe(canvas);
       return () => observer.disconnect();

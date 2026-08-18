@@ -42,7 +42,6 @@ export function DrawStepScreen({
 }) {
   const canvasRef = useRef<DrawingCanvasHandle | null>(null);
   const [tool, setTool] = useState<StrokeTool>("brush");
-  const [temTraco, setTemTraco] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [confirmandoLimpar, setConfirmandoLimpar] = useState(false);
   const enviadoRef = useRef(false);
@@ -52,6 +51,9 @@ export function DrawStepScreen({
   const [rascunho] = useState<Drawing | null>(() =>
     loadDraft(pin, playerId, stepIndex, chain.id),
   );
+  // Começa ligado quando veio rascunho: desfazer e limpar precisam valer para
+  // um desenho recuperado, não só para o que foi traçado depois do F5.
+  const [temTraco, setTemTraco] = useState(() => (rascunho?.length ?? 0) > 0);
 
   const oQueDesenhar =
     assignment.previous?.kind === "prompt"
