@@ -119,8 +119,21 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       return () => observer.disconnect();
     }, [rebuildCommitted, requestPaint]);
 
+    /**
+     * Cancelar o quadro pendente TEM de zerar o ref junto.
+     *
+     * Sem isso o `requestPaint` continua achando que já existe um quadro
+     * agendado e nunca mais agenda outro — a superfície fica viva, aceitando
+     * ponteiro e guardando traço, e simplesmente não pinta mais nada. O
+     * StrictMode dispara isso em toda montagem (monta, limpa, monta), então o
+     * desenho nascia quebrado em desenvolvimento; em produção bastaria uma
+     * remontagem, como a que uma troca de orientação pode causar.
+     */
     useEffect(() => () => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
     }, []);
 
     const pontoDoEvento = (event: React.PointerEvent<HTMLCanvasElement>): StrokePoint => {
