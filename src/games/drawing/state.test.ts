@@ -12,6 +12,7 @@ import {
   pagesPerChain,
 } from "./state";
 import { contributionStepCount, stepType } from "./routing";
+import { DRAWING_TELEPHONE_CONFIG } from "./config";
 
 const PIN = "123456";
 
@@ -103,8 +104,11 @@ describe("criação da partida", () => {
     });
   });
 
-  it("não começa com gente de menos", () => {
-    const state = partyReducer(salaCheia(3), { type: "START_GAME", now: 1 });
+  // Deriva do config em vez de fixar um número: o mínimo é ajustável de
+  // propósito, e um 3 cravado aqui quebraria toda vez que ele mudasse.
+  it("não começa com uma pessoa a menos que o mínimo", () => {
+    const faltando = DRAWING_TELEPHONE_CONFIG.minPlayers - 1;
+    const state = partyReducer(salaCheia(faltando), { type: "START_GAME", now: 1 });
     expect(state.phase).toBe("LOBBY");
   });
 });
