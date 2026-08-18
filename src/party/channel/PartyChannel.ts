@@ -24,6 +24,10 @@ export type HostCommand =
   | { type: "REROLL_PUNISHMENT" }
   | { type: "VOTE"; rating: number }
   | { type: "REROLL_TOPIC" }
+  /** Revelação: liga ou desliga o avanço automático do slideshow. */
+  | { type: "SET_REVEAL_AUTOPLAY"; autoPlay: boolean }
+  /** Revelação: o host banca um palpite que a comparação não casou. */
+  | { type: "COUNT_AS_MATCH"; chainId: string }
   | { type: "ADD_CUSTOM_TOPIC"; topic: CustomTopic }
   | { type: "EDIT_CUSTOM_TOPIC"; id: string; text: string; aboutPlayerId?: string }
   | { type: "REMOVE_CUSTOM_TOPIC"; id: string }
@@ -46,6 +50,23 @@ export type PartyEvent =
   | { type: "ANSWER"; playerId: string; optionIndex: number }
   /** Player → host. Nota de 1 a 5 na apresentação da rodada. */
   | { type: "VOTE"; playerId: string; rating: number }
+  /**
+   * Player → autoridade. Desenho pronto.
+   *
+   * Vai o ENDEREÇO da imagem, nunca a imagem: bitmap em base64 no payload
+   * estouraria o limite de mensagem e ainda seria reemitido a cada batimento.
+   * `strokes` só aparece quando não há Storage — dev local, ou upload que
+   * falhou de vez — e é o que impede a corrente de quebrar por wi-fi ruim.
+   */
+  | {
+      type: "SUBMIT_DRAWING";
+      playerId: string;
+      url: string | null;
+      strokes?: string;
+      status?: "submitted" | "timeout" | "failed";
+    }
+  /** Player → autoridade. O palpite escrito sobre o desenho que recebeu. */
+  | { type: "SUBMIT_GUESS"; playerId: string; text: string }
   /** Host → TV. A TV confere se `playerId` é mesmo o host antes de aplicar. */
   | { type: "HOST_ACTION"; playerId: string; command: HostCommand }
   /** Player → host. "eu sou o dono desta sala" (token guardado no aparelho). */
