@@ -5,8 +5,17 @@
  * daqui, e mexer no tempo de desenho da partida inteira é mexer numa linha.
  */
 export const DRAWING_TELEPHONE_CONFIG = {
-  /** Abaixo disso a corrente é curta demais para a piada acontecer. */
-  minPlayers: 4,
+  /**
+   * BUILD DE TESTE — 2 em vez de 4.
+   *
+   * Este é o único ponto em que este branch difere do `main`. Serve para
+   * conferir o jogo a dois, sem juntar quatro pessoas: a dois a corrente é
+   * "você desenha, o outro adivinha", que exercita desenho, envio, passagem
+   * de caderno, revelação e placar — só não tem a deformação, que é a graça.
+   *
+   * NÃO fundir este branch no main.
+   */
+  minPlayers: 2,
   maxPlayers: 10,
   /** Tempo de desenho. É o número a baixar se a partida cansar. */
   drawingTimeSeconds: 90,
