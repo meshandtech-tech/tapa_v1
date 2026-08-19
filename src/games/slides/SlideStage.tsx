@@ -33,7 +33,16 @@ export function SlideStage({
   const src = slideId ? slideSrc(slideId) : null;
 
   return (
-    <div className={cn("flex w-full flex-col gap-2", compact ? "max-w-sm" : "max-w-3xl")}>
+    <div
+      className={cn(
+        "flex w-full flex-col gap-2",
+        // Cresce com a tela em vez de com o papel de quem olha. A versão
+        // anterior travava a plateia em 384px, o que fazia sentido no celular
+        // e deixava o slide minúsculo num laptop ligado na TV — justamente a
+        // tela em que ele deveria ser enorme.
+        compact ? "max-w-md sm:max-w-xl lg:max-w-3xl" : "max-w-md sm:max-w-2xl lg:max-w-5xl",
+      )}
+    >
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-display text-xl font-extrabold uppercase leading-none text-on-accent">

@@ -3,6 +3,8 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { Check, Crown, Pause, TriangleAlert, Users } from "lucide-react";
 import { AdvogadoDoDiaboHost } from "../games/AdvogadoDoDiaboHost";
 import { QuemErraPagaHost } from "../games/QuemErraPagaHost";
+import { TelefoneSemFioHost } from "../games/drawing/TelefoneSemFioHost";
+import { PitchNoEscuroHost } from "../games/slides/PitchNoEscuroHost";
 import { phaseProgress, secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { getGame, phaseDuration } from "../games/registry";
 import { activeTransport } from "../party/channel";
@@ -121,8 +123,15 @@ function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
 
       {emJogo ? (
         <div className="min-h-0 flex-1 overflow-hidden">
+          {/* Cada jogo tem a própria tela grande. Sem isto, os jogos novos
+              caíam na tela do quiz e a TV mostrava chrome de pergunta para um
+              jogo que não tem pergunta nenhuma. */}
           {state.settings.gameId === "advogado-do-diabo" ? (
             <AdvogadoDoDiaboHost state={state} secondsLeft={secondsLeft} />
+          ) : state.settings.gameId === "improv-slides" ? (
+            <PitchNoEscuroHost state={state} now={now} secondsLeft={secondsLeft} />
+          ) : state.settings.gameId === "drawing-telephone" ? (
+            <TelefoneSemFioHost state={state} />
           ) : (
             <QuemErraPagaHost state={state} secondsLeft={secondsLeft} />
           )}
