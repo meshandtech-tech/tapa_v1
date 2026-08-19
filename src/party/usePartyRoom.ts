@@ -406,6 +406,11 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
     [send],
   );
 
+  /** Troca slides que não carregaram. Só a autoridade decide de verdade. */
+  const replaceSlides = useCallback((slideIds: string[]) => {
+    if (authorityRef.current) dispatch({ type: "REPLACE_SLIDES", slideIds });
+  }, []);
+
   const sendHostCommand = useCallback(
     (command: HostCommand) => {
       const current = meRef.current;
@@ -437,6 +442,7 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
     vote,
     submitDrawing,
     submitGuess,
+    replaceSlides,
     sendHostCommand,
     closeParty,
   };

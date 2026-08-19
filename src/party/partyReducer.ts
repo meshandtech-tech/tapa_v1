@@ -150,6 +150,8 @@ export type PartyAction =
   | { type: "COUNT_AS_MATCH"; chainId: string }
   /** Emergência do host: corta o slide corrente e vai para o seguinte. */
   | { type: "SKIP_SLIDE"; now?: number }
+  /** Troca slides que não carregaram, antes de a apresentação começar. */
+  | { type: "REPLACE_SLIDES"; slideIds: string[] }
   | { type: "PAUSE"; now?: number }
   | { type: "RESUME"; now?: number }
   | { type: "RESET_TO_LOBBY" };
@@ -909,6 +911,21 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
           manualMatches: [...state.drawing.manualMatches, action.chainId],
         },
       };
+    }
+
+    /**
+     * Imagem que não carregou sai ANTES de alguém apresentar.
+     *
+     * Só vale enquanto o sorteio e a revelação estão na tela — depois da
+     * preparação começar, trocar um slide seria mudar o chão no meio do passo.
+     * Descobrir um arquivo quebrado no meio da apresentação de alguém é
+     * exatamente o que o pré-carregamento existe para evitar.
+     */
+    case "REPLACE_SLIDES": {
+      if (!state.slides) return state;
+      if (state.phase !== "PLAYER_SPIN" && state.phase !== "PLAYER_REVEAL") return state;
+      if (action.slideIds.length === 0) return state;
+      return { ...state, slides: { ...state.slides, slideIds: [...action.slideIds] } };
     }
 
     /**

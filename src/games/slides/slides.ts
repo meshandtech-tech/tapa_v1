@@ -54,7 +54,7 @@ export function everyonePresented(state: PartyState): boolean {
 export function pickSlides(
   pool: readonly string[],
   usedIds: readonly string[],
-  quantidade = IMPROV_SLIDES_CONFIG.slidesPerPresentation,
+  quantidade: number = IMPROV_SLIDES_CONFIG.slidesPerPresentation,
   random: () => number = Math.random,
 ): string[] {
   if (pool.length === 0) return [];

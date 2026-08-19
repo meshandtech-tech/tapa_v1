@@ -17,6 +17,8 @@ import { DevilHostActions } from "../games/DevilHostActions";
 import { QuemErraPagaPlayer } from "../games/QuemErraPagaPlayer";
 import { DrawingHostActions } from "../games/drawing/DrawingHostActions";
 import { TelefoneSemFioPlayer } from "../games/drawing/TelefoneSemFioPlayer";
+import { PitchNoEscuroPlayer } from "../games/slides/PitchNoEscuroPlayer";
+import { SlidesHostActions } from "../games/slides/SlidesHostActions";
 import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type PartyState, type Player } from "../party/types";
 import { getGame, isGameId } from "../games/registry";
@@ -44,7 +46,8 @@ function PlayerLobby({ pin }: { pin: string }) {
   const [params] = useSearchParams();
   const {
     state, me, meInParty, isHost, connection,
-    join, updateMe, answer, vote, submitDrawing, submitGuess, sendHostCommand,
+    join, updateMe, answer, vote, submitDrawing, submitGuess, replaceSlides,
+    isAuthority, sendHostCommand,
   } = usePartyRoom(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
@@ -57,10 +60,10 @@ function PlayerLobby({ pin }: { pin: string }) {
    * identidade aplicada no celular, e ligar isso agora mudaria a cara de dois
    * jogos que já estão na rua como efeito colateral de um terceiro.
    */
-  useGameIdentity(
-    state?.settings.gameId === "drawing-telephone" ? state : null,
-    meInParty,
-  );
+  const jogoNovo =
+    state?.settings.gameId === "drawing-telephone" ||
+    state?.settings.gameId === "improv-slides";
+  useGameIdentity(jogoNovo ? state : null, meInParty);
 
   // O relógio precisa correr em toda fase cronometrada, não só na rodada do quiz.
   const now = useNow((state?.phaseDeadline ?? 0) > 0);
@@ -192,6 +195,16 @@ function PlayerLobby({ pin }: { pin: string }) {
             secondsLeft={computeSecondsLeft(state, now)}
             onVote={vote}
           />
+        ) : state.settings.gameId === "improv-slides" ? (
+          <PitchNoEscuroPlayer
+            state={state}
+            me={meInParty}
+            now={now}
+            secondsLeft={computeSecondsLeft(state, now)}
+            isAuthority={isAuthority}
+            onVote={vote}
+            onReplaceSlides={replaceSlides}
+          />
         ) : state.settings.gameId === "drawing-telephone" ? (
           <TelefoneSemFioPlayer
             pin={pin}
@@ -229,6 +242,10 @@ function PlayerLobby({ pin }: { pin: string }) {
 
         {isHost && state.settings.gameId === "drawing-telephone" ? (
           <DrawingHostActions state={state} send={sendHostCommand} />
+        ) : null}
+
+        {isHost && state.settings.gameId === "improv-slides" ? (
+          <SlidesHostActions state={state} send={sendHostCommand} />
         ) : null}
 
         {state.phase === "GAME_OVER" && isHost ? (
