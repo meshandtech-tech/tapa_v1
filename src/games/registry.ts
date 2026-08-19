@@ -1,13 +1,17 @@
 import { Brush, Drama, Presentation, Target, type LucideIcon } from "lucide-react";
 import { DRAWING_TELEPHONE_CONFIG } from "./drawing/config";
+import {
+  IMPROV_SLIDES_CONFIG,
+  PRESENTATION_TOTAL_MS,
+} from "./slides/config";
 import { GAME_IDENTITIES, type GameIdentity } from "./identity";
 import type { PartyPhase } from "../party/types";
 
 export type GameId =
   | "quem-erra-paga"
   | "advogado-do-diabo"
-  | "pitch-no-escuro"
-  | "drawing-telephone";
+  | "drawing-telephone"
+  | "improv-slides";
 
 /**
  * Quanto cada fase dura antes do jogo seguir sozinho.
@@ -126,6 +130,41 @@ const DRAWING_DURATIONS: PhaseDurations = {
   REVEAL_PAGE: 0,
 };
 
+/**
+ * Fluxo do Pitch no Escuro.
+ *
+ * São as MESMAS fases do Advogado do Diabo — sorteia quem vai, revela, prepara,
+ * conta 3-2-1, apresenta, vota, mostra a nota. Reaproveitar em vez de criar
+ * fases novas mantém um caminho só de auto-host para os dois jogos.
+ */
+const SLIDES_FLOW: Partial<Record<PartyPhase, PartyPhase>> = {
+  GAME_INTRO: "PLAYER_SPIN",
+  PLAYER_SPIN: "PLAYER_REVEAL",
+  PLAYER_REVEAL: "PREPARATION",
+  PREPARATION: "COUNTDOWN",
+  COUNTDOWN: "PRESENTATION",
+  PRESENTATION: "VOTING",
+  VOTING: "SCORE_REVEAL",
+  // SCORE_REVEAL volta para PLAYER_SPIN ou termina — decidido no reducer.
+};
+
+const SLIDES_DURATIONS: PhaseDurations = {
+  // `0` = espera o host. As instruções são lidas em voz alta para a mesa.
+  GAME_INTRO: 0,
+  PLAYER_SPIN: 4000,
+  PLAYER_REVEAL: 4000,
+  PREPARATION: IMPROV_SLIDES_CONFIG.preparationTimeSeconds * 1000,
+  COUNTDOWN: 3200,
+  /**
+   * 100 segundos: cinco slides de vinte. A fase é UMA só, e o slide no ar sai
+   * da divisão do tempo decorrido — por isso não há prazo por slide para
+   * manter sincronizado.
+   */
+  PRESENTATION: PRESENTATION_TOTAL_MS,
+  VOTING: 0, // o host fecha
+  SCORE_REVEAL: 0, // o host chama o próximo
+};
+
 const QUIZ_FLOW: Partial<Record<PartyPhase, PartyPhase>> = {
   GAME_INTRO: "ROUND_ACTIVE",
   ROUND_ACTIVE: "REVEAL_ANSWER",
@@ -185,21 +224,26 @@ export const GAMES: readonly GameDefinition[] = [
     flow: DRAWING_FLOW,
   },
   {
-    id: "pitch-no-escuro",
+    /**
+     * O card "em breve" já descrevia exatamente este jogo — slides que você
+     * nunca viu, trocando sozinhos a cada 20 segundos. Foi preenchido em vez
+     * de virar um segundo card dizendo a mesma coisa.
+     */
+    id: "improv-slides",
     title: "Pitch no Escuro",
     tagline: "Apresentação cega",
     description:
-      "Slides que você nunca viu trocam sozinhos a cada 20 segundos. Boa sorte explicando.",
+      "Cinco slides que você nunca viu, 20 segundos cada. Faça parecer que era tudo planejado.",
     icon: Presentation,
-    minPlayers: 2,
-    maxPlayers: 8,
+    minPlayers: IMPROV_SLIDES_CONFIG.minPlayers,
+    maxPlayers: IMPROV_SLIDES_CONFIG.maxPlayers,
     hasForfeit: false,
     hasDifficulty: false,
-    rounds: 5,
-    identity: GAME_IDENTITIES["pitch-no-escuro"],
-    durations: { ...DEFAULT_DURATIONS, ROUND_ACTIVE: 60000 },
-    flow: QUIZ_FLOW,
-    comingSoon: true,
+    // Uma apresentação por jogador: o número real vem do roster, não daqui.
+    rounds: IMPROV_SLIDES_CONFIG.maxPlayers,
+    identity: GAME_IDENTITIES["improv-slides"],
+    durations: SLIDES_DURATIONS,
+    flow: SLIDES_FLOW,
   },
 ] as const;
 

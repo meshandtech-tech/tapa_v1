@@ -206,6 +206,32 @@ export interface DrawingState {
   manualMatches: string[];
 }
 
+/**
+ * Estado do "Apresentação Improvisada".
+ *
+ * Repare no que NÃO existe aqui: nenhum campo de slide corrente nem de quando
+ * ele começou. A fase `PRESENTATION` já tem `phaseDeadline`, e o slide no ar é
+ * a divisão do tempo decorrido — ver `slideProgress`. Guardar um segundo
+ * relógio seria mais uma coisa para manter sincronizada entre aparelhos, e dois
+ * relógios divergem.
+ */
+export interface SlidesState {
+  /** Ordem de apresentação, sorteada no início. Cada um apresenta uma vez. */
+  order: string[];
+  /** Posição em `order`. -1 = ainda não começou nenhuma apresentação. */
+  index: number;
+  /** Os cinco slides desta apresentação, na ordem em que vão aparecer. */
+  slideIds: string[];
+  /** Memória curta do que já saiu, para dar variedade sem esgotar o acervo. */
+  usedSlideIds: string[];
+  /** Votos da rodada: id de quem votou -> nota de 1 a 5. */
+  votes: Record<string, number>;
+  /** Nota final de cada apresentador, já calculada. */
+  scores: Record<string, number>;
+  /** O grupo já leu as instruções? */
+  instructionsSeen: boolean;
+}
+
 export interface PartyState {
   version: 1;
   pin: string;
@@ -221,6 +247,8 @@ export interface PartyState {
   devil: DevilState | null;
   /** Idem, para o Telefone Sem Fio de Desenho. */
   drawing: DrawingState | null;
+  /** Idem, para o Apresentação Improvisada. */
+  slides: SlidesState | null;
   /**
    * Quem manda na sala. O host é um jogador como os outros — joga, pontua —
    * e só ganha um painel de controles no próprio celular.

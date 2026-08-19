@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+<rect width="800" height="600" fill="#264653"/>
+<circle cx="320" cy="270" r="75" fill="#e9c46a" opacity="0.18"/>
+<rect x="265" y="415" width="285" height="145" fill="#e9c46a" opacity="0.14"/>
+<text x="400" y="270" font-family="Helvetica,Arial,sans-serif" font-size="72" font-weight="bold" fill="#e9c46a" text-anchor="middle">ESCALABILIDADE</text>
+<text x="400" y="330" font-family="Helvetica,Arial,sans-serif" font-size="26" fill="#e9c46a" opacity="0.75" text-anchor="middle">slide de exemplo 06 — troque por PNG de verdade</text>
+</svg>

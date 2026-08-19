@@ -242,9 +242,19 @@ describe("lotação da sala", () => {
     expect(state.players).toHaveLength(MAX_PLAYERS);
   });
 
-  it("respeita o teto do jogo quando ele é menor", () => {
-    expect(roomCapacity("pitch-no-escuro")).toBe(8);
-    expect(roomCapacity("quem-erra-paga")).toBe(MAX_PLAYERS);
+  /**
+   * Afirma a REGRA, não um número.
+   *
+   * Antes isto dependia do "Pitch no Escuro" declarar teto 8. Quando ele saiu
+   * de "em breve" e virou jogo de verdade, o teste caiu junto — e o que ele
+   * queria proteger (o menor entre os dois tetos vale) não tinha nada a ver
+   * com aquele 8.
+   */
+  it("usa o menor teto entre o do jogo e o da plataforma", () => {
+    for (const game of GAMES) {
+      expect(roomCapacity(game.id), game.id).toBe(Math.min(game.maxPlayers, MAX_PLAYERS));
+      expect(roomCapacity(game.id)).toBeLessThanOrEqual(MAX_PLAYERS);
+    }
   });
 });
 
@@ -503,13 +513,22 @@ describe("máquina de fases", () => {
     expect(state.quiz?.punishmentIndex).toBe(5);
   });
 
-  it("pula a roleta em jogo que não tem prendas, mesmo com forfeit", () => {
-    let state = withPlayers(3);
-    state = partyReducer(state, { type: "SET_GAME", gameId: "pitch-no-escuro" });
-    state = partyReducer(state, { type: "START_GAME" });
+  /**
+   * Quem manda é o resultado da rodada, não a flag.
+   *
+   * Este teste cobria o caminho `hasForfeit: false`, usando o "Pitch no
+   * Escuro" enquanto ele era só um card "em breve" com fluxo de quiz. Agora
+   * que ele virou jogo próprio, nenhum jogo de quiz dispensa prendas, e aquele
+   * ramo do reducer ficou defensivo — para um jogo futuro, não para um atual.
+   * O que continua valendo e dá para exercitar de verdade é isto: com todo
+   * mundo acertando, a roleta não entra nem se o `forfeit` pedir.
+   */
+  it("não vai para a roleta quando ninguém erra, mesmo com forfeit", () => {
+    let state = partyReducer(withPlayers(3), { type: "START_GAME" });
     state = partyReducer(state, { type: "ADVANCE" });
-    state = partyReducer(state, { type: "ADVANCE" });
-    state = partyReducer(state, { type: "ADVANCE", forfeit: true });
+    state = partyReducer(allAnswerCorrectly(state), { type: "ADVANCE" });
+    expect(state.phase).toBe("REVEAL_ANSWER");
+    state = partyReducer(state, { type: "ADVANCE", forfeit: true, punishmentIndex: 5 });
     expect(state.phase).toBe("LEADERBOARD");
   });
 

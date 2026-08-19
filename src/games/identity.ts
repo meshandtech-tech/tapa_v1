@@ -33,10 +33,15 @@ export const GAME_IDENTITIES = {
     onAccent: "#ffffff",
     pattern: "zine-flames",
   },
-  "pitch-no-escuro": {
-    accent: "#0066ff",
-    accentDark: "#0044aa",
-    accentSoft: "#cfe0ff",
+  /**
+   * Sala de conferência séria. Quase preto, tipografia branca, nada de
+   * enfeite — o contraste com a imagem ridícula na tela é a piada. Se a
+   * interface também fosse de brincadeira, não sobraria de onde cair.
+   */
+  "improv-slides": {
+    accent: "#12161c",
+    accentDark: "#000000",
+    accentSoft: "#e3e8ef",
     onAccent: "#ffffff",
     pattern: "zine-dots",
   },

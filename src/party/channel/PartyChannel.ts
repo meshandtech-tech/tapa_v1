@@ -28,6 +28,8 @@ export type HostCommand =
   | { type: "SET_REVEAL_AUTOPLAY"; autoPlay: boolean }
   /** Revelação: o host banca um palpite que a comparação não casou. */
   | { type: "COUNT_AS_MATCH"; chainId: string }
+  /** Emergência no Pitch no Escuro: corta o slide que está no ar. */
+  | { type: "SKIP_SLIDE" }
   | { type: "ADD_CUSTOM_TOPIC"; topic: CustomTopic }
   | { type: "EDIT_CUSTOM_TOPIC"; id: string; text: string; aboutPlayerId?: string }
   | { type: "REMOVE_CUSTOM_TOPIC"; id: string }

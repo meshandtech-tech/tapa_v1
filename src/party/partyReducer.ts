@@ -3,6 +3,14 @@ import { getDeck } from "../data/questions";
 import { DRAWING_TELEPHONE_CONFIG } from "../games/drawing/config";
 import { stepType } from "../games/drawing/routing";
 import {
+  createSlidesState,
+  currentPresenter as slidesPresenter,
+  everyonePresented as slidesEveryonePresented,
+  rememberSlides,
+  roundAverage as slidesAverage,
+  slideProgress,
+} from "../games/slides/slides";
+import {
   comparisonPageIndex,
   createDrawingState,
   drawingScores,
@@ -33,6 +41,7 @@ import {
   type CustomTopic,
   type DevilState,
   type DrawingState,
+  type SlidesState,
   type SubmissionStatus,
   type ThemeId,
   type ThemeMode,
@@ -72,6 +81,7 @@ export function createPartyState(
     quiz: null,
     devil: null,
     drawing: null,
+    slides: null,
     hostPlayerId: null,
     phaseDeadline: 0,
     pausedAt: null,
@@ -106,7 +116,15 @@ export type PartyAction =
       matchId?: string;
     }
   | { type: "ANSWER"; playerId: string; optionIndex: number; now?: number }
-  | { type: "ADVANCE"; forfeit?: boolean; now?: number; punishmentIndex?: number }
+  | {
+      type: "ADVANCE";
+      forfeit?: boolean;
+      now?: number;
+      punishmentIndex?: number;
+      /** Slides da próxima apresentação — sorteados pela autoridade. */
+      slideIds?: string[];
+      slidePoolSize?: number;
+    }
   /** Ninguém topou a prenda: sorteia outra sem sair da roleta. */
   | { type: "REROLL_PUNISHMENT"; punishmentIndex: number }
   /** Nota de 1 a 5 para a apresentação da rodada. */
@@ -130,6 +148,8 @@ export type PartyAction =
   | { type: "SET_REVEAL_AUTOPLAY"; autoPlay: boolean; now?: number }
   /** O host bancou que o palpite valia, mesmo sem casar na comparação. */
   | { type: "COUNT_AS_MATCH"; chainId: string }
+  /** Emergência do host: corta o slide corrente e vai para o seguinte. */
+  | { type: "SKIP_SLIDE"; now?: number }
   | { type: "PAUSE"; now?: number }
   | { type: "RESUME"; now?: number }
   | { type: "RESET_TO_LOBBY" };
@@ -142,7 +162,7 @@ export type PartyAction =
 const TRANSITIONS: Partial<Record<PartyPhase, readonly PartyPhase[]>> = {
   // Quem Erra, Paga
   LOBBY: ["GAME_INTRO"],
-  GAME_INTRO: ["ROUND_ACTIVE", "TOPIC_SPIN", "DRAW_STEP"],
+  GAME_INTRO: ["ROUND_ACTIVE", "TOPIC_SPIN", "DRAW_STEP", "PLAYER_SPIN"],
   ROUND_ACTIVE: ["REVEAL_ANSWER"],
   REVEAL_ANSWER: ["FORFEIT_WHEEL", "LEADERBOARD"],
   FORFEIT_WHEEL: ["LEADERBOARD"],
@@ -153,10 +173,12 @@ const TRANSITIONS: Partial<Record<PartyPhase, readonly PartyPhase[]>> = {
   PLAYER_SPIN: ["PLAYER_REVEAL"],
   PLAYER_REVEAL: ["PREPARATION"],
   PREPARATION: ["COUNTDOWN", "TOPIC_SPIN"],
+  // O Apresentação Improvisada reaproveita as fases do Advogado do Diabo: são
+  // as mesmas batidas (sorteia quem, revela, prepara, conta, apresenta, vota).
   COUNTDOWN: ["PRESENTATION"],
   PRESENTATION: ["VOTING"],
   VOTING: ["SCORE_REVEAL"],
-  SCORE_REVEAL: ["TOPIC_SPIN", "GAME_OVER"],
+  SCORE_REVEAL: ["TOPIC_SPIN", "PLAYER_SPIN", "GAME_OVER"],
   // Telefone Sem Fio de Desenho
   DRAW_STEP: ["PASSING"],
   GUESS_STEP: ["PASSING"],
@@ -475,6 +497,65 @@ function applyDrawingScores(state: PartyState, drawing: DrawingState): PartyStat
   };
 }
 
+/**
+ * Fluxo do "Apresentação Improvisada".
+ *
+ * Reaproveita as fases do Advogado do Diabo porque as batidas são as mesmas:
+ * sorteia quem vai, revela, prepara, conta 3-2-1, apresenta, vota, mostra a
+ * nota. O que muda é a duração de cada uma e o que aparece na tela.
+ *
+ * Os cinco slides são sorteados já na entrada do PLAYER_SPIN, e não na
+ * preparação: assim existem uns oito segundos de sorteio e revelação para os
+ * aparelhos pré-carregarem as imagens. Quando a preparação começa, tudo já
+ * está na memória — que era o requisito.
+ */
+function advanceSlides(state: PartyState, now: number, action: PartyAction): PartyState {
+  const slides = state.slides;
+  if (!slides) return state;
+  const sorteados = action.type === "ADVANCE" ? (action.slideIds ?? []) : [];
+  const tamanhoAcervo = action.type === "ADVANCE" ? (action.slidePoolSize ?? 0) : 0;
+
+  switch (state.phase) {
+    case "GAME_INTRO":
+    case "SCORE_REVEAL": {
+      // Fila esgotada: ninguém apresenta duas vezes antes de todos irem uma.
+      if (state.phase === "SCORE_REVEAL" && slidesEveryonePresented(state)) {
+        return enterPhase(state, "GAME_OVER", now);
+      }
+      return enterPhase(state, "PLAYER_SPIN", now, {
+        slides: {
+          ...slides,
+          index: slides.index + 1,
+          slideIds: sorteados,
+          usedSlideIds: rememberSlides(slides.usedSlideIds, sorteados, tamanhoAcervo),
+          votes: {},
+          instructionsSeen: true,
+        },
+        round: state.round + 1,
+      });
+    }
+
+    case "PRESENTATION":
+      return enterPhase(state, "VOTING", now, { slides: { ...slides, votes: {} } });
+
+    case "VOTING": {
+      const media = slidesAverage(state);
+      const apresentador = slidesPresenter(state);
+      return enterPhase(state, "SCORE_REVEAL", now, {
+        slides:
+          apresentador && media !== null
+            ? { ...slides, scores: { ...slides.scores, [apresentador.id]: media } }
+            : slides,
+      });
+    }
+
+    default: {
+      const proxima = getGame(state.settings.gameId).flow[state.phase];
+      return proxima ? enterPhase(state, proxima, now) : state;
+    }
+  }
+}
+
 function pickWinner(total: number): number {
   if (total <= 0) return 0;
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
@@ -490,7 +571,9 @@ function advance(
   forfeit: boolean,
   now: number,
   punishmentIndex: number,
+  action: PartyAction,
 ): PartyState {
+  if (state.settings.gameId === "improv-slides") return advanceSlides(state, now, action);
   if (state.settings.gameId === "advogado-do-diabo") return advanceDevil(state, now);
   if (state.settings.gameId === "drawing-telephone") return advanceDrawing(state, now);
   const game = getGame(state.settings.gameId);
@@ -595,7 +678,20 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
           round: 0,
           quiz: null,
           drawing: null,
+          slides: null,
           devil: createDevilState(players, state.devil?.customTopics ?? []),
+        });
+      }
+
+      if (state.settings.gameId === "improv-slides") {
+        return enterPhase(state, "GAME_INTRO", now, {
+          players,
+          round: 0,
+          quiz: null,
+          devil: null,
+          drawing: null,
+          // A ordem chega sorteada da autoridade; sem ela, a de entrada serve.
+          slides: createSlidesState(players, action.seatOrder ?? []),
         });
       }
 
@@ -608,6 +704,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
           round: 0,
           quiz: null,
           devil: null,
+          slides: null,
           drawing: createDrawingState(
             players,
             seatOrder,
@@ -625,6 +722,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
         round: 0,
         devil: null,
         drawing: null,
+        slides: null,
         quiz: {
           order: action.order ?? sequentialOrder(deck.length, game.rounds),
           answers: {},
@@ -664,7 +762,26 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
     }
 
     case "VOTE": {
-      if (state.phase !== "VOTING" || !state.devil) return state;
+      if (state.phase !== "VOTING") return state;
+      if (!Number.isInteger(action.rating) || action.rating < 1 || action.rating > 5) return state;
+      if (!state.players.some((player) => player.id === action.playerId)) return state;
+
+      // Mesmas regras nos dois jogos que votam: quem apresenta não se avalia,
+      // e ninguém vota duas vezes.
+      if (state.settings.gameId === "improv-slides") {
+        if (!state.slides) return state;
+        if (slidesPresenter(state)?.id === action.playerId) return state;
+        if (state.slides.votes[action.playerId] !== undefined) return state;
+        return {
+          ...state,
+          slides: {
+            ...state.slides,
+            votes: { ...state.slides.votes, [action.playerId]: action.rating },
+          },
+        };
+      }
+
+      if (!state.devil) return state;
       // Quem apresenta não vota em si mesmo, e ninguém vota duas vezes.
       if (currentPresenter(state)?.id === action.playerId) return state;
       if (state.devil.votes[action.playerId] !== undefined) return state;
@@ -794,6 +911,20 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
       };
     }
 
+    /**
+     * Emergência do host: corta o slide corrente.
+     *
+     * Puxa o prazo da fase para trás pelo que faltava do slide — como o slide
+     * no ar é derivado do prazo, encurtar o prazo é literalmente pular o
+     * slide, sem existir um "índice de slide" para sair de sincronia.
+     */
+    case "SKIP_SLIDE": {
+      if (state.phase !== "PRESENTATION" || !state.slides) return state;
+      const now = action.now ?? Date.now();
+      const { remainingMs } = slideProgress(state, now);
+      return { ...state, phaseDeadline: state.phaseDeadline - remainingMs };
+    }
+
     case "ADVANCE":
       // Pausado, o relógio não corre — mas o host ainda pode pular na mão.
       return advance(
@@ -801,6 +932,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
         action.forfeit ?? false,
         action.now ?? Date.now(),
         action.punishmentIndex ?? 0,
+        action,
       );
 
     case "PAUSE": {
@@ -827,6 +959,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
         round: 0,
         quiz: null,
         drawing: null,
+        slides: null,
         // Preserva as teses escritas pelo host ao voltar para o lobby.
         devil: state.devil ? withCustomTopics(state, state.devil.customTopics) : null,
         phaseDeadline: 0,

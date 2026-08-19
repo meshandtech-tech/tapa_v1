@@ -9,6 +9,8 @@ import {
 import { phaseCompleteEarly, submitGrace } from "../games/completion";
 import { drawPrompts } from "../data/drawingPrompts";
 import { randomId, shuffle } from "../games/drawing/random";
+import { activeSlides } from "../games/slides/library";
+import { pickSlides } from "../games/slides/slides";
 import { getGame } from "../games/registry";
 import { createPartyChannel, type HostCommand, type PartyChannel } from "./channel";
 import { createPartyState, partyReducer, type PartyAction } from "./partyReducer";
@@ -42,6 +44,10 @@ function enrichCommand(
   const now = Date.now();
   switch (command.type) {
     case "START_GAME": {
+      if (state.settings.gameId === "improv-slides") {
+        // Ordem de apresentação sorteada uma vez, aqui, e congelada no estado.
+        return { type: "START_GAME", now, seatOrder: shuffle(state.players.map((p) => p.id)) };
+      }
       if (state.settings.gameId === "drawing-telephone") {
         // Tudo o que é sorteio acontece AQUI, uma vez, na autoridade: ordem da
         // mesa, temas e os ids dos cadernos. O reducer só recebe o resultado.
@@ -62,7 +68,9 @@ function enrichCommand(
       return { type: "START_GAME", now, order: drawOrder(deck.length, game.rounds) };
     }
     case "ADVANCE":
-      return { type: "ADVANCE", now, punishmentIndex: drawPunishment(punishments.length) };
+      return buildAdvance(state);
+    case "SKIP_SLIDE":
+      return { type: "SKIP_SLIDE", now };
     case "REROLL_PUNISHMENT":
       return {
         type: "REROLL_PUNISHMENT",
@@ -81,6 +89,27 @@ function enrichCommand(
     default:
       return command;
   }
+}
+
+/**
+ * Monta um ADVANCE completo.
+ *
+ * Existe porque o avanço acontece em dois lugares — comando do host e relógio
+ * do auto-host — e os dois precisam carregar o mesmo sorteio. Duplicar isso já
+ * seria a chance de um caminho sortear e o outro não.
+ */
+function buildAdvance(state: PartyState): PartyAction {
+  const now = Date.now();
+  if (state.settings.gameId === "improv-slides") {
+    const pool = activeSlides.map((slide) => slide.id);
+    return {
+      type: "ADVANCE",
+      now,
+      slideIds: pickSlides(pool, state.slides?.usedSlideIds ?? []),
+      slidePoolSize: pool.length,
+    };
+  }
+  return { type: "ADVANCE", now, punishmentIndex: drawPunishment(punishments.length) };
 }
 
 function initRoomState(pin: string): PartyState {
@@ -278,11 +307,8 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
     if (!running || (!venceu && !todosResponderam)) return;
     // Respiro curto: sem ele a revelação entra no mesmo quadro do último toque.
     const timer = window.setTimeout(() => {
-      dispatch({
-        type: "ADVANCE",
-        now: Date.now(),
-        punishmentIndex: drawPunishment(punishments.length),
-      });
+      const atual = stateRef.current;
+      if (atual) dispatch(buildAdvance(atual));
     }, 400);
     return () => window.clearTimeout(timer);
   }, [running, venceu, todosResponderam]);

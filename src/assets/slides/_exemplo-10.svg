@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+<rect width="800" height="600" fill="#fb5607"/>
+<circle cx="480" cy="290" r="127" fill="#1d1d1d" opacity="0.18"/>
+<rect x="413" y="347" width="221" height="123" fill="#1d1d1d" opacity="0.14"/>
+<text x="400" y="270" font-family="Helvetica,Arial,sans-serif" font-size="72" font-weight="bold" fill="#1d1d1d" text-anchor="middle">INOVAÇÃO</text>
+<text x="400" y="330" font-family="Helvetica,Arial,sans-serif" font-size="26" fill="#1d1d1d" opacity="0.75" text-anchor="middle">slide de exemplo 10 — troque por PNG de verdade</text>
+</svg>

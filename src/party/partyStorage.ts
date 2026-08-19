@@ -9,6 +9,7 @@ import {
   type DevilState,
   type DrawingState,
   type QuizState,
+  type SlidesState,
 } from "./types";
 
 /**
@@ -162,6 +163,26 @@ function isDrawingState(value: unknown): value is DrawingState | null {
   );
 }
 
+/** `null` é válido: só existe depois que o Pitch no Escuro começa. */
+function isSlidesState(value: unknown): value is SlidesState | null {
+  if (value === null || value === undefined) return true;
+  if (typeof value !== "object") return false;
+  const slides = value as Partial<SlidesState>;
+  const strings = (list: unknown) =>
+    Array.isArray(list) && list.every((item) => typeof item === "string");
+  return (
+    strings(slides.order) &&
+    strings(slides.slideIds) &&
+    strings(slides.usedSlideIds) &&
+    Number.isInteger(slides.index) &&
+    typeof slides.instructionsSeen === "boolean" &&
+    !!slides.votes && typeof slides.votes === "object" &&
+    Object.values(slides.votes).every((nota) => Number.isInteger(nota)) &&
+    !!slides.scores && typeof slides.scores === "object" &&
+    Object.values(slides.scores).every((nota) => Number.isFinite(nota))
+  );
+}
+
 /**
  * Só devolve estado se TUDO validar. Dado corrompido no localStorage vira
  * `null` e a party recomeça limpa, em vez de quebrar a tela no meio da festa.
@@ -188,6 +209,7 @@ export function parsePartyState(raw: string | null): PartyState | null {
       !isQuizState(candidate.quiz) ||
       !isDevilState(candidate.devil) ||
       !isDrawingState(candidate.drawing) ||
+      !isSlidesState(candidate.slides) ||
       (candidate.hostPlayerId !== null && typeof candidate.hostPlayerId !== "string") ||
       !Number.isFinite(candidate.phaseDeadline) ||
       (candidate.pausedAt !== null && !Number.isFinite(candidate.pausedAt))
