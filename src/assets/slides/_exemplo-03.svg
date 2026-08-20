@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
-<rect width="800" height="600" fill="#2a9d8f"/>
-<circle cx="200" cy="320" r="96" fill="#fff" opacity="0.18"/>
-<rect x="154" y="346" width="198" height="94" fill="#fff" opacity="0.14"/>
-<text x="400" y="270" font-family="Helvetica,Arial,sans-serif" font-size="72" font-weight="bold" fill="#fff" text-anchor="middle">CRESCIMENTO</text>
-<text x="400" y="330" font-family="Helvetica,Arial,sans-serif" font-size="26" fill="#fff" opacity="0.75" text-anchor="middle">slide de exemplo 03 — troque por PNG de verdade</text>
-</svg>

@@ -42,8 +42,7 @@ virar um segundo card igual.
 
 ## Falta
 
-- [ ] **Subir os PNG em `src/assets/slides/`** *(precisa de você)* — hoje roda
-      com 12 slides de exemplo, que somem sozinhos quando a primeira imagem de
-      verdade entrar
+- [x] **32 imagens de verdade no acervo** — vindas de `photos_slides/` via
+      `npm run slides:sync`; os exemplos saíram sozinhos
 - [ ] Jogar com gente de verdade
 - [ ] Ganchos de áudio (a plataforma inteira ainda não tem arquivo de som)

@@ -1,23 +1,28 @@
-# Slides do "Apresentação Improvisada"
+# Slides do "Pitch no Escuro"
 
-Jogue os PNG aqui dentro. **Só isso.**
+## O jeito normal: `photos_slides/`
 
-Qualquer arquivo `.png`, `.jpg`, `.webp`, `.avif`, `.gif` ou `.svg` nesta pasta
-entra no acervo sozinho — não precisa registrar em lista nenhuma nem tocar em
-código.
+Jogue as imagens em **`tapa_v1/photos_slides/`** (na raiz do repositório, um
+nível acima desta pasta) e rode:
 
-## Adicionar
+```
+npm run slides:sync
+```
 
-1. Copie a imagem para esta pasta.
-2. Dê um nome descritivo em minúsculas, com hífen: `tubarao-de-tenis.png`.
-   O nome do arquivo (sem extensão) vira o id da imagem.
-3. Pronto. No `npm run dev` aparece na hora.
+Pronto. O script copia, arruma os nomes e apaga os slides de exemplo.
 
-## Os arquivos `_exemplo-*.svg`
+**Por que precisa do comando:** o Vite só enxerga o que está dentro de
+`despedida_de_solteiro_/`. A `photos_slides` fica fora, então de lá as imagens
+nunca entrariam no acervo sozinhas. O `sync` faz essa ponte.
 
-São slides de mentira, só para o jogo rodar antes de você subir as imagens de
-verdade. **Assim que existir UMA imagem sem `_` no começo, os exemplos somem
-sozinhos do acervo.** Não precisa apagar (mas pode).
+Pode rodar quantas vezes quiser: só copia o que mudou e nunca apaga o que você
+tenha colocado à mão aqui.
+
+## O jeito direto
+
+Copiar a imagem para **esta pasta** também funciona, e nem precisa de comando —
+qualquer `.png`, `.jpg`, `.webp`, `.avif` ou `.gif` aqui entra no acervo
+sozinho. O nome do arquivo (sem extensão) vira o id da imagem.
 
 ## Tirar uma imagem de circulação sem apagar
 
@@ -25,7 +30,7 @@ Em `src/games/slides/slideOverrides.ts`:
 
 ```ts
 export const SLIDE_OVERRIDES = {
-  "tubarao-de-tenis": { active: false },
+  "john-pork": { active: false },
 };
 ```
 
@@ -37,7 +42,6 @@ imagem arriscaria servir a antiga do cache no meio de uma festa.
 
 ## Tamanho
 
-Não precisa converter nada à mão. Mas imagem de 8 MB atrasa o pré-carregamento
-e a apresentação depende dele: o jogo só entra na preparação depois que os
-cinco slides estão na memória. Se der para exportar em ~1280px de largura,
-melhor.
+Não precisa converter nada à mão. Mas imagem de 8 MB atrasa o
+pré-carregamento, e a apresentação depende dele: o jogo só entra na preparação
+depois que os cinco slides estão na memória.

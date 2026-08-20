@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
-<rect width="800" height="600" fill="#e63946"/>
-<circle cx="160" cy="250" r="83" fill="#fff" opacity="0.18"/>
-<rect x="117" y="323" width="169" height="77" fill="#fff" opacity="0.14"/>
-<text x="400" y="270" font-family="Helvetica,Arial,sans-serif" font-size="72" font-weight="bold" fill="#fff" text-anchor="middle">Q3 ROADMAP</text>
-<text x="400" y="330" font-family="Helvetica,Arial,sans-serif" font-size="26" fill="#fff" opacity="0.75" text-anchor="middle">slide de exemplo 02 — troque por PNG de verdade</text>
-</svg>

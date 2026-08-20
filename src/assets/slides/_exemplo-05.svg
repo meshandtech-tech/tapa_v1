@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
-<rect width="800" height="600" fill="#6a4c93"/>
-<circle cx="280" cy="200" r="122" fill="#fff" opacity="0.18"/>
-<rect x="228" y="392" width="256" height="128" fill="#fff" opacity="0.14"/>
-<text x="400" y="270" font-family="Helvetica,Arial,sans-serif" font-size="72" font-weight="bold" fill="#fff" text-anchor="middle">DISRUPÇÃO</text>
-<text x="400" y="330" font-family="Helvetica,Arial,sans-serif" font-size="26" fill="#fff" opacity="0.75" text-anchor="middle">slide de exemplo 05 — troque por PNG de verdade</text>
-</svg>
