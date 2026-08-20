@@ -28,7 +28,9 @@ function jogadores(n: number): Player[] {
 }
 
 function temas(n: number): DrawingPrompt[] {
-  return Array.from({ length: n }, (_, i) => ({ id: `t${i}`, text: `Tema ${i}` }));
+  return Array.from({ length: n }, (_, i) => ({
+    id: `t${i}`, text: `Tema ${i}`, complexity: "simple" as const,
+  }));
 }
 
 /** Sala pronta para começar, com o jogo de desenho escolhido. */
@@ -307,12 +309,12 @@ describe("a corrente determinística do exemplo", () => {
    * O caso que o produto pede de nome: a revelação tem de reproduzir a ordem
    * cronológica exata, com a autoria certa em cada página.
    */
-  it("reproduz CACHORRO PILOTANDO MOTO -> ... -> HOMEM A CAVALO", () => {
+  it("reproduz CACHORRO -> ... -> HOMEM A CAVALO", () => {
     const players = jogadores(4);
     const drawing = createDrawingState(
       players,
       players.map((p) => p.id),
-      [{ id: "t0", text: "Cachorro pilotando moto" }, ...temas(3)],
+      [{ id: "t0", text: "Cachorro", complexity: "simple" as const }, ...temas(3)],
       ["c0", "c1", "c2", "c3"],
       "m1",
     );
@@ -324,7 +326,7 @@ describe("a corrente determinística do exemplo", () => {
     ];
 
     const chain = drawing.chains[0];
-    expect(chain.originalPrompt).toBe("Cachorro pilotando moto");
+    expect(chain.originalPrompt).toBe("Cachorro");
     expect(chain.pages.map((p) => `${p.playerId}:${p.type}`)).toEqual([
       "p0:drawing", "p1:guess", "p2:drawing", "p3:guess",
     ]);

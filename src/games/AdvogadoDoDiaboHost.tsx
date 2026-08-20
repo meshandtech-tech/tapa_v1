@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Crown, Flame, Timer } from "lucide-react";
 import type { PartyState } from "../party/types";
+import { TOPIC_CHALLENGE } from "../data/topics";
 import { Avatar } from "../ui/Avatar";
 import { Card, Knockout } from "../ui/Card";
 import { SlotMachine } from "../ui/SlotMachine";
@@ -124,8 +125,11 @@ export function AdvogadoDoDiaboHost({
             className="w-full max-w-6xl"
           >
             <Card className="px-[3vw] py-[5vh]">
-              <p className="font-display text-[clamp(2rem,6vw,6rem)] font-extrabold uppercase leading-[1.05]">
+              <p className="font-display text-[clamp(2rem,6.5vw,6.5rem)] font-extrabold uppercase leading-[1.05]">
                 {tema}
+              </p>
+              <p className="mt-[2vh] font-action text-[clamp(0.9rem,1.8vw,1.6rem)] uppercase tracking-[0.3em] opacity-60">
+                {TOPIC_CHALLENGE}
               </p>
             </Card>
           </motion.div>

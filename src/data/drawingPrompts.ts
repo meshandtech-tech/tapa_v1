@@ -1,201 +1,85 @@
 /**
- * Temas do Telefone Sem Fio de Desenho. Escritos para este jogo.
+ * Temas do Telefone Sem Fio de Desenho.
  *
- * Três regras valeram para cada frase:
+ * A regra que manda em tudo: **dá para comunicar isso com o dedo numa tela de
+ * celular?** Se não dá, simplifica.
  *
- * 1. **Tem que dar para desenhar em 90 segundos.** Nada de conceito abstrato
- *    ("saudade", "justiça") nem nome próprio — o desenho é a única ponte entre
- *    uma pessoa e a seguinte, e ninguém desenha uma ideia.
- * 2. **Tem que ter uma imagem forte.** "Cachorro" vira qualquer coisa;
- *    "cachorro pilotando moto" tem uma cena que sobrevive a um traço ruim.
- * 3. **A graça é o deslocamento**, não o exagero. Situação comum com um
- *    detalhe fora do lugar deforma melhor ao longo da corrente.
+ * A versão anterior errava aqui. "Panda comendo pizza" pede quatro coisas de
+ * uma vez — um panda, uma pizza, o ato de comer e a relação entre os dois — e
+ * quem desenha não é ilustrador, é alguém rabiscando com o polegar. O caos do
+ * jogo tem de vir de gente INTERPRETANDO errado um desenho simples, nunca de o
+ * tema ser impossível de desenhar. A graça é "como CACHORRO virou SUBMARINO?",
+ * e não "como eu desenho essa frase?".
  *
- * O modelo já tem `category` e `difficulty` de propósito, mesmo sem aparecer
- * na interface ainda: filtrar por dificuldade depois é mexer aqui, não no jogo.
+ * Por isso:
+ * - `simple` — UM objeto. É a maioria.
+ * - `action`  — UM personagem + UMA ação óbvia. Nada além disso.
+ *
+ * Não existe nível difícil de propósito: o desenho já é a parte difícil.
  */
-export type DrawingPromptCategory =
-  | "animais"
-  | "pessoas"
-  | "lugares"
-  | "absurdo"
-  | "objetos";
+export type DrawingComplexity = "simple" | "action";
 
 export interface DrawingPrompt {
   id: string;
   text: string;
+  complexity: DrawingComplexity;
   /** Outras formas de escrever a mesma resposta, para a comparação final. */
   acceptedAnswers?: string[];
-  category?: DrawingPromptCategory;
-  difficulty?: "easy" | "medium" | "hard";
+  category?: string;
   locale?: string;
 }
 
 /** `texto | alternativa, alternativa` — compacto para a lista não virar muro. */
-function grupo(
-  category: DrawingPromptCategory,
-  difficulty: "easy" | "medium" | "hard",
-  linhas: readonly string[],
-): DrawingPrompt[] {
+function bloco(complexity: DrawingComplexity, prefixo: string, linhas: readonly string[]): DrawingPrompt[] {
   return linhas.map((linha, indice) => {
     const [texto, alternativas] = linha.split("|");
-    const accepted = alternativas
-      ?.split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
+    const accepted = alternativas?.split(",").map((item) => item.trim()).filter(Boolean);
     return {
-      id: `${category}-${String(indice + 1).padStart(2, "0")}`,
+      id: `${prefixo}-${String(indice + 1).padStart(2, "0")}`,
       text: texto.trim(),
+      complexity,
       ...(accepted && accepted.length > 0 ? { acceptedAnswers: accepted } : {}),
-      category,
-      difficulty,
       locale: "pt-BR",
     };
   });
 }
 
-const ANIMAIS = grupo("animais", "easy", [
-  "Cachorro pilotando moto | cachorro de moto",
-  "Gato de terno | gato engravatado",
-  "Elefante em cima de um skate",
-  "Macaco tomando sorvete",
-  "Galinha na academia | galinha malhando",
-  "Jacaré escovando os dentes",
-  "Tartaruga com pressa | tartaruga correndo",
-  "Pinguim de óculos escuros",
-  "Vaca dançando balé | vaca bailarina",
-  "Peixe andando de bicicleta",
-  "Coruja lendo jornal",
-  "Cavalo com guarda-chuva",
-  "Sapo jogando videogame",
-  "Urso cortando o cabelo",
-  "Formiga levantando peso | formiga na academia",
-  "Girafa de gravata",
-  "Porco tomando banho de banheira",
-  "Coelho dirigindo ônibus",
-  "Cobra pulando corda",
-  "Panda comendo pizza",
-  "Papagaio falando no telefone | papagaio no celular",
-  "Camelo na praia",
-  "Rato de capacete",
-  "Preguiça correndo maratona",
-  "Polvo tocando bateria",
+/** UM objeto. Desenhável em 15 segundos, reconhecível mesmo torto. */
+const SIMPLES = bloco("simple", "s", [
+  "Maçã", "Tubarão", "Avião", "Vulcão", "Pizza", "Fantasma", "Dinossauro",
+  "Robô", "Coroa", "Banana", "Violão | guitarra", "Cobra", "Castelo",
+  "Diamante", "Martelo", "Anjo", "Diabo", "Pirata", "Bomba", "Cérebro",
+  "Moto | motocicleta", "Coração partido", "Disco voador | ovni, nave",
+  "Aliança | anel", "Vaso sanitário | privada",
+  "Cachorro", "Gato", "Sol", "Lua", "Estrela", "Árvore", "Casa", "Carro",
+  "Barco", "Foguete", "Óculos", "Chapéu", "Chinelo | sandália", "Chave",
+  "Relógio", "Celular", "Computador", "Televisão | tv", "Geladeira",
+  "Cadeira", "Cama", "Porta", "Janela", "Escada", "Ponte", "Montanha",
+  "Nuvem", "Raio", "Fogo", "Ovo", "Bolo", "Sorvete", "Hambúrguer",
+  "Cachorro-quente", "Xícara de café | café", "Garrafa", "Copo", "Faca",
+  "Garfo", "Panela", "Vassoura", "Guarda-chuva", "Mochila", "Livro",
+  "Lápis", "Tesoura", "Balão", "Presente", "Bandeira", "Sino", "Âncora",
+  "Caveira", "Aranha", "Abelha", "Borboleta", "Peixe", "Polvo", "Elefante",
+  "Girafa", "Leão", "Macaco", "Pinguim", "Coelho", "Sapo", "Galinha",
+  "Porco", "Vaca", "Cavalo", "Cacto", "Sereia", "Múmia", "Zumbi",
+  "Palhaço", "Bruxa", "Ninja", "Astronauta", "Trem", "Bicicleta",
 ]);
 
-const PESSOAS = grupo("pessoas", "medium", [
-  "Vovó andando de skate | vovo de skate",
-  "Bebê trabalhando de garçom | bebe garcom",
-  "Bombeiro pedindo ajuda",
-  "Palhaço com medo de balão",
-  "Astronauta pendurando roupa no varal",
-  "Dentista com dor de dente",
-  "Chef derrubando o bolo",
-  "Motorista dormindo no volante",
-  "Professor dançando na mesa",
-  "Cabeleireiro careca",
-  "Juiz de futebol chorando",
-  "Ladrão pedindo desculpas",
-  "Vovô jogando videogame | vovo no videogame",
-  "Pintor caindo da escada",
-  "Médico com medo de agulha",
-  "Cantor sem microfone",
-  "Nadador com medo de água",
-  "Mágico serrando a si mesmo",
-  "Fotógrafo escorregando",
-  "Padeiro fazendo um pão gigante",
-  "Pescador fisgando uma bota",
-  "Segurança dormindo em pé",
-  "Carteiro fugindo de cachorro",
-  "Cientista com o cabelo em pé",
-  "Garçom equilibrando dez pratos",
+/** UM personagem + UMA ação. Nunca mais que isso. */
+const ACOES = bloco("action", "a", [
+  "Porco voando", "Bebê chorando", "Banana dançando", "Cachorro correndo",
+  "Gato dormindo", "Galinha brava", "Carro explodindo", "Homem caindo",
+  "Vovó dançando", "Palhaço chorando", "Tubarão voando", "Casa pegando fogo",
+  "Celular quebrado", "Chefe bravo", "Pirata bêbado", "Alien dançando",
+  "Robô chorando", "Gato voando", "Cachorro dormindo", "Homem correndo",
+  "Peixe pulando", "Cobra dançando", "Macaco gritando", "Elefante pulando",
+  "Sapo cantando", "Vaca dormindo", "Fantasma dançando", "Esqueleto correndo",
+  "Menino gritando", "Coelho pulando", "Leão dormindo", "Pinguim escorregando",
+  "Robô dançando", "Vulcão explodindo", "Homem chorando", "Cavalo correndo",
+  "Bruxa voando", "Ninja pulando", "Astronauta flutuando", "Passarinho cantando",
 ]);
 
-const LUGARES = grupo("lugares", "medium", [
-  "Fila enorme na padaria",
-  "Praia lotada num dia de chuva",
-  "Elevador cheio de gente",
-  "Ponto de ônibus na tempestade",
-  "Sala de aula vazia",
-  "Supermercado com carrinho quebrado",
-  "Aeroporto com voo atrasado",
-  "Consultório com aquário de peixe",
-  "Parque com pipa presa na árvore",
-  "Rua alagada com gente de bote",
-  "Estádio com um torcedor só",
-  "Cinema com pipoca no chão",
-  "Metrô superlotado",
-  "Feira com barraca de fruta",
-  "Piscina com boia de flamingo",
-  "Camping com a barraca caindo",
-  "Farmácia de madrugada",
-  "Lava-jato com carro sujo",
-  "Biblioteca com alguém roncando",
-  "Salão de festa sem convidados",
-]);
-
-const ABSURDO = grupo("absurdo", "hard", [
-  "Alienígena pedindo pizza | et pedindo pizza",
-  "Robô lavando louça",
-  "Fantasma com medo de gente",
-  "Nuvem chorando embaixo de guarda-chuva",
-  "Lua de pijama",
-  "Batata com braço e perna",
-  "Prédio dando cambalhota",
-  "Sol de óculos escuros na chuva",
-  "Dinossauro no ponto de ônibus",
-  "Sereia de tênis",
-  "Vampiro tomando sol",
-  "Múmia se enrolando no papel higiênico",
-  "Zumbi correndo de gente",
-  "Bruxa presa no trânsito",
-  "Pirata com medo do mar",
-  "Robô com soluço",
-  "Cachorro-quente fugindo do prato",
-  "Geladeira falando ao telefone",
-  "Árvore fazendo exercício",
-  "Montanha de chapéu",
-  "Ovo de capacete",
-  "Sanduíche gigante devorando alguém",
-  "Cadeira sentada numa cadeira",
-  "Relógio derretendo no calor",
-  "Estrela cadente de paraquedas",
-  "Foguete indo para o trabalho",
-  "Boneco de neve no deserto",
-  "Ventilador com frio",
-  "Espelho fugindo do próprio reflexo",
-  "Escada rolante subindo até a lua",
-]);
-
-const OBJETOS = grupo("objetos", "easy", [
-  "Escova de dente gigante",
-  "Guarda-chuva virado do avesso",
-  "Meia perdida dentro da máquina",
-  "Chinelo quebrado no meio da rua",
-  "Bolo de aniversário caindo",
-  "Vassoura voando sozinha",
-  "Panela fervendo demais",
-  "Bicicleta sem uma roda",
-  "Óculos com uma lente só",
-  "Mochila cheia demais",
-  "Chave presa na fechadura",
-  "Balão preso no fio de luz",
-  "Sofá abandonado na calçada",
-  "Ventilador amarrado com fita",
-  "Carrinho de supermercado sem roda",
-  "Caneta vazando na camisa",
-  "Copo caindo em câmera lenta",
-  "Poste torto na esquina",
-  "Guarda-roupa transbordando",
-  "Controle remoto sem pilha",
-]);
-
-export const drawingPrompts: readonly DrawingPrompt[] = [
-  ...ANIMAIS,
-  ...PESSOAS,
-  ...LUGARES,
-  ...ABSURDO,
-  ...OBJETOS,
-];
+export const drawingPrompts: readonly DrawingPrompt[] = [...SIMPLES, ...ACOES];
 
 export function getPromptById(id: string): DrawingPrompt | undefined {
   return drawingPrompts.find((prompt) => prompt.id === id);
@@ -214,8 +98,8 @@ export function drawPrompts(
 ): DrawingPrompt[] {
   const usados = new Set(usedIds);
   const livres = drawingPrompts.filter((prompt) => !usados.has(prompt.id));
-  // Acabaram os temas inéditos: recomeça do acervo inteiro em vez de devolver
-  // menos temas do que correntes, o que deixaria alguém sem o que desenhar.
+  // Acabaram os inéditos: recomeça do acervo inteiro em vez de devolver menos
+  // temas do que correntes, o que deixaria alguém sem o que desenhar.
   const acervo = livres.length >= quantidade ? [...livres] : [...drawingPrompts];
 
   for (let i = acervo.length - 1; i > 0; i -= 1) {

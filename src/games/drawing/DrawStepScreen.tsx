@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Brush, Eraser, Loader2, Send, Trash2, Undo2 } from "lucide-react";
+import { Brush, Check, Eraser, Loader2, Send, Trash2, Undo2 } from "lucide-react";
 import { drawingPath, isStorageAvailable, uploadDrawing } from "../../lib/storage";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
 import { cn } from "../../ui/cn";
+import {
+  BRUSH_COLORS,
+  BRUSH_SIZES,
+  DEFAULT_BRUSH_SIZE,
+  type BrushSize,
+} from "./config";
 import { DrawingCanvas, type DrawingCanvasHandle } from "./DrawingCanvas";
 import { clearDraft, loadDraft, saveDraft } from "./draft";
 import { renderToBlob } from "./export";
@@ -42,6 +48,8 @@ export function DrawStepScreen({
 }) {
   const canvasRef = useRef<DrawingCanvasHandle | null>(null);
   const [tool, setTool] = useState<StrokeTool>("brush");
+  const [color, setColor] = useState(0);
+  const [size, setSize] = useState<BrushSize>(DEFAULT_BRUSH_SIZE);
   const [enviando, setEnviando] = useState(false);
   const [confirmandoLimpar, setConfirmandoLimpar] = useState(false);
   const enviadoRef = useRef(false);
@@ -143,6 +151,8 @@ export function DrawStepScreen({
         <DrawingCanvas
           ref={canvasRef}
           tool={tool}
+          color={color}
+          size={size}
           initialStrokes={rascunho ?? undefined}
           disabled={enviando}
           onStrokesChange={guardarRascunho}
@@ -155,6 +165,66 @@ export function DrawStepScreen({
             </span>
           </div>
         ) : null}
+      </div>
+
+      {/* Cor e espessura numa faixa só: o canvas é o que não pode encolher,
+          então controle novo entra em altura mínima, nunca em área de desenho. */}
+      <div className="flex items-center gap-2">
+        <div className="flex flex-1 flex-wrap gap-1.5">
+          {BRUSH_COLORS.map((cor, indice) => {
+            const ativo = indice === color && tool === "brush";
+            return (
+              <button
+                key={cor}
+                type="button"
+                aria-label={`Cor ${indice + 1}`}
+                aria-pressed={ativo}
+                onClick={() => {
+                  setColor(indice);
+                  // Escolher cor volta para o pincel: ninguém escolhe uma cor
+                  // querendo continuar apagando.
+                  setTool("brush");
+                }}
+                style={{ backgroundColor: cor }}
+                className={cn(
+                  "grid size-8 shrink-0 place-items-center border-4 border-ink transition-transform",
+                  "focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                  ativo ? "scale-110 shadow-brutal" : "opacity-80",
+                )}
+              >
+                {ativo ? <Check strokeWidth={4} className="size-4 text-white mix-blend-difference" /> : null}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex shrink-0 gap-1">
+          {(Object.keys(BRUSH_SIZES) as BrushSize[]).map((nome) => {
+            const ativo = nome === size;
+            return (
+              <button
+                key={nome}
+                type="button"
+                aria-label={`Espessura ${nome}`}
+                aria-pressed={ativo}
+                onClick={() => setSize(nome)}
+                className={cn(
+                  "grid size-8 place-items-center border-4 border-ink transition-transform",
+                  "focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ink",
+                  ativo ? "scale-110 bg-ink shadow-brutal" : "bg-paper",
+                )}
+              >
+                <span
+                  className={cn("block rounded-full", ativo ? "bg-paper" : "bg-ink")}
+                  style={{
+                    width: nome === "small" ? 4 : nome === "medium" ? 8 : 13,
+                    height: nome === "small" ? 4 : nome === "medium" ? 8 : 13,
+                  }}
+                />
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <p className="text-center font-action text-[0.65rem] uppercase tracking-wide opacity-70">

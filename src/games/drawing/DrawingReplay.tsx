@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { PencilOff } from "lucide-react";
 import { cn } from "../../ui/cn";
+import { BRUSH_COLORS } from "./config";
 import { parseStrokes, replayStrokes } from "./strokes";
 import type { DrawingPageDraw } from "../../party/types";
 
@@ -39,7 +40,7 @@ export function DrawingReplay({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      replayStrokes(ctx, strokes, canvas.width, canvas.height);
+      replayStrokes(ctx, strokes, canvas.width, canvas.height, BRUSH_COLORS);
       onReady?.();
     };
 

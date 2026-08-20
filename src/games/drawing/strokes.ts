@@ -20,6 +20,8 @@ export interface DrawingStroke {
   tool: StrokeTool;
   /** Fração do lado menor do canvas. */
   width: number;
+  /** Índice em `BRUSH_COLORS`. Ausente = preto, para traço antigo. */
+  color?: number;
   points: StrokePoint[];
 }
 
@@ -27,7 +29,13 @@ export type Drawing = DrawingStroke[];
 
 /** Resolução da quantização. 2048 passos é mais fino que qualquer tela. */
 const GRADE = 2048;
-const VERSAO = 1;
+/**
+ * v2 acrescentou a cor ao cabeçalho do traço.
+ *
+ * A v1 continua sendo lida: rascunho salvo no celular de alguém antes da
+ * atualização não pode virar tela em branco no meio da rodada.
+ */
+const VERSAO = 2;
 
 const clamp01 = (valor: number) => (valor < 0 ? 0 : valor > 1 ? 1 : valor);
 const paraGrade = (valor: number) => Math.round(clamp01(valor) * GRADE);
@@ -42,7 +50,9 @@ const daGrade = (valor: number) => valor / GRADE;
  */
 export function serializeStrokes(strokes: Drawing): string {
   const compacto = strokes.map((stroke) => {
-    const cabeca = [stroke.tool === "eraser" ? 1 : 0, paraGrade(stroke.width)];
+    // A cor viaja como ÍNDICE da paleta, não como "#rrggbb": um número contra
+    // sete caracteres, num payload que já é o mais pesado do jogo.
+    const cabeca = [stroke.tool === "eraser" ? 1 : 0, paraGrade(stroke.width), stroke.color ?? 0];
     const pontos = stroke.points.flatMap((ponto) => [paraGrade(ponto.x), paraGrade(ponto.y)]);
     return [...cabeca, ...pontos];
   });
@@ -54,23 +64,26 @@ export function parseStrokes(raw: string | null | undefined): Drawing | null {
   if (!raw) return null;
   try {
     const dado = JSON.parse(raw) as { v?: number; g?: number; s?: unknown };
-    if (dado.v !== VERSAO || !Array.isArray(dado.s)) return null;
+    if ((dado.v !== VERSAO && dado.v !== 1) || !Array.isArray(dado.s)) return null;
     const grade = typeof dado.g === "number" && dado.g > 0 ? dado.g : GRADE;
+    // v1: [ferramenta, largura, ...pontos]. v2: [ferramenta, largura, cor, ...].
+    const cabecalho = dado.v === 1 ? 2 : 3;
 
     const strokes: Drawing = [];
     for (const item of dado.s) {
-      if (!Array.isArray(item) || item.length < 2) return null;
+      if (!Array.isArray(item) || item.length < cabecalho) return null;
       if (!item.every((valor) => typeof valor === "number" && Number.isFinite(valor))) return null;
-      // Cabeça (2) + pares de coordenada: comprimento ímpar é dado corrompido.
-      if ((item.length - 2) % 2 !== 0) return null;
+      // Cabeça + pares de coordenada: comprimento ímpar é dado corrompido.
+      if ((item.length - cabecalho) % 2 !== 0) return null;
 
       const points: StrokePoint[] = [];
-      for (let i = 2; i < item.length; i += 2) {
+      for (let i = cabecalho; i < item.length; i += 2) {
         points.push({ x: clamp01(item[i] / grade), y: clamp01(item[i + 1] / grade) });
       }
       strokes.push({
         tool: item[0] === 1 ? "eraser" : "brush",
         width: clamp01(item[1] / grade),
+        color: cabecalho === 3 ? Math.max(0, Math.trunc(item[2])) : 0,
         points,
       });
     }
@@ -133,7 +146,8 @@ export function replayStrokes(
   strokes: Drawing,
   width: number,
   height: number,
-  cor = "#111111",
+  /** Paleta a usar. Injetada para esta função não depender do config. */
+  palette: readonly string[] = ["#111111"],
 ): void {
   const menor = Math.min(width, height);
   ctx.lineCap = "round";
@@ -146,6 +160,7 @@ export function replayStrokes(
     // A borracha fura o que já existe em vez de pintar de branco — assim o
     // fundo continua transparente e a exportação escolhe a cor do papel.
     ctx.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over";
+    const cor = palette[stroke.color ?? 0] ?? palette[0] ?? "#111111";
     ctx.strokeStyle = cor;
     ctx.fillStyle = cor;
     ctx.lineWidth = Math.max(1, stroke.width * menor);

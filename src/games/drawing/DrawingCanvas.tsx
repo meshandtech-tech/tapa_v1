@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
-import { BRUSH_WIDTHS } from "./config";
+import { BRUSH_COLORS, BRUSH_SIZES, ERASER_FACTOR, type BrushSize } from "./config";
 import {
   replayStrokes,
   simplifyStroke,
@@ -17,6 +17,9 @@ export interface DrawingCanvasHandle {
 
 interface DrawingCanvasProps {
   tool: StrokeTool;
+  /** Índice em `BRUSH_COLORS`. */
+  color: number;
+  size: BrushSize;
   /** Avisa a cada traço terminado — o pai usa para salvar rascunho e ligar o desfazer. */
   onStrokesChange?: (strokes: Drawing) => void;
   initialStrokes?: Drawing;
@@ -42,16 +45,34 @@ interface DrawingCanvasProps {
  * limpar, ou a tela mudar de tamanho (girar o aparelho).
  */
 export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
-  function DrawingCanvas({ tool, onStrokesChange, initialStrokes, disabled, className }, ref) {
+  function DrawingCanvas({ tool, color, size, onStrokesChange, initialStrokes, disabled, className }, ref) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const strokesRef = useRef<Drawing>(initialStrokes ? [...initialStrokes] : []);
     const currentRef = useRef<StrokePoint[] | null>(null);
     /** Traços já terminados, rasterizados uma vez. */
     const committedRef = useRef<HTMLCanvasElement | null>(null);
     const frameRef = useRef<number | null>(null);
+    // Ferramenta, cor e espessura em refs: o traço em andamento é pintado
+    // dentro de um rAF, fora do ciclo do React, e ler o estado dali daria o
+    // valor do render anterior.
     const toolRef = useRef<StrokeTool>(tool);
     toolRef.current = tool;
+    const colorRef = useRef(color);
+    colorRef.current = color;
+    const sizeRefAtual = useRef<BrushSize>(size);
+    sizeRefAtual.current = size;
     const sizeRef = useRef({ width: 0, height: 0 });
+
+    /** O traço com a ferramenta, a cor e a espessura escolhidas agora. */
+    const tracoAtual = useCallback(
+      (points: StrokePoint[]) => ({
+        tool: toolRef.current,
+        width: larguraDe(toolRef.current, sizeRefAtual.current),
+        color: colorRef.current,
+        points,
+      }),
+      [],
+    );
 
     /** Redesenha os traços terminados. Só em desfazer, limpar ou resize. */
     const rebuildCommitted = useCallback(() => {
@@ -63,7 +84,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       const ctx = committed.getContext("2d");
       if (!ctx) return;
       ctx.clearRect(0, 0, width, height);
-      replayStrokes(ctx, strokesRef.current, width, height);
+      replayStrokes(ctx, strokesRef.current, width, height, BRUSH_COLORS);
     }, []);
 
     /** Copia o histórico e pinta o traço em andamento por cima. */
@@ -80,7 +101,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
       const pontos = currentRef.current;
       if (pontos && pontos.length > 0) {
-        replayStrokes(ctx, [{ tool: toolRef.current, width: larguraDe(toolRef.current), points: pontos }], width, height);
+        replayStrokes(ctx, [tracoAtual(pontos)], width, height, BRUSH_COLORS);
       }
     }, []);
 
@@ -189,20 +210,17 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       currentRef.current = null;
       if (!pontos || pontos.length === 0) return;
 
-      strokesRef.current = [
-        ...strokesRef.current,
-        { tool: toolRef.current, width: larguraDe(toolRef.current), points: simplifyStroke(pontos) },
-      ];
+      strokesRef.current = [...strokesRef.current, tracoAtual(simplifyStroke(pontos))];
       // Fixa no histórico rasterizado: o próximo quadro já parte daqui.
       const committed = committedRef.current;
       const ctx = committed?.getContext("2d");
       const { width, height } = sizeRef.current;
       if (ctx) {
-        replayStrokes(ctx, [strokesRef.current[strokesRef.current.length - 1]], width, height);
+        replayStrokes(ctx, [strokesRef.current[strokesRef.current.length - 1]], width, height, BRUSH_COLORS);
       }
       requestPaint();
       onStrokesChange?.(strokesRef.current);
-    }, [onStrokesChange, requestPaint]);
+    }, [onStrokesChange, requestPaint, tracoAtual]);
 
     useImperativeHandle(ref, () => ({
       getStrokes: () => strokesRef.current,
@@ -243,6 +261,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
   },
 );
 
-function larguraDe(tool: StrokeTool): number {
-  return tool === "eraser" ? BRUSH_WIDTHS.eraser : BRUSH_WIDTHS.brush;
+function larguraDe(tool: StrokeTool, size: BrushSize): number {
+  const base = BRUSH_SIZES[size];
+  return tool === "eraser" ? base * ERASER_FACTOR : base;
 }

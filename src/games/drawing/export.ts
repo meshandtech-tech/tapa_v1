@@ -1,3 +1,4 @@
+import { BRUSH_COLORS } from "./config";
 import { replayStrokes, type Drawing } from "./strokes";
 
 /**
@@ -36,7 +37,7 @@ export async function renderToBlob(
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  replayStrokes(ctx, strokes, size, size);
+  replayStrokes(ctx, strokes, size, size, BRUSH_COLORS);
 
   ctx.globalCompositeOperation = "destination-over";
   ctx.fillStyle = "#ffffff";

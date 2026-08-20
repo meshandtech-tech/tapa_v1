@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { Check, Flame, Timer } from "lucide-react";
 import type { PartyState, Player } from "../party/types";
+import { TOPIC_CHALLENGE } from "../data/topics";
 import { Card, Knockout } from "../ui/Card";
 import { cn } from "../ui/cn";
 import { SlotMachine } from "../ui/SlotMachine";
@@ -55,8 +56,14 @@ export function AdvogadoDoDiaboPlayer({
           <Flame strokeWidth={2.5} className="mx-auto mb-3 size-10" />
           <h2 className="font-display text-2xl font-bold uppercase">Advogado do Diabo</h2>
           <p className="mt-3 font-ui text-base leading-snug">
-            Você vai defender teses que talvez ache absurdas. Não representa a
-            sua opinião — é improviso. Se o tema pesar, o host pede outro.
+            Você vai defender opinião que provavelmente acha um absurdo. Não é o
+            que você pensa — é improviso, e a mesa sabe disso.
+          </p>
+          {/* O usuário pediu isto com todas as letras: provocar é o jogo, mas
+              ninguém devia ficar preso a um tema que incomodou de verdade. */}
+          <p className="mt-3 border-4 border-ink bg-accent-soft p-3 font-hand text-lg leading-snug">
+            Pegou um tema que te incomodou? Fala e pula, sem drama. É brincadeira,
+            não é debate de verdade.
           </p>
           <p className="mt-4 font-action text-sm uppercase opacity-70">
             O host começa quando todo mundo estiver pronto
@@ -108,8 +115,14 @@ export function AdvogadoDoDiaboPlayer({
             transition={{ type: "spring", stiffness: 240, damping: 16 }}
           >
             <Card className="p-6 text-center">
-              <p className="font-display text-2xl font-extrabold uppercase leading-tight">
+              {/* Tese curta pede tipografia grande: a frase É o espetáculo, e
+                  em corpo pequeno ela passa despercebida em vez de fazer a
+                  mesa reagir na hora. */}
+              <p className="font-display text-[clamp(1.75rem,8.5vw,3rem)] font-extrabold uppercase leading-[1.05]">
                 {tema}
+              </p>
+              <p className="mt-4 font-action text-sm uppercase tracking-[0.25em] opacity-70">
+                {TOPIC_CHALLENGE}
               </p>
             </Card>
           </motion.div>

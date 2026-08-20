@@ -55,6 +55,56 @@ describe("serialização", () => {
   });
 });
 
+describe("cor e compatibilidade de formato", () => {
+  it("leva a cor escolhida na ida e na volta", () => {
+    const coloridos: Drawing = [
+      { tool: "brush", width: 0.014, color: 3, points: [{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.9 }] },
+      { tool: "brush", width: 0.032, color: 7, points: [{ x: 0.2, y: 0.8 }, { x: 0.8, y: 0.2 }] },
+    ];
+    const volta = parseStrokes(serializeStrokes(coloridos))!;
+    expect(volta.map((t) => t.color)).toEqual([3, 7]);
+    expect(volta[1].width).toBeCloseTo(0.032, 3);
+  });
+
+  /**
+   * Rascunho salvo no celular de alguém ANTES da cor existir não pode virar
+   * tela em branco no meio da rodada.
+   */
+  it("ainda lê rascunho no formato antigo, como preto", () => {
+    const antigo = '{"v":1,"g":2048,"s":[[0,25,246,614,308,702]]}';
+    const volta = parseStrokes(antigo)!;
+    expect(volta).toHaveLength(1);
+    expect(volta[0].color).toBe(0);
+    expect(volta[0].points).toHaveLength(2);
+  });
+
+  it("recusa v2 truncado no meio de uma coordenada", () => {
+    expect(parseStrokes('{"v":2,"g":2048,"s":[[0,25,3,10,20,30]]}')).toBeNull();
+  });
+
+  it("pinta cada traço com a cor da paleta", () => {
+    const ctx = dubleDeContexto();
+    replayStrokes(
+      ctx.api,
+      [{ tool: "brush", width: 0.02, color: 1, points: [{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.5 }] }],
+      400, 400,
+      ["#111111", "#e63946"],
+    );
+    expect(ctx.api.strokeStyle).toBe("#e63946");
+  });
+
+  it("cor fora da paleta cai na primeira, sem quebrar", () => {
+    const ctx = dubleDeContexto();
+    replayStrokes(
+      ctx.api,
+      [{ tool: "brush", width: 0.02, color: 99, points: [{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.5 }] }],
+      400, 400,
+      ["#111111", "#e63946"],
+    );
+    expect(ctx.api.strokeStyle).toBe("#111111");
+  });
+});
+
 describe("independência de tela", () => {
   /**
    * A razão de existir das coordenadas normalizadas: o mesmo desenho tem de
