@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from "motion/react";
 import { ImageOff } from "lucide-react";
 import { cn } from "../../ui/cn";
 import { IMPROV_SLIDES_CONFIG, SLIDE_BEATS } from "./config";
@@ -63,45 +62,70 @@ export function SlideStage({
         </span>
       </div>
 
-      {/* Moldura de proporção fixa: as imagens têm formatos diferentes e o
-          layout não pode dançar a cada troca de slide. */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden border-4 border-ink bg-white shadow-brutal">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={`${slideId}-${index}`}
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -24 }}
-            transition={{ duration: IMPROV_SLIDES_CONFIG.slideTransitionMs / 1000 }}
-            className="absolute inset-0 grid place-items-center p-2"
-          >
-            {src ? (
-              // `contain`: nada de cortar a parte que faz a imagem ser absurda.
-              <img
-                src={src}
-                alt={`Slide ${index + 1}`}
-                className="max-h-full max-w-full object-contain"
-                draggable={false}
-              />
-            ) : (
+      {/*
+        A MOLDURA ABRAÇA A IMAGEM — não o contrário.
+        
+        Antes era uma caixa fixa em 4:3 com a imagem contida dentro. Parecia
+        certo e estava errado para este acervo: das 32 imagens, 12 são retrato
+        (uma delas 0.56 de proporção) e 12 são quase quadradas. Uma imagem 0.56
+        dentro de uma caixa 1.33 num celular só podia usar a altura, então saía
+        com ~147px de largura — uma miniatura entre duas barras brancas. É o que
+        parecia "cortando".
+
+        Agora a borda envolve a própria imagem e o único limite é a altura
+        disponível. Retrato fica alto, paisagem fica largo, e os dois usam a
+        tela inteira que dá.
+      */}
+      <div className="flex w-full items-center justify-center">
+        {/*
+          A troca de slide usa CSS, não Motion.
+
+          Com `initial={{opacity:0}}` do Motion, a animação não disparava no
+          celular de quem assistia — só no de quem apresentava. A imagem
+          carregava, ficava do tamanho certo, e o wrapper travava em
+          `opacity: 0`: slide invisível numa tela que é o produto inteiro.
+
+          A classe `.tapa-entra` não tem fill-mode: o estado natural é VISÍVEL e
+          a animação só enfeita. Se não rodar, aparece assim mesmo.
+        */}
+        <div
+          key={`${slideId}-${index}`}
+          className="tapa-entra flex max-w-full items-center justify-center"
+        >
+          {src ? (
+            // `contain`: nada de cortar a parte que faz a imagem ser absurda.
+            <img
+              src={src}
+              alt={`Slide ${index + 1}`}
+              draggable={false}
+              className={cn(
+                "block max-w-full border-4 border-ink bg-white object-contain shadow-brutal",
+                compact ? "max-h-[46vh]" : "max-h-[58vh]",
+              )}
+            />
+          ) : (
+            <div
+              className={cn(
+                "grid aspect-square w-full place-items-center border-4 border-ink bg-white",
+                compact ? "max-h-[46vh]" : "max-h-[58vh]",
+              )}
+            >
               <div className="flex flex-col items-center gap-2 text-ink">
                 <ImageOff strokeWidth={2.5} className="size-10 opacity-40" />
                 <p className="font-hand text-lg opacity-70">Slide indisponível</p>
                 <p className="font-action text-xs uppercase opacity-50">improvisa aí</p>
               </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Barra de progresso da apresentação inteira, no rodapé da moldura. */}
-        <div className="absolute inset-x-0 bottom-0 flex h-2 gap-0.5 bg-ink/10">
-          {Array.from({ length: total }, (_, i) => (
-            <span
-              key={i}
-              className={cn("h-full flex-1", i <= index ? "bg-ink" : "bg-transparent")}
-            />
-          ))}
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* A barra de progresso saiu de cima da imagem: com a moldura abraçando
+          a imagem, sobrepor cobriria justamente o rodapé do desenho. */}
+      <div className="flex h-2 w-full gap-0.5 border-4 border-ink bg-paper p-0">
+        {Array.from({ length: total }, (_, i) => (
+          <span key={i} className={cn("h-full flex-1", i <= index ? "bg-ink" : "bg-transparent")} />
+        ))}
       </div>
 
       {ultimo ? (

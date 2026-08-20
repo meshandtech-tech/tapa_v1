@@ -187,7 +187,7 @@ function PlayerLobby({ pin }: { pin: string }) {
   // O jogo começou: o celular vira controle.
   if (meInParty && state && state.phase !== "LOBBY") {
     return (
-      <Shell>
+      <Shell pattern={jogoNovo ? getGame(state.settings.gameId).identity.pattern : undefined}>
         {state.settings.gameId === "advogado-do-diabo" ? (
           <AdvogadoDoDiaboPlayer
             state={state}
@@ -494,13 +494,27 @@ function StartBar({
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({
+  children,
+  pattern = "zine-grain",
+}: {
+  children: React.ReactNode;
+  /**
+   * Textura de fundo. Era fixa em `zine-grain`, o que fazia a identidade do
+   * jogo chegar só na TV. No Pitch no Escuro isso aparecia como bug: o grão é
+   * preto a baixa opacidade e some por completo sobre o fundo escuro, então a
+   * tela do celular virava um retângulo liso.
+   */
+  pattern?: string;
+}) {
   return (
     // pb generoso: a barra fixa do host flutua por cima e cobriria o final do
     // conteúdo — na votação, justamente a última nota.
     <div
-      className="zine-grain flex min-h-dvh flex-col items-center justify-center gap-6
-                 bg-accent px-4 pb-32 pt-8"
+      className={cn(
+        pattern,
+        "flex min-h-dvh flex-col items-center justify-center gap-6 bg-accent px-4 pb-32 pt-8",
+      )}
     >
       <Logo size="sm" />
       {children}

@@ -244,6 +244,57 @@ summary:focus-visible {
   background-size: 26px 26px;
 }
 
+/*
+ * Entrada de conteúdo que NÃO PODE sumir.
+ *
+ * Existe porque o contrário aconteceu: o slide entrava com `initial` de
+ * opacidade 0 pelo Motion e, no celular de quem assistia, a animação
+ * simplesmente não disparava. A imagem carregava, ficava do tamanho certo, e o
+ * wrapper ficava travado em `opacity: 0` — slide invisível, tela vazia, e nada
+ * quebrado o suficiente para aparecer num teste.
+ *
+ * Repare que NÃO há `animation-fill-mode`. É de propósito: o estado natural do
+ * elemento é visível, e a animação só enfeita a chegada. Se ela não rodar, por
+ * qualquer motivo, o conteúdo aparece do mesmo jeito. Numa tela que é o produto
+ * inteiro, some-por-omissão é o comportamento errado.
+ */
+@keyframes tapa-entra {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tapa-entra {
+  animation: tapa-entra 280ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tapa-entra {
+    animation: none;
+  }
+}
+
+/*
+ * Pitch no Escuro: sala de projeção.
+ *
+ * Pontos CLAROS, e não escuros. Os outros jogos usam `.zine-dots`, que desenha
+ * preto a 9% — some por completo sobre um fundo quase preto, e a tela vira um
+ * retângulo liso sem textura nenhuma. Era por isso que o fundo parecia um erro
+ * em vez de uma escolha. O segundo gradiente é a luz caindo de cima, como num
+ * palco.
+ */
+.zine-stage {
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.07) 0 2px, transparent 2px),
+    radial-gradient(ellipse 130% 70% at 50% -10%, rgba(180, 205, 255, 0.1), transparent 65%);
+  background-size: 26px 26px, 100% 100%;
+}
+
 /* Confessa ou Paga: ruído denso, clima de after. */
 .zine-noise {
   background-image:

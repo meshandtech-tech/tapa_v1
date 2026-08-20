@@ -35,24 +35,42 @@ export function SlidesHostActions({
           </Button>
         );
 
+      /**
+       * Três botões de emergência num celular de 390px.
+       *
+       * Em `flex` com rótulo inteiro eles não cabiam: o "Encerrar" era empurrado
+       * para fora da tela — justamente o botão que existe para quando algo deu
+       * errado. Em grade de três colunas cada um recebe a mesma fatia, e os
+       * rótulos encolhem para caber em vez de vazar.
+       */
       case "PRESENTATION":
         return (
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <Button
               size="sm"
               variant="paper"
-              className="flex-1"
+              className="min-w-0 px-1 text-xs"
               onClick={() => send({ type: pausado ? "RESUME" : "PAUSE" })}
             >
-              {pausado ? <Play strokeWidth={3} className="size-5" /> : <Pause strokeWidth={3} className="size-5" />}
+              {pausado ? <Play strokeWidth={3} className="size-4" /> : <Pause strokeWidth={3} className="size-4" />}
               {pausado ? "Voltar" : "Pausar"}
             </Button>
-            <Button size="sm" variant="paper" className="flex-1" onClick={() => send({ type: "SKIP_SLIDE" })}>
-              <SkipForward strokeWidth={3} className="size-5" />
-              Pular slide
+            <Button
+              size="sm"
+              variant="paper"
+              className="min-w-0 px-1 text-xs"
+              onClick={() => send({ type: "SKIP_SLIDE" })}
+            >
+              <SkipForward strokeWidth={3} className="size-4" />
+              Pular
             </Button>
-            <Button size="sm" variant="knockout" className="flex-1" onClick={() => send({ type: "ADVANCE" })}>
-              <Square strokeWidth={3} className="size-5" />
+            <Button
+              size="sm"
+              variant="knockout"
+              className="min-w-0 px-1 text-xs"
+              onClick={() => send({ type: "ADVANCE" })}
+            >
+              <Square strokeWidth={3} className="size-4" />
               Encerrar
             </Button>
           </div>

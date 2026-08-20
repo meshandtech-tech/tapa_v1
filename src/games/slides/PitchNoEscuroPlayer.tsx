@@ -6,7 +6,7 @@ import { Card } from "../../ui/Card";
 import { SlotMachine } from "../../ui/SlotMachine";
 import { cn } from "../../ui/cn";
 import { IMPROV_SLIDES_CONFIG } from "./config";
-import { usingPlaceholders } from "./library";
+import { slideSrc, usingPlaceholders } from "./library";
 import { SlideStage } from "./SlideStage";
 import { useSlidePreload } from "./useSlidePreload";
 import {
@@ -56,6 +56,9 @@ export function PitchNoEscuroPlayer({
   const slides = state.slides;
   const apresentador = currentPresenter(state);
   const souEu = apresentador?.id === me.id;
+
+  const espiaPrimeiro = IMPROV_SLIDES_CONFIG.showFirstSlideDuringPreparation;
+  const primeiroSlide = slides?.slideIds[0] ? slideSrc(slides.slideIds[0]) : null;
 
   const trocar = useCallback((ids: string[]) => onReplaceSlides(ids), [onReplaceSlides]);
   // Carrega as imagens na janela entre o sorteio e a preparação.
@@ -148,15 +151,31 @@ export function PitchNoEscuroPlayer({
           {Math.max(0, secondsLeft)}
         </p>
         {souEu ? (
-          <div className="mt-5 flex flex-col gap-2 text-left font-ui text-base">
-            <p className="border-l-4 border-ink pl-3">
-              5 slides · {IMPROV_SLIDES_CONFIG.slideDurationSeconds}s cada
-            </p>
-            <p className="border-l-4 border-ink pl-3">Um começo, um meio, um fim</p>
-            <p className="border-l-4 border-ink pl-3">Eles passam sozinhos</p>
-            <p className="mt-2 text-center font-hand text-xl">
-              Você não vai ver os slides antes. É esse o jogo.
-            </p>
+          <div className="mt-5 flex flex-col gap-3">
+            {/* A primeira imagem, e só ela. Serve para a pessoa ter por onde
+                COMEÇAR — os outros quatro slides continuam surpresa, que é
+                onde o jogo realmente mora. */}
+            {espiaPrimeiro && primeiroSlide ? (
+              <div className="flex flex-col items-center gap-2">
+                <p className="font-action text-xs uppercase tracking-[0.2em] opacity-70">
+                  Seu primeiro slide
+                </p>
+                <img
+                  src={primeiroSlide}
+                  alt="Primeiro slide da sua apresentação"
+                  className="block max-h-[34vh] max-w-full border-4 border-ink bg-white object-contain shadow-brutal"
+                />
+                <p className="font-hand text-lg">Começa por aqui. O resto é surpresa.</p>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-2 text-left font-ui text-base">
+              <p className="border-l-4 border-ink pl-3">
+                5 slides · {IMPROV_SLIDES_CONFIG.slideDurationSeconds}s cada
+              </p>
+              <p className="border-l-4 border-ink pl-3">Um começo, um meio, um fim</p>
+              <p className="border-l-4 border-ink pl-3">Eles passam sozinhos</p>
+            </div>
           </div>
         ) : (
           <p className="mt-4 font-hand text-xl">Prepara o dedo pra nota.</p>

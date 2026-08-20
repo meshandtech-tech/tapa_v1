@@ -12,13 +12,17 @@ export const IMPROV_SLIDES_CONFIG = {
   minPlayers: 3,
   maxPlayers: 10,
   /**
-   * Mostrar o primeiro slide já na preparação.
+   * Mostrar o primeiro slide já na preparação — SÓ para quem vai apresentar.
    *
-   * `false` é a versão difícil, que é a pedida: a preparação serve para a
-   * pessoa respirar, não para planejar em cima da imagem. O campo existe para
-   * a versão fácil ser uma troca de booleano, não uma refatoração.
+   * Começou `false`, na versão difícil. Jogando de verdade ficou claro que 20
+   * segundos encarando um cronômetro sem nenhuma pista não é preparação, é
+   * espera: a pessoa entrava no slide 1 sem ter por onde começar. Vendo a
+   * primeira imagem, ela já monta a abertura da história — e os outros quatro
+   * slides continuam sendo surpresa, que é onde o jogo realmente mora.
+   *
+   * A plateia NÃO vê. Só o celular de quem apresenta.
    */
-  showFirstSlideDuringPreparation: false,
+  showFirstSlideDuringPreparation: true,
   /** Transição entre slides. Curta de propósito: são só 20 segundos cada. */
   slideTransitionMs: 280,
 } as const;

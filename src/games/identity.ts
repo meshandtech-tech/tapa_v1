@@ -14,7 +14,7 @@ export interface GameIdentity {
   /** Cor da tipografia sobre o accent. Preto quando o fundo é claro. */
   onAccent: "#ffffff" | "#000000";
   /** Textura de fundo da tela do jogo. Classe utilitária de styles.css. */
-  pattern: "zine-grain" | "zine-flames" | "zine-dots" | "zine-noise";
+  pattern: "zine-grain" | "zine-flames" | "zine-dots" | "zine-noise" | "zine-stage";
 }
 
 export const GAME_IDENTITIES = {
@@ -39,11 +39,15 @@ export const GAME_IDENTITIES = {
    * interface também fosse de brincadeira, não sobraria de onde cair.
    */
   "improv-slides": {
-    accent: "#12161c",
-    accentDark: "#000000",
-    accentSoft: "#e3e8ef",
+    // Azul-grafite profundo, não preto. Escuro continua sendo a ideia — sala
+    // de conferência, luz baixa, slide claro brilhando no meio —, mas #12161c
+    // com pontos pretos por cima não lia como escolha, lia como erro. Aqui é
+    // inequivocamente uma cor.
+    accent: "#1b2436",
+    accentDark: "#0c111b",
+    accentSoft: "#dfe7f3",
     onAccent: "#ffffff",
-    pattern: "zine-dots",
+    pattern: "zine-stage",
   },
   // Votação, reality show. Fundo claro pede tipografia preta.
   "quem-faria-isso": {
