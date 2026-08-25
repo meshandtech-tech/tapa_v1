@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 // o ícone do Claude Code, e não tem nada a ver com festa.
 import { LogIn, PartyPopper, Users } from "lucide-react";
 import { DecorativeDoodles } from "../components/DecorativeDoodles";
+import { HostAccountCard } from "./HostAccountCard";
 import { GAMES } from "../games/registry";
 import { generateFreePin } from "../party/pin";
 import { loadPartyState, markRoomOwner } from "../party/partyStorage";
@@ -113,6 +114,10 @@ export function LandingScreen() {
               );
             })}
           </div>
+
+        {/* Conta é OPCIONAL e fica DEPOIS dos botões de jogar. Ordem importa:
+            quem chegou para jogar não pode tropeçar num login antes do CTA. */}
+        <HostAccountCard />
         </section>
 
         <ThemeSwitcher className="mt-6" />

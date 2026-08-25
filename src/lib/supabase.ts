@@ -71,3 +71,46 @@ export async function ensureAnonSession(): Promise<string | null> {
   if (!id) signingIn = null;
   return id;
 }
+
+
+/**
+ * Promove a sessão anônima a conta Google, MANTENDO o mesmo uid.
+ *
+ * `linkIdentity` e não `signInWithOAuth`: o segundo criaria um usuário novo,
+ * com uid novo. Como `players.user_id` guarda o uid da sessão anônima, o host
+ * voltaria da tela do Google sem ser reconhecido pelo `join_room` — e perderia
+ * o comando da própria sala sem nenhum erro visível. É a diferença entre
+ * "logou" e "logou e continua sendo quem era".
+ *
+ * Se a sessão JÁ for permanente (a pessoa voltou depois), `linkIdentity` falha
+ * porque a identidade já está ligada; aí não há o que fazer e devolvemos ok.
+ */
+export async function linkGoogleAccount(): Promise<{ error: string | null }> {
+  const supabase = getSupabase();
+  if (!supabase) return { error: "supabase_nao_configurado" };
+
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (!user) return { error: "sem_sessao" };
+
+  // Já tem Google ligado: nada a fazer.
+  if (user.identities?.some((identity) => identity.provider === "google")) {
+    return { error: null };
+  }
+
+  const { error } = await supabase.auth.linkIdentity({
+    provider: "google",
+    options: { redirectTo: window.location.href },
+  });
+  return { error: error?.message ?? null };
+}
+
+/** A sessão atual já é uma conta de verdade, ou ainda é anônima? */
+export async function hasPermanentAccount(): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  const { data } = await supabase.auth.getSession();
+  return !!data.session?.user?.identities?.some(
+    (identity) => identity.provider !== "anonymous",
+  );
+}

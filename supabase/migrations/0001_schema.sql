@@ -108,7 +108,11 @@ create table matches (
   topic_candidates text[] not null default '{}',
   topic_winner     int not null default 0,
   started_at  timestamptz not null default now(),
-  ended_at    timestamptz
+  ended_at    timestamptz,
+  -- COMO a partida acabou. Sem isto, `ended_at` sozinho não distingue
+  -- "o grupo jogou até o fim" de "largaram no meio" — e para um party game
+  -- essa é justamente a métrica que diz se o jogo é bom.
+  ended_reason text check (ended_reason in ('completed','reset','replaced','abandoned'))
 );
 
 create index matches_room_idx on matches (room_id);

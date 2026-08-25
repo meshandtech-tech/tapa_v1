@@ -41,6 +41,8 @@ supabase/migrations/0004_scoring.sql
 supabase/migrations/0005_actions.sql
 supabase/migrations/0006_snapshot.sql
 supabase/migrations/0007_cron.sql
+supabase/migrations/0008_metrics.sql
+supabase/migrations/0009_profiles.sql
 ```
 
 - `0004` precisa da extensão **unaccent** (`Database → Extensions`).
@@ -84,6 +86,38 @@ select tablename, rowsecurity from pg_tables
 
 Se `contributions` aparecer no item 2, tire — é o conteúdo dos desenhos, e ele
 não pode trafegar no canal.
+
+---
+
+## Métricas
+
+`0008` cria três views. Elas são só para você, no SQL Editor — cada uma tem
+`revoke ... from anon, authenticated` porque view no Postgres fura o RLS das
+tabelas de baixo, e sem o revoke o app conseguiria ler dados de todas as salas.
+
+```sql
+-- Quantas partidas foram jogadas, por dia e por jogo
+select * from metrics_daily;
+
+-- A pergunta que importa: as pessoas terminam o jogo?
+select game_id,
+       sum(partidas) as total,
+       round(100.0 * sum(concluidas) / nullif(sum(partidas),0), 1) as conclusao_pct
+  from metrics_daily group by 1 order by 2 desc;
+
+-- Termômetro do crash: as entregas estão chegando?
+select * from metrics_reliability order by dia desc limit 14;
+
+-- Uma partida específica, do começo ao fim
+select * from metrics_matches order by started_at desc limit 20;
+```
+
+O que olhar depois do próximo playtest:
+
+- `taxa_conclusao_pct` — abaixo de ~70% quer dizer que estão largando no meio
+- `pct_missed` em `metrics_reliability` — se estiver alto, tem gente caindo ou
+  a rodada é curta demais
+- `sem_imagem` — se for maior que zero, o bucket está mal configurado
 
 ---
 

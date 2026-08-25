@@ -179,7 +179,9 @@ begin
     from players where room_id = p_room and left_at is null;
   v_n := coalesce(array_length(v_seats,1), 0);
 
-  update matches set ended_at = now() where room_id = p_room and ended_at is null;
+  -- Partida anterior que ainda estava viva: foi SUBSTITUÍDA, não concluída.
+  update matches set ended_at = now(), ended_reason = 'replaced'
+   where room_id = p_room and ended_at is null;
 
   insert into matches (
     room_id, game_id, seat_order, step_count,
@@ -481,7 +483,8 @@ returns rooms language plpgsql security definer set search_path = public as $$
 declare r rooms%rowtype;
 begin
   if not is_host_of(p_room) then raise exception 'apenas o host'; end if;
-  update matches set ended_at = now() where room_id = p_room and ended_at is null;
+  update matches set ended_at = now(), ended_reason = 'reset'
+   where room_id = p_room and ended_at is null;
   update players set score = 0 where room_id = p_room;
   update rooms set phase = 'LOBBY', round = 0, phase_ends_at = null, paused_at = null
    where id = p_room returning * into r;
@@ -493,6 +496,9 @@ create or replace function close_room(p_room uuid)
 returns void language plpgsql security definer set search_path = public as $$
 begin
   if not is_host_of(p_room) then raise exception 'apenas o host'; end if;
+  -- Sala encerrada com partida viva: o grupo largou no meio.
+  update matches set ended_at = now(), ended_reason = 'abandoned'
+   where room_id = p_room and ended_at is null;
   update rooms set closed_at = now() where id = p_room;
 end;
 $$;

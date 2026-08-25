@@ -211,7 +211,7 @@ begin
         v_next := 'REVEAL_PAGE';
       else
         perform apply_drawing_scores(m.id);
-        update matches set ended_at = now() where id = m.id;
+        update matches set ended_at = now(), ended_reason = 'completed' where id = m.id;
         v_next := 'GAME_OVER';
       end if;
     end if;
@@ -224,7 +224,7 @@ begin
 
     if r.phase in ('GAME_INTRO','SCORE_REVEAL') then
       if r.phase = 'SCORE_REVEAL' and m.presenter_index >= v_players - 1 then
-        update matches set ended_at = now() where id = m.id;
+        update matches set ended_at = now(), ended_reason = 'completed' where id = m.id;
         v_next := 'GAME_OVER';
       elsif r.game_id = 'advogado-do-diabo' then
         perform draw_topic_candidates(m.id);
@@ -277,7 +277,7 @@ begin
       v_next := 'LEADERBOARD';
     elsif r.phase = 'LEADERBOARD' then
       if m.id is not null and r.round >= coalesce(array_length(m.question_order,1), 0) then
-        update matches set ended_at = now() where id = m.id;
+        update matches set ended_at = now(), ended_reason = 'completed' where id = m.id;
         v_next := 'GAME_OVER';
       else
         update rooms set round = r.round + 1 where id = p_room;
