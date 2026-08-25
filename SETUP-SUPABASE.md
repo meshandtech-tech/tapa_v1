@@ -187,7 +187,7 @@ sem nuvem, mas jogável. É a rede de segurança para não ficar sem nada.
 
 ## Estado verificado (25/08)
 
-Rodado contra o projeto real, com sessões anônimas de verdade:
+Rodado no projeto real, com sessões anônimas de verdade:
 
 | | |
 |---|---|
