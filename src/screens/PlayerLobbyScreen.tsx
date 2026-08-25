@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Check, Dices, Gamepad2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
@@ -97,21 +97,50 @@ function PlayerLobby({ pin }: { pin: string }) {
    * `useState` da gaveta zerava — com o relógio renderizando a cada 250ms, ela
    * fechava sozinha antes de dar para tocar em qualquer botão.
    */
+  /**
+   * Handlers estáveis.
+   *
+   * `HostControls` é memoizado, mas memo compara props por identidade: uma
+   * arrow nova a cada render anularia a memoização inteira. Como o relógio
+   * re-renderiza esta tela 4x por segundo, sem `useCallback` os controles do
+   * host voltariam a ser reconstruídos 4x por segundo.
+   */
+  const onSkipPhase = useCallback(() => sendHostCommand({ type: "ADVANCE" }), [sendHostCommand]);
+  const onPause = useCallback(() => sendHostCommand({ type: "PAUSE" }), [sendHostCommand]);
+  const onResume = useCallback(() => sendHostCommand({ type: "RESUME" }), [sendHostCommand]);
+  const onReroll = useCallback(
+    () => sendHostCommand({ type: "REROLL_PUNISHMENT" }), [sendHostCommand],
+  );
+  const onRestart = useCallback(
+    () => sendHostCommand({ type: "RESET_TO_LOBBY" }), [sendHostCommand],
+  );
+  const onEndParty = useCallback(() => {
+    clearPartyState(pin);
+    navigate("/");
+  }, [navigate, pin]);
+  const onThemeChange = useCallback(
+    (themeId: PartyState["settings"]["themeId"]) =>
+      sendHostCommand({ type: "SET_THEME", themeId }),
+    [sendHostCommand],
+  );
+  const onThemeModeChange = useCallback(
+    (themeMode: PartyState["settings"]["themeMode"]) =>
+      sendHostCommand({ type: "SET_THEME", themeMode }),
+    [sendHostCommand],
+  );
+
   const hostSection =
     state ? (
       <HostControls
         state={state}
-        onSkipPhase={() => sendHostCommand({ type: "ADVANCE" })}
-        onPause={() => sendHostCommand({ type: "PAUSE" })}
-        onResume={() => sendHostCommand({ type: "RESUME" })}
-        onReroll={() => sendHostCommand({ type: "REROLL_PUNISHMENT" })}
-        onRestart={() => sendHostCommand({ type: "RESET_TO_LOBBY" })}
-        onEndParty={() => {
-          clearPartyState(pin);
-          navigate("/");
-        }}
-        onThemeChange={(themeId) => sendHostCommand({ type: "SET_THEME", themeId })}
-        onThemeModeChange={(themeMode) => sendHostCommand({ type: "SET_THEME", themeMode })}
+        onSkipPhase={onSkipPhase}
+        onPause={onPause}
+        onResume={onResume}
+        onReroll={onReroll}
+        onRestart={onRestart}
+        onEndParty={onEndParty}
+        onThemeChange={onThemeChange}
+        onThemeModeChange={onThemeModeChange}
       />
     ) : null;
 
@@ -513,11 +542,22 @@ function Shell({
     <div
       className={cn(
         pattern,
-        "flex min-h-dvh flex-col items-center justify-center gap-6 bg-accent px-4 pb-32 pt-8",
+        // `justify-start` + `my-auto`, e não `justify-center`.
+        //
+        // Centralizar com flex CORTA o topo quando o conteúdo é mais alto que
+        // a tela, e o pedaço cortado fica inalcançável — não dá para rolar
+        // até ele. Na tela do host, que carrega o jogo MAIS a barra de
+        // controles, era o suficiente para esconder o começo da partida.
+        // Assim continua centralizado quando cabe, e vira rolagem quando não.
+        "flex min-h-dvh flex-col items-center justify-start gap-6 bg-accent px-4 pt-8",
+        // Espaço para a barra fixa do rodapé + a área segura do aparelho.
+        "pb-[calc(8rem+env(safe-area-inset-bottom))]",
       )}
     >
-      <Logo size="sm" />
-      {children}
+      <div className="my-auto flex w-full flex-col items-center gap-6">
+        <Logo size="sm" />
+        {children}
+      </div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Check, ChevronRight, Pause, Play, SkipForward, ThumbsUp } from "lucide-react";
 import type { HostCommand } from "../../party/channel";
 import type { PartyState } from "../../party/types";
@@ -15,7 +16,7 @@ import { chainSurvived, comparisonPageIndex } from "./state";
  * espera um toque. O auto-play existe porque com 10 cadernos isso vira mais de
  * cem toques, e ninguém deveria virar projecionista da própria festa.
  */
-export function DrawingHostActions({
+function DrawingHostActionsBase({
   state,
   send,
 }: {
@@ -120,3 +121,14 @@ export function DrawingHostActions({
     </div>
   );
 }
+
+
+/**
+ * Memoizado de propósito.
+ *
+ * O relógio da sala re-renderiza a tela do host 4x por segundo. Sem esta
+ * barreira, cada tique reconstruía também os controles — na mesma tela que já
+ * carrega o jogo inteiro e, antes, serializava o estado da partida. Era daí
+ * que vinha a travadinha no celular do host.
+ */
+export const DrawingHostActions = memo(DrawingHostActionsBase);

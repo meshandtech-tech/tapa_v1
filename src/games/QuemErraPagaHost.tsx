@@ -13,7 +13,14 @@ import { currentQuestion, roundOutcome } from "./quemErraPaga";
 const LETTERS = ["A", "B", "C", "D"];
 
 /** Rótulos curtos para caber no segmento da roleta. */
-const WHEEL_LABELS = punishments.map((p) => p.split(" ").slice(0, 3).join(" "));
+// A identidade da fatia é o índice da prenda NO ACERVO, não a posição visual.
+// São a mesma coisa aqui (a roleta mostra o acervo inteiro, na ordem), mas
+// declarar o id explicitamente impede que uma futura filtragem faça o
+// resultado apontar para outra prenda.
+const WHEEL_ITEMS = punishments.map((prenda, indice) => ({
+  id: `punishment:${indice}`,
+  label: prenda.split(" ").slice(0, 3).join(" "),
+}));
 
 function PlayerChips({ players }: { players: PartyState["players"] }) {
   if (players.length === 0) return null;
@@ -189,7 +196,7 @@ export function QuemErraPagaHost({
           className="w-full"
         >
           <Wheel
-            items={WHEEL_LABELS}
+            items={WHEEL_ITEMS}
             winnerIndex={punishmentIndex}
             onFinish={() => setRevealed(true)}
           />

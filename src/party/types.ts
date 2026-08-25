@@ -120,18 +120,51 @@ export interface CustomTopic {
 
 export const MAX_CUSTOM_TOPICS = 10;
 
+/**
+ * Um tema dentro do acervo de UMA partida.
+ *
+ * `id` sozinho não identifica: uma tese escrita pelo host e uma do sistema são
+ * itens DISTINTOS mesmo que o texto coincida. Identidade é o par
+ * (`source`, `id`) — e é ela que a roleta devolve, nunca o número da fatia.
+ * Era exatamente essa confusão que fazia a mesa ver "caiu no mesmo número" e
+ * receber outro tema.
+ */
+export interface MatchTopic {
+  id: string;
+  source: "custom" | "default";
+  text: string;
+  /** Ordem sorteada no início da partida. É ela que decide quem sai primeiro. */
+  position: number;
+  /** Já saiu na roleta. Não volta nesta partida. */
+  usedAt: string | null;
+  /** O host recusou. Também não volta. */
+  rejectedAt: string | null;
+  presenterId: string | null;
+}
+
+/** Tema ainda disponível: nem usado, nem recusado. */
+export function isTopicAvailable(topic: MatchTopic): boolean {
+  return topic.usedAt === null && topic.rejectedAt === null;
+}
+
 /** Estado do "Advogado do Diabo". */
 export interface DevilState {
   /** Ordem de apresentação, sorteada no início. Cada um apresenta uma vez. */
   order: string[];
   /** Posição em `order`. -1 = ainda não começou nenhuma rodada. */
   index: number;
-  /** Ids de tema mostrados na roleta desta rodada. */
-  candidates: string[];
+  /**
+   * O acervo FINITO da partida, congelado no início e já embaralhado.
+   *
+   * Diminui — 10, 9, 8... Antes o acervo era re-sorteado a cada rodada a
+   * partir de custom + sistema, e por isso um tema podia voltar e o número da
+   * fatia não queria dizer nada de uma rodada para a outra.
+   */
+  pool: MatchTopic[];
+  /** As fatias da roleta desta rodada, com identidade estável. */
+  candidates: MatchTopic[];
   /** Índice do vencedor dentro de `candidates`. */
   winner: number;
-  /** Temas já sorteados ou recusados — não voltam nesta partida. */
-  usedTopics: string[];
   /** Teses escritas pelo host, misturadas com prioridade às do sistema. */
   customTopics: CustomTopic[];
   /** Votos da rodada corrente: id de quem votou → nota de 1 a 5. */

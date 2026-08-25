@@ -6,7 +6,12 @@ import { Card, Knockout } from "../ui/Card";
 import { cn } from "../ui/cn";
 import { SlotMachine } from "../ui/SlotMachine";
 import { Wheel } from "../ui/Wheel";
-import { currentPresenter, currentTopicText, remainingPresenters } from "./advogadoDoDiabo";
+import {
+  currentPresenter,
+  currentTopicText,
+  remainingPresenters,
+  topicKey,
+} from "./advogadoDoDiabo";
 
 /** As cinco notas. O número é o que vale; o emoji só ajuda a escolher rápido. */
 export const RATINGS = [
@@ -82,7 +87,10 @@ export function AdvogadoDoDiaboPlayer({
             Sorteando a tese
           </h2>
           <Wheel
-            items={(state.devil?.candidates ?? []).map((_, i) => String(i + 1))}
+            items={(state.devil?.candidates ?? []).map((tema, i) => ({
+              id: topicKey(tema),
+              label: String(i + 1),
+            }))}
             winnerIndex={state.devil?.winner ?? 0}
           />
         </div>

@@ -3,7 +3,8 @@ import { createPartyState, partyReducer } from "../party/partyReducer";
 import { PLAYER_COLORS, type PartyState, type Player } from "../party/types";
 import {
   currentPresenter,
-  currentTopicId,
+  currentTopic,
+  topicKey,
   devilLeaderboard,
   eligibleVoters,
   everyonePresented,
@@ -64,7 +65,7 @@ describe("fluxo da rodada", () => {
   it("sorteia o TEMA antes do apresentador", () => {
     let state = ate(sala(3), "TOPIC_REVEAL");
     // Já existe tema, mas ninguém foi escolhido ainda.
-    expect(currentTopicId(state)).toBeTruthy();
+    expect(currentTopic(state)).toBeTruthy();
     expect(currentPresenter(state)).toBeNull();
 
     state = avancar(state); // PLAYER_SPIN
@@ -156,22 +157,71 @@ describe("recusar a tese", () => {
   it("troca o tema e não pula ninguém", () => {
     let state = ate(sala(3), "PREPARATION");
     const antes = currentPresenter(state)!;
-    const temaAntigo = currentTopicId(state)!;
+    const temaAntigo = currentTopic(state)!;
 
     state = partyReducer(state, { type: "REROLL_TOPIC" });
     expect(state.phase).toBe("TOPIC_SPIN");
 
     state = avancar(state, 3); // TOPIC_REVEAL → PLAYER_SPIN → PLAYER_REVEAL
     expect(currentPresenter(state)?.id).toBe(antes.id);
-    expect(currentTopicId(state)).not.toBe(temaAntigo);
+    expect(topicKey(currentTopic(state)!)).not.toBe(topicKey(temaAntigo));
   });
 
   it("a tese recusada não volta na mesma partida", () => {
     let state = ate(sala(3), "TOPIC_REVEAL");
-    const recusado = currentTopicId(state)!;
+    const recusado = currentTopic(state)!;
     state = partyReducer(state, { type: "REROLL_TOPIC" });
-    expect(state.devil?.usedTopics).toContain(recusado);
-    expect(state.devil?.candidates).not.toContain(recusado);
+
+    const chave = topicKey(recusado);
+    expect(state.devil!.pool.find((t) => topicKey(t) === chave)?.rejectedAt).toBeTruthy();
+    expect(state.devil!.candidates.map(topicKey)).not.toContain(chave);
+  });
+});
+
+/**
+ * O acervo é FINITO e não repete. Foi o que quebrou no playtest: com ~10 teses
+ * escolhidas, a roleta caiu duas vezes no mesmo tema porque os candidatos eram
+ * re-sorteados do zero a cada rodada.
+ */
+describe("acervo finito de teses", () => {
+  it("nenhuma tese sai duas vezes na mesma partida", () => {
+    let state = ate(sala(6), "TOPIC_REVEAL");
+    const vistas: string[] = [];
+
+    for (let rodada = 0; rodada < 6; rodada += 1) {
+      const tema = currentTopic(state);
+      if (!tema) break;
+      vistas.push(topicKey(tema));
+      // Sai da fase antes de procurar a próxima, senão `ate` devolve a atual.
+      state = avancar(state, 1);
+      state = ate(state, "TOPIC_REVEAL", 40);
+      if (state.phase !== "TOPIC_REVEAL") break;
+    }
+
+    expect(vistas.length).toBeGreaterThan(1);
+    expect(new Set(vistas).size).toBe(vistas.length);
+  });
+
+  it("o acervo diminui a cada tese usada", () => {
+    const state = ate(sala(4), "TOPIC_REVEAL");
+    const devil = state.devil!;
+    const disponiveis = devil.pool.filter((t) => t.usedAt === null).length;
+    expect(disponiveis).toBe(devil.pool.length - 1);
+  });
+
+  it("custom e sistema são itens distintos mesmo com o mesmo id", () => {
+    let state = sala(3);
+    // Um id que também existe no deck do sistema.
+    state = partyReducer(state, {
+      type: "ADD_CUSTOM_TOPIC", topic: { id: "h1", text: "TESE DO HOST. DEFENDE ESSA." },
+    });
+    state = partyReducer(state, { type: "START_GAME", now: 0 });
+
+    const pool = state.devil!.pool;
+    const custom = pool.find((t) => t.source === "custom" && t.id === "h1");
+    expect(custom?.text).toBe("TESE DO HOST. DEFENDE ESSA.");
+    // Chaves únicas: nada colide, mesmo com id repetido entre origens.
+    expect(new Set(pool.map(topicKey)).size).toBe(pool.length);
   });
 });
 
@@ -203,14 +253,23 @@ describe("teses do host", () => {
     expect(state.devil?.customTopics).toHaveLength(0);
   });
 
-  // Sem prioridade, uma tese do host se perderia no meio de ~50 do sistema.
-  it("entram na roleta antes das do sistema", () => {
+  /**
+   * A garantia mudou de "aparece primeiro" para "aparece, ponto".
+   *
+   * Com acervo finito, TODA tese do host entra — antes ela só tinha prioridade
+   * numa lista que era re-sorteada e podia nunca chegar à roleta.
+   */
+  it("toda tese do host entra no acervo da partida", () => {
     let state = sala(3);
-    state = partyReducer(state, {
-      type: "ADD_CUSTOM_TOPIC", topic: { id: "meu", text: "Defenda que o Léo cozinha bem" },
-    });
-    state = ate(state, "TOPIC_SPIN");
-    expect(state.devil?.candidates[0]).toBe("meu");
+    for (let i = 0; i < 4; i += 1) {
+      state = partyReducer(state, {
+        type: "ADD_CUSTOM_TOPIC", topic: { id: `meu${i}`, text: `Tese ${i} do host` },
+      });
+    }
+    state = partyReducer(state, { type: "START_GAME", now: 0 });
+
+    const doHost = state.devil!.pool.filter((t) => t.source === "custom");
+    expect(doHost.map((t) => t.id).sort()).toEqual(["meu0", "meu1", "meu2", "meu3"]);
   });
 
   it("sobrevivem a voltar para o lobby e recomeçar", () => {

@@ -2,7 +2,21 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `viewport-fit=cover` NÃO é enfeite: sem ele, no iOS, todo
+         `env(safe-area-inset-*)` resolve para 0. O app já usava esses insets
+         em quatro barras fixas, e todas ficavam por baixo do indicador de
+         início do iPhone — os controles do host sumindo embaixo da tela era
+         exatamente este bug. `maximum-scale`/`user-scalable` ficam de fora de
+         propósito: bloquear zoom é problema de acessibilidade. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <!-- Modo standalone (adicionado à tela de início): a barra de status
+         some e a UI passa a valer a tela toda. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#e60050" />
     <meta
       name="description"

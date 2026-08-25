@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Check, Dices, SkipForward, Square } from "lucide-react";
 import type { HostCommand } from "../party/channel";
 import type { PartyState } from "../party/types";
@@ -14,7 +15,7 @@ import { eligibleVoters, votesIn } from "./advogadoDoDiabo";
  * uma tela de 1800px e o host tinha que rolar para achar o botão da vez, às
  * vezes com menos de 5 segundos de janela.
  */
-export function DevilHostActions({
+function DevilHostActionsBase({
   state,
   send,
 }: {
@@ -111,3 +112,14 @@ export function DevilHostActions({
     </div>
   );
 }
+
+
+/**
+ * Memoizado de propósito.
+ *
+ * O relógio da sala re-renderiza a tela do host 4x por segundo. Sem esta
+ * barreira, cada tique reconstruía também os controles — na mesma tela que já
+ * carrega o jogo inteiro e, antes, serializava o estado da partida. Era daí
+ * que vinha a travadinha no celular do host.
+ */
+export const DevilHostActions = memo(DevilHostActionsBase);

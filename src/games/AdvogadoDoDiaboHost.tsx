@@ -17,6 +17,7 @@ import {
   roundAverage,
   topicText,
   votesIn,
+  topicKey,
 } from "./advogadoDoDiabo";
 
 /** Aviso permanente. Curto para não competir com o jogo, mas sempre visível. */
@@ -93,7 +94,13 @@ export function AdvogadoDoDiaboHost({
           </h2>
           <div className="w-full max-w-[min(62vh,38rem)]">
             <Wheel
-              items={devil.candidates.map((_, i) => String(i + 1))}
+              // Número na fatia (texto de tese vira borrão com 8 fatias), mas
+              // a IDENTIDADE é o tema. `topicKey` separa uma tese do host de
+              // uma do sistema mesmo quando os ids coincidem.
+              items={devil.candidates.map((tema, i) => ({
+                id: topicKey(tema),
+                label: String(i + 1),
+              }))}
               winnerIndex={devil.winner}
               onFinish={() => setTemaRevelado(true)}
             />

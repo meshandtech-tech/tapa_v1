@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Check, ChevronRight, Pause, Play, SkipForward, Square } from "lucide-react";
 import type { HostCommand } from "../../party/channel";
 import type { PartyState } from "../../party/types";
@@ -15,7 +16,7 @@ import { eligibleVoters, votesIn } from "./slides";
  * O host volta a mandar onde o grupo está falando: fechar a votação e chamar o
  * próximo.
  */
-export function SlidesHostActions({
+function SlidesHostActionsBase({
   state,
   send,
 }: {
@@ -110,3 +111,14 @@ export function SlidesHostActions({
     </div>
   );
 }
+
+
+/**
+ * Memoizado de propósito.
+ *
+ * O relógio da sala re-renderiza a tela do host 4x por segundo. Sem esta
+ * barreira, cada tique reconstruía também os controles — na mesma tela que já
+ * carrega o jogo inteiro e, antes, serializava o estado da partida. Era daí
+ * que vinha a travadinha no celular do host.
+ */
+export const SlidesHostActions = memo(SlidesHostActionsBase);
