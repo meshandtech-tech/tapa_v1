@@ -95,6 +95,8 @@ export async function startMatch(roomId: string, payload: {
   questionOrder?: number[];
   correct?: number[];
   slideIds?: string[];
+  /** Tamanho do acervo de prendas. O banco sorteia; o cliente não escolhe. */
+  punishmentCount?: number;
 }) {
   return rpc<unknown>("start_match", {
     p_room: roomId,
@@ -103,6 +105,7 @@ export async function startMatch(roomId: string, payload: {
     p_question_order: payload.questionOrder ?? [],
     p_correct: payload.correct ?? [],
     p_slide_ids: payload.slideIds ?? [],
+    p_punishment_count: payload.punishmentCount ?? 0,
   });
 }
 
@@ -156,6 +159,16 @@ export async function submitVote(roomId: string, rating: number) {
 
 export async function submitAnswer(roomId: string, optionIndex: number) {
   return rpc<void>("submit_answer", { p_room: roomId, p_option: optionIndex });
+}
+
+/** Ninguém topou a prenda: outra, sem sair da roleta. */
+export async function rerollPunishment(roomId: string) {
+  return rpc<unknown>("reroll_punishment", { p_room: roomId });
+}
+
+/** Imagem que não carregou sai ANTES de alguém apresentar. */
+export async function replaceSlides(roomId: string, slideIds: string[]) {
+  return rpc<unknown>("replace_slides", { p_room: roomId, p_slide_ids: slideIds });
 }
 
 export async function rerollTopic(roomId: string) {

@@ -28,7 +28,8 @@ const BACKOFF_MAX_MS = 8000;
  *    então F5, troca de rede e celular bloqueado deixaram de ser eventos
  *    especiais.
  */
-export function useCloudRoom(pin: string) {
+export function useCloudRoom(pin: string, options: { spectator?: boolean } = {}) {
+  const spectator = options.spectator ?? false;
   const [roomId, setRoomId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [connection, setConnection] = useState<CloudConnection>("connecting");
@@ -192,13 +193,13 @@ export function useCloudRoom(pin: string) {
   // Presença
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || spectator) return;
     void api.touchPresence(roomId);
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void api.touchPresence(roomId);
     }, PRESENCE_MS);
     return () => window.clearInterval(timer);
-  }, [roomId]);
+  }, [roomId, spectator]);
 
   // -------------------------------------------------------------------------
   // Cutucar o fim da fase
@@ -214,6 +215,7 @@ export function useCloudRoom(pin: string) {
    */
   useEffect(() => {
     const snap = snapshot;
+    if (spectator) return;
     if (!roomId || !snap || !snap.room.phaseEndsAt || snap.room.pausedAt) return;
 
     const meuAssento = Math.max(
@@ -229,7 +231,26 @@ export function useCloudRoom(pin: string) {
       void api.advancePhase(roomId, snap.room.phase, snap.room.phaseEndsAt);
     }, espera);
     return () => window.clearTimeout(timer);
-  }, [roomId, snapshot]);
+  }, [roomId, snapshot, spectator]);
+
+  /**
+   * Poll leve, só para a TV.
+   *
+   * O Realtime passa por RLS, e o espectador NÃO é membro da sala: ele recebe
+   * mudanças de `rooms` (a política permite sala aberta) mas não de `matches`
+   * nem de `players`. Como a fase dispara quase tudo, o que falta é entrada e
+   * saída de gente no lobby — e um poll de 3s resolve isso.
+   *
+   * A alternativa seria relaxar o RLS e deixar qualquer sessão ler o roster de
+   * qualquer PIN. Um poll na TV é mais barato que abrir isso.
+   */
+  useEffect(() => {
+    if (!roomId || !spectator) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [roomId, spectator, refresh]);
 
   const state: PartyState | null = useMemo(
     () => (snapshot ? projectSnapshot(snapshot) : null),

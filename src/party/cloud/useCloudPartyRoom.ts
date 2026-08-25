@@ -5,6 +5,7 @@ import { getDeck } from "../../data/questions";
 import { drawOrder } from "../../games/quemErraPaga";
 import { activeSlides } from "../../games/slides/library";
 import { buildTopicPool } from "../../games/advogadoDoDiabo";
+import { punishments } from "../../data/punishments";
 import { getGame } from "../../games/registry";
 import { serializeStrokes } from "../../games/drawing/strokes";
 import * as api from "./api";
@@ -21,9 +22,20 @@ import type { PartyState, Player } from "../types";
  * intenções: RPC em vez de broadcast.
  */
 export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } = {}) {
-  const ativo = isSupabaseConfigured && !options.spectator;
+  /**
+   * A TV também usa a nuvem.
+   *
+   * Ela estava EXCLUÍDA daqui e caía no caminho local, esperando um `STATE`
+   * que ninguém emite mais desde a migração — `/host/:pin` ficava em
+   * "procurando a sala" para sempre. O espectador não entra na sala: só lê.
+   * Funciona porque `room_snapshot` é SECURITY DEFINER e devolve fase e roster
+   * mesmo para quem não é membro; `me.playerId` vem `null`, que é exatamente
+   * o que a TV quer.
+   */
+  const ativo = isSupabaseConfigured;
+  const spectator = options.spectator ?? false;
   const { roomId, snapshot, state, connection, authError, refresh } =
-    useCloudRoom(ativo ? pin : "");
+    useCloudRoom(ativo ? pin : "", { spectator });
 
   const meId = snapshot?.me.playerId ?? null;
   const meInParty: Player | null = useMemo(
@@ -112,9 +124,13 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
     [roomId],
   );
 
-  const replaceSlides = useCallback(() => {
-    // Sem efeito na nuvem: os slides são sorteados no `start_match`.
-  }, []);
+  /** Imagem que não carregou sai ANTES de alguém apresentar. */
+  const replaceSlides = useCallback(
+    (slideIds: string[]) => {
+      if (roomId) void api.replaceSlides(roomId, slideIds);
+    },
+    [roomId],
+  );
 
   /**
    * Comandos do host.
@@ -169,6 +185,9 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
             correct: ordem.map((indice) => deck[indice]?.correctAnswer ?? -1),
             slideIds:
               gameId === "improv-slides" ? activeSlides.map((slide) => slide.id) : [],
+            // O acervo de prendas mora no TS; o banco só precisa do tamanho
+            // para sortear sem perguntar nada ao cliente.
+            punishmentCount: punishments.length,
           });
           return;
         }
@@ -184,6 +203,9 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
           return;
         case "REROLL_TOPIC":
           void api.rerollTopic(roomId);
+          return;
+        case "REROLL_PUNISHMENT":
+          void api.rerollPunishment(roomId);
           return;
         case "COUNT_AS_MATCH":
           void api.countAsMatch(roomId, command.chainId);
@@ -240,6 +262,17 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
     if (roomId) void api.closeRoom(roomId);
   }, [roomId]);
 
+  /**
+   * Sair de verdade, por decisão da pessoa.
+   *
+   * Diferente de sumir a rede: `leave_room` carimba `left_at`, e a vaga é
+   * devolvida. A RPC existia desde a primeira migração e nada a chamava, então
+   * quem saía continuava ocupando lugar na contagem de capacidade.
+   */
+  const leaveParty = useCallback(async () => {
+    if (roomId) await api.leaveRoom(roomId);
+  }, [roomId]);
+
   return {
     enabled: ativo,
     state: state as PartyState | null,
@@ -262,5 +295,6 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
     replaceSlides,
     sendHostCommand,
     closeParty,
+    leaveParty,
   };
 }

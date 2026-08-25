@@ -115,6 +115,12 @@ export function projectSnapshot(snapshot: RoomSnapshot): PartyState {
   const base = createPartyState(room.pin, Date.parse(room.closedAt ?? "") || Date.now());
 
   const raw = (room.settings ?? {}) as Record<string, unknown>;
+  // Votos, notas e respostas vêm PRONTOS do servidor, já com o segredo
+  // aplicado. Antes eram `{}` fixo aqui, e por isso o host via "faltam 7
+  // votos" para sempre e a revelação do quiz dizia que ninguém acertou.
+  const votes = snapshot.votes ?? {};
+  const scores = snapshot.scores ?? {};
+  const answers = snapshot.answers ?? {};
   const settings = raw as Partial<PartyState["settings"]>;
   // As teses do host moram em `rooms.settings` (jsonb): são configuração da
   // sala, escritas no lobby, e não estado da partida.
@@ -177,9 +183,11 @@ export function projectSnapshot(snapshot: RoomSnapshot): PartyState {
             candidates,
             winner: match.topicWinner,
             customTopics,
-            votes: {},
-            scores: {},
-            disclaimerAccepted: true,
+            votes,
+            scores,
+            // Vem da sala, não fixo: com `true` fixo o aviso do Advogado do
+            // Diabo nunca aparecia.
+            disclaimerAccepted: raw.disclaimerAccepted === true,
           }
         : null,
     slides:
@@ -188,17 +196,17 @@ export function projectSnapshot(snapshot: RoomSnapshot): PartyState {
             order: match.seatOrder,
             index: match.presenterIndex,
             slideIds: match.slideIds,
-            usedSlideIds: [],
-            votes: {},
-            scores: {},
-            instructionsSeen: true,
+            usedSlideIds: match.usedSlideIds ?? [],
+            votes,
+            scores,
+            instructionsSeen: raw.instructionsSeen === true,
           }
         : null,
     quiz:
       match && room.gameId === "quem-erra-paga"
         ? {
             order: match.questionOrder,
-            answers: {},
+            answers,
             punishmentIndex: match.punishmentIndex,
           }
         : null,

@@ -45,6 +45,7 @@ export interface SnapshotMatch {
   revealAutoplay: boolean;
   questionOrder: number[];
   slideIds: string[];
+  usedSlideIds: string[];
   punishmentIndex: number | null;
   /** Identidades (`source:id`) das fatias da roleta desta rodada. */
   topicCandidates: string[];
@@ -115,6 +116,23 @@ export interface RoomSnapshot {
   players: SnapshotPlayer[];
   match: SnapshotMatch | null;
   assignment: SnapshotAssignment | null;
+  /**
+   * Quem votou na rodada → nota.
+   *
+   * Durante `VOTING` a nota alheia vem `0`: o servidor entrega QUEM votou (o
+   * contador do host precisa disso) sem entregar O QUE votou. De
+   * `SCORE_REVEAL` em diante vêm as notas de verdade.
+   */
+  votes: Record<string, number>;
+  /** Nota final por apresentador. */
+  scores: Record<string, number>;
+  /**
+   * Quem respondeu na rodada → alternativa.
+   *
+   * Durante `ROUND_ACTIVE` a alternativa alheia vem `-1` — as chaves alimentam
+   * o contador ao vivo, e o valor real só aparece em `REVEAL_ANSWER`.
+   */
+  answers: Record<string, number>;
   topics: SnapshotTopic[];
   /** Preenchido só na revelação. Antes disso entregaria a piada. */
   chains: SnapshotChain[];

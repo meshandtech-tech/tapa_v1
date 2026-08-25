@@ -87,6 +87,11 @@ function assinar(p, roomId) {
   });
 }
 
+/** PNG 1x1 real — o Storage recusa MIME que não bate. */
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64");
+
 function desenho() {
   return { v: 2, g: 2048, s: Array.from({ length: 40 }, (_, k) =>
     [0, 28, k % 8, ...Array.from({ length: 60 }, (_, i) => (i * 37 + k * 13) % 2048)]) };
@@ -130,6 +135,9 @@ async function rodar(gameId) {
   if (gameId === "quem-erra-paga") {
     payload.p_question_order = Array.from({ length: 5 }, (_, i) => i);
     payload.p_correct = [1, 2, 0, 3, 1];
+    // Sem isto o banco não tem de onde sortear e a roleta de prendas não
+    // acontece — foi assim que ela sumiu sem ninguém notar.
+    payload.p_punishment_count = 24;
   }
   if (gameId === "improv-slides") payload.p_slide_ids = ["s1", "s2", "s3", "s4", "s5"];
 
@@ -140,7 +148,8 @@ async function rodar(gameId) {
   // Motor genérico: olha a fase, faz o que ela pede, avança.
   // -------------------------------------------------------------------------
   const temasVistos = [];
-  let caiu = null, guarda = 0;
+  const arquivos = [];
+  let caiu = null, guarda = 0, subiuImagem = false;
 
   while (guarda++ < 400) {
     const s = await rpc(host, "room_snapshot", { p_room: roomId });
@@ -170,6 +179,27 @@ async function rodar(gameId) {
         ...(desenhando ? { p_strokes: desenho() } : { p_text: `palpite ${p.nome} ${match.stepIndex}` }) })));
       const rec = envios.filter((e) => e.error || e.data?.skipped);
       if (rec.length) res.falhas.push(`passo ${match.stepIndex}: ${rec.length} entregas recusadas`);
+
+      // O caminho da IMAGEM, exercitado uma vez por partida.
+      //
+      // Nenhum teste tinha passado por aqui: o script só mandava traços, então
+      // `attach_drawing` nunca rodou. É justamente o caminho que põe o desenho
+      // de verdade no caderno — se estiver quebrado, tudo cai no fallback de
+      // traços e só as métricas denunciam, depois da festa.
+      if (desenhando && !subiuImagem) {
+        subiuImagem = true;
+        const caminho = `${PIN}/${match.id}/${match.stepIndex}-${host.playerId}.png`;
+        const { error: upErr } = await host.sb.storage.from("tapa-desenhos")
+          .upload(caminho, PNG, { contentType: "image/png", upsert: true });
+        if (upErr) {
+          res.falhas.push(`upload para o Storage: ${upErr.message}`);
+        } else {
+          const att = await rpc(host, "attach_drawing", {
+            p_room: roomId, p_step: match.stepIndex, p_storage_path: caminho });
+          reg(!att.error, `attach_drawing (${att.error?.message ?? "ok"})`);
+          arquivos.push(caminho);
+        }
+      }
     } else if (room.phase === "ROUND_ACTIVE") {
       res.passos++;
       await Promise.all(ativos.map((p, i) => rpc(p, "submit_answer", { p_room: roomId, p_option: i % 4 })));
@@ -224,6 +254,21 @@ async function rodar(gameId) {
     res.avisos.push(`páginas: ${JSON.stringify(st)}`);
   }
 
+  if (gameId === "drawing-telephone" && arquivos.length > 0 && fim.data) {
+    // Não basta o upload ter dado 200: a contribuição tem de APONTAR para o
+    // arquivo. Afirmar só o upload seria medir a metade fácil.
+    const comImagem = fim.data.chains
+      .flatMap((c) => c.pages)
+      .filter((p) => p.storagePath);
+    reg(comImagem.length > 0,
+        `${comImagem.length} páginas com imagem no Storage (esperado ao menos 1)`);
+  }
+
+  if (gameId === "quem-erra-paga") {
+    // A mecânica que dá nome ao jogo. Ela tinha sumido do `advance_phase`.
+    reg(res.fases.has("FORFEIT_WHEEL"), "roleta de prendas apareceu");
+  }
+
   if (gameId === "advogado-do-diabo") {
     const unicos = new Set(temasVistos);
     reg(unicos.size === temasVistos.length,
@@ -253,6 +298,9 @@ async function rodar(gameId) {
       `erros de canal: ${jogadores.reduce((a, p) => a + p.erroCanal, 0)}`);
 
   await rpc(host, "close_room", { p_room: roomId });
+  if (arquivos.length) {
+    try { await host.sb.storage.from("tapa-desenhos").remove(arquivos); } catch {}
+  }
   for (const p of jogadores) { try { await p.sb.removeChannel(p.canal); } catch {} }
 
   res.ms = Date.now() - t0;

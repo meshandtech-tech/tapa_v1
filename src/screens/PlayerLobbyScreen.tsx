@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Check, Dices, Gamepad2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
+import { Check, Dices, DoorOpen, Gamepad2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
 import { isValidPin } from "../party/pin";
 import { canStart, isNicknameTaken, roomCapacity } from "../party/partyReducer";
 import { clearPartyState } from "../party/partyStorage";
@@ -47,7 +47,7 @@ function PlayerLobby({ pin }: { pin: string }) {
   const {
     state, me, meInParty, isHost, connection,
     join, updateMe, answer, vote, submitDrawing, submitGuess, replaceSlides,
-    isAuthority, sendHostCommand, attachDrawing, authError,
+    isAuthority, sendHostCommand, attachDrawing, authError, leaveParty,
   } = usePartyRoom(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
@@ -390,6 +390,24 @@ function PlayerLobby({ pin }: { pin: string }) {
             <Dices strokeWidth={3} className="size-5" />
             Trocar rosto
           </Button>
+
+          {/* Sair de VERDADE, por decisão da pessoa — diferente de sumir a
+              rede. Sem isto a vaga nunca era devolvida e a sala enchia de
+              gente que já tinha ido embora. */}
+          {state?.phase === "LOBBY" && leaveParty ? (
+            <Button
+              size="sm"
+              variant="paper"
+              className="mt-2 w-full"
+              onClick={async () => {
+                await leaveParty();
+                navigate("/");
+              }}
+            >
+              <DoorOpen strokeWidth={3} className="size-5" />
+              Sair da sala
+            </Button>
+          ) : null}
         </Card>
 
         {/* Sem isto, quem cria a sala pelo celular não tem como chamar ninguém. */}

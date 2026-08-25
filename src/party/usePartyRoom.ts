@@ -480,6 +480,8 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
   const cloud = useCloudPartyRoom(pin, options);
   const local = useLocalPartyRoom(pin, { ...options, disabled: cloud.enabled });
 
-  if (!cloud.enabled) return { ...local, attachDrawing: undefined, authError: null };
+  if (!cloud.enabled) {
+    return { ...local, attachDrawing: undefined, authError: null, leaveParty: undefined };
+  }
   return cloud;
 }

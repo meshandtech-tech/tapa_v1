@@ -43,6 +43,8 @@ supabase/migrations/0006_snapshot.sql
 supabase/migrations/0007_cron.sql
 supabase/migrations/0008_metrics.sql
 supabase/migrations/0009_profiles.sql
+supabase/migrations/0010_fix_gameover_snapshot.sql
+supabase/migrations/0011_parity.sql
 ```
 
 - `0004` precisa da extensão **unaccent** (`Database → Extensions`).
@@ -202,6 +204,22 @@ Rodado no projeto real, com sessões anônimas de verdade:
 | Métricas bloqueadas para o app (42501) | ✓ |
 | Bucket: upload anon → leitura pública → bytes idênticos | ✓ |
 | MIME proibido recusado | ✓ |
+
+### Segunda rodada (26/08)
+
+Suíte de carga com 8 jogadores nos 4 jogos: 2.485 chamadas RPC, 0 retries,
+0 erros de canal, maior mensagem de Realtime **1,3 kB** (limite: 256 kB).
+
+| | |
+|---|---|
+| Partidas completas até GAME_OVER | 4/4 |
+| Nenhuma tese repetida no acervo finito | ✓ |
+| Reconexão no meio da partida | ✓ |
+| Bucket por round-trip (upload → URL pública → bytes idênticos) | ✓ |
+
+Nove lacunas de paridade banco↔tela corrigidas em `0010` e `0011`, cobertas
+por `src/party/cloud/projection.test.ts` — teste que foi verificado
+reintroduzindo os bugs: 6 dos 14 casos falham sem as correções.
 
 **Ainda NÃO verificado** — e é o que sustenta a tese do trabalho todo:
 
