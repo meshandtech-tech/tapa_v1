@@ -111,14 +111,26 @@ describe("entrada de jogadores", () => {
     expect(state.players[0].score).toBe(3);
   });
 
-  it("não aceita jogador novo depois que o jogo começou", () => {
+  /**
+   * Mudou de propósito: entrar na SALA e jogar a PARTIDA são coisas
+   * separadas. Quem chega no meio ocupa uma vaga e entra na próxima — antes
+   * era barrado na porta e ficava de fora da festa inteira.
+   */
+  it("aceita jogador novo no meio do jogo quando há vaga", () => {
     let state = withPlayers(2);
     state = partyReducer(state, { type: "START_GAME" });
     const after = partyReducer(state, { type: "PLAYER_JOIN", player: makePlayer("tarde") });
-    expect(after.players).toHaveLength(2);
+    expect(after.players).toHaveLength(3);
   });
 
-  it("remove jogador que sai", () => {
+  it("recusa jogador novo quando a sala está cheia", () => {
+    let state = withPlayers(10);
+    state = partyReducer(state, { type: "START_GAME" });
+    const after = partyReducer(state, { type: "PLAYER_JOIN", player: makePlayer("tarde") });
+    expect(after.players).toHaveLength(10);
+  });
+
+  it("remove jogador que sai do lobby", () => {
     const state = partyReducer(withPlayers(2), { type: "PLAYER_LEAVE", playerId: "p0" });
     expect(state.players.map((player) => player.id)).toEqual(["p1"]);
   });

@@ -238,6 +238,16 @@ function ensureHost(state: PartyState): PartyState {
   return { ...state, hostPlayerId: state.players[0]?.id ?? null };
 }
 
+/** Este jogador faz parte da PARTIDA em curso (e não só da sala)? */
+function isMatchParticipant(state: PartyState, playerId: string): boolean {
+  return (
+    state.drawing?.seatOrder.includes(playerId) ||
+    state.devil?.order.includes(playerId) ||
+    state.slides?.order.includes(playerId) ||
+    false
+  );
+}
+
 function joinPlayer(state: PartyState, player: Player): PartyState {
   // Reconexão: o mesmo id reentrando atualiza em vez de duplicar.
   const existing = state.players.findIndex((item) => item.id === player.id);
@@ -247,11 +257,30 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
     return ensureHost({ ...state, players });
   }
 
-  if (state.phase !== "LOBBY") return state;
-  if (state.players.length >= roomCapacity(state.settings.gameId)) return state;
-
   const nickname = sanitizeNickname(player.nickname);
-  if (!nickname || isNicknameTaken(state.players, nickname)) return state;
+  if (!nickname) return state;
+
+  /**
+   * Quem JÁ ESTAVA na partida volta sempre, em qualquer fase.
+   *
+   * Este é o bug do playtest: a pessoa recarregava a página, saía do roster, e
+   * ao voltar era tratada como estranha — recusada por "a partida já começou",
+   * para sempre, enquanto o assento dela continuava na mesa segurando todos os
+   * passos até o prazo estourar. Participar da partida é um fato do
+   * `seatOrder`, e ele é congelado no início justamente para sobreviver a isso.
+   */
+  if (isMatchParticipant(state, player.id)) {
+    return ensureHost({
+      ...state,
+      players: [...state.players, { ...player, nickname }],
+    });
+  }
+
+  // Entrada NOVA. Vale em qualquer fase enquanto houver vaga: pertencer à
+  // SALA e participar da PARTIDA corrente são coisas separadas. Quem chega no
+  // meio fica na sala e entra na próxima partida.
+  if (state.players.length >= roomCapacity(state.settings.gameId)) return state;
+  if (isNicknameTaken(state.players, nickname)) return state;
 
   return ensureHost({
     ...state,
@@ -264,6 +293,17 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
  * primeiro — sem isso a sala ficaria sem ninguém podendo pausar ou pular.
  */
 function leavePlayer(state: PartyState, playerId: string): PartyState {
+  /**
+   * Quem está NA PARTIDA não sai do roster por ter sumido.
+   *
+   * `PLAYER_LEAVE` é disparado ao desmontar a tela — ou seja, também num F5,
+   * numa troca de aba ou num soluço de rede. Apagar a pessoa nesses casos era
+   * o que fazia ela perder o lugar, o apelido e os pontos no meio do jogo.
+   * Durante a partida isto vira presença, não exclusão; sair de verdade só
+   * acontece no lobby.
+   */
+  if (isMatchParticipant(state, playerId)) return state;
+
   const players = state.players.filter((player) => player.id !== playerId);
   if (players.length === state.players.length) return state;
   return ensureHost({ ...state, players });

@@ -3,7 +3,7 @@ import { Check, Dices, SkipForward, Square } from "lucide-react";
 import type { HostCommand } from "../party/channel";
 import type { PartyState } from "../party/types";
 import { Button } from "../ui/Button";
-import { eligibleVoters, votesIn } from "./advogadoDoDiabo";
+import { availableTopics, eligibleVoters, votesIn } from "./advogadoDoDiabo";
 
 /**
  * Os botões que o host aperta no Advogado do Diabo, no celular dele.
@@ -23,6 +23,9 @@ function DevilHostActionsBase({
   send: (command: HostCommand) => void;
 }) {
   const faltamVotos = eligibleVoters(state).length - votesIn(state);
+  // O acervo é finito e a mesa merece saber o tamanho dele: um reroll custa
+  // uma tese, e "restam 2" muda a decisão de quem está com o botão na mão.
+  const restantes = state.devil ? availableTopics(state.devil).length : 0;
 
   const conteudo = (() => {
     switch (state.phase) {
@@ -39,19 +42,34 @@ function DevilHostActionsBase({
           </Button>
         );
 
-      /** Recusar a tese: troca o tema e mantém quem foi sorteado. */
+      /**
+       * REROLL: troca o TEMA e mantém quem foi sorteado.
+       *
+       * É diferente de encerrar a rodada, e o rótulo agora diz isso. A mesa
+       * lê a tese, alguém acha pesada demais para o grupo, e o host resolve em
+       * um toque — sem que quem foi sorteado perca a vez nem ganhe uma
+       * apresentação contada.
+       */
       case "TOPIC_REVEAL":
       case "PREPARATION":
         return (
-          <Button
-            size="sm"
-            variant="paper"
-            className="w-full max-w-md"
-            onClick={() => send({ type: "REROLL_TOPIC" })}
-        >
-            <Dices strokeWidth={3} className="size-5" />
-            Essa não — sortear outra tese
-          </Button>
+          <div className="flex w-full max-w-md flex-col gap-1">
+            <Button
+              size="md"
+              variant="paper"
+              onClick={() => send({ type: "REROLL_TOPIC" })}
+            >
+              <Dices strokeWidth={3} className="size-5" />
+              Trocar tese (reroll)
+            </Button>
+            <p className="text-center font-hand text-sm text-on-accent">
+              {restantes > 0
+                ? `Mesmo apresentador. ${restantes} ${
+                    restantes === 1 ? "tese restante" : "teses restantes"
+                  }.`
+                : "Última tese do acervo."}
+            </p>
+          </div>
         );
 
       /** Acabou antes do tempo? Não faz sentido esperar o relógio. */
