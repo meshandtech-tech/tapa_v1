@@ -47,7 +47,7 @@ function PlayerLobby({ pin }: { pin: string }) {
   const {
     state, me, meInParty, isHost, connection,
     join, updateMe, answer, vote, submitDrawing, submitGuess, replaceSlides,
-    isAuthority, sendHostCommand,
+    isAuthority, sendHostCommand, attachDrawing,
   } = usePartyRoom(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
@@ -241,6 +241,7 @@ function PlayerLobby({ pin }: { pin: string }) {
             me={meInParty}
             secondsLeft={computeSecondsLeft(state, now)}
             onSubmitDrawing={submitDrawing}
+            onAttachDrawing={attachDrawing}
             onSubmitGuess={submitGuess}
           />
         ) : (

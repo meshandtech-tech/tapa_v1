@@ -124,7 +124,8 @@ begin
 
   -- `round` é base 1; o gabarito é base 0.
   v_right := m.correct_options[p_round];
-  if v_right is null then return; end if;
+  -- `-1` é a pegadinha: nenhuma alternativa está certa, ninguém pontua.
+  if v_right is null or v_right < 0 then return; end if;
 
   update players p set score = p.score + 1
    where p.id in (
