@@ -52,20 +52,56 @@ supabase/migrations/0009_profiles.sql
 
 ## 4. Bucket dos desenhos
 
-**Storage → New bucket**
+Pelo **SQL Editor**, não pelo painel — é reproduzível e não depende de clicar
+na coisa certa:
 
-| campo | valor |
-|---|---|
-| Nome | `tapa-desenhos` |
-| Público | sim |
-| Limite | 1 MB |
-| MIME | `image/webp`, `image/png` |
+```sql
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('tapa-desenhos', 'tapa-desenhos', true, 1048576,
+        array['image/webp','image/png'])
+on conflict (id) do update
+   set public = true,
+       file_size_limit = 1048576,
+       allowed_mime_types = array['image/webp','image/png'];
 
-Depois **Policies → New policy** no bucket: operação `INSERT`, papel `anon`.
+create policy "tapa upload" on storage.objects
+  for insert to anon, authenticated
+  with check (bucket_id = 'tapa-desenhos');
 
-Este passo provavelmente nunca foi feito, e é metade da causa do crash: sem
-bucket, todo upload voltava `null` e cada desenho virava ~5–15 kB de traços
-guardados dentro do estado que era retransmitido inteiro a cada 3s.
+create policy "tapa leitura" on storage.objects
+  for select to anon, authenticated
+  using (bucket_id = 'tapa-desenhos');
+```
+
+`insert` e `create policy` não devolvem linhas: **"no rows returned" aqui é
+sucesso.**
+
+Este passo é metade da causa do crash de terça. Sem bucket, todo upload volta
+`null`, todo desenho vira traço guardado dentro do estado, e o estado era
+retransmitido inteiro a cada 3s.
+
+### Como conferir (o jeito certo)
+
+NÃO pergunte "o bucket existe?". Eu perdi tempo com isso: `storage.list()`
+devolve `[]` **sem erro** para um bucket que não existe, então a checagem passa
+e não significa nada.
+
+A única verificação que vale é o round-trip — **subir um arquivo e ler de volta
+pela URL pública**:
+
+```sql
+-- O que o painel sabe
+select id, public, file_size_limit, allowed_mime_types
+  from storage.buckets where id = 'tapa-desenhos';
+```
+
+...e depois, de fato, subir uma imagem pelo app e ver ela aparecer na
+revelação. Ou pedir para o agente rodar o teste de upload.
+
+A lição serve para o resto: **ausência de erro não é prova de funcionamento.**
+Três checagens minhas deram falso positivo por isso — RPC chamada sem
+argumentos, `count` sob RLS, e `storage.list`. Toda asserção aqui deve afirmar
+um resultado, não a falta de exceção.
 
 ## 5. Conferir
 
@@ -145,3 +181,35 @@ Depois:
 O caminho local continua inteiro. Tire as duas variáveis do `.env` e o app
 volta a rodar entre abas do mesmo navegador, com a autoridade no aparelho —
 sem nuvem, mas jogável. É a rede de segurança para não ficar sem nada.
+
+
+---
+
+## Estado verificado (25/08)
+
+Rodado contra o projeto real, com sessões anônimas de verdade:
+
+| | |
+|---|---|
+| Migrations 0001–0006, 0008, 0009 | ✓ |
+| pg_cron (0007) | ✓ |
+| Login anônimo | ✓ |
+| `create_room` / `join_room` / `room_snapshot` / `start_match` | ✓ |
+| Idempotência: 3 envios do mesmo jogador → 1 linha | ✓ |
+| Corrida: 4 `advance_phase` simultâneos → 1 avanço | ✓ |
+| RLS: jogador lê 0 contribuições alheias | ✓ |
+| Backfill: 4 cadernos, 4 páginas cada, 0 buracos | ✓ |
+| Métricas bloqueadas para o app (42501) | ✓ |
+| Bucket: upload anon → leitura pública → bytes idênticos | ✓ |
+| MIME proibido recusado | ✓ |
+
+**Ainda NÃO verificado** — e é o que sustenta a tese do trabalho todo:
+
+- [ ] Fechar o navegador do host no meio da partida e os outros continuarem
+      jogando, com o host voltando ao comando ao reabrir
+- [ ] Reconexão de celular real (modo avião 30s)
+- [ ] Auto-envio de desenho e de palpite com dedo na tela
+- [ ] Safari iOS em tela cheia
+
+Tudo acima foi provado por RPC, o que prova o BANCO. Não prova o app no
+celular.
