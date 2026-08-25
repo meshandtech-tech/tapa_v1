@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { ensureAnonSession, getSupabase } from "../../lib/supabase";
+import { ensureAnonSession, getSupabase, lastAuthFailure, type AuthFailure } from "../../lib/supabase";
 import * as api from "./api";
 import { projectSnapshot } from "./projection";
 import type { RoomSnapshot } from "./snapshot";
@@ -32,6 +32,11 @@ export function useCloudRoom(pin: string) {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [connection, setConnection] = useState<CloudConnection>("connecting");
+  /**
+   * Por que não deu para entrar. Sem isto o jogador ficava preso para sempre
+   * em "procurando a sala" — sem erro na tela e sem nada a fazer.
+   */
+  const [authError, setAuthError] = useState<AuthFailure | null>(null);
 
   const roomIdRef = useRef<string | null>(null);
   roomIdRef.current = roomId;
@@ -72,7 +77,13 @@ export function useCloudRoom(pin: string) {
     let cancelled = false;
 
     void (async () => {
-      await ensureAnonSession();
+      const uid = await ensureAnonSession();
+      if (cancelled) return;
+      if (!uid) {
+        setAuthError(lastAuthFailure() ?? "unknown");
+        return;
+      }
+      setAuthError(null);
       const supabase = getSupabase();
       if (!supabase || cancelled) return;
 
@@ -225,5 +236,5 @@ export function useCloudRoom(pin: string) {
     [snapshot],
   );
 
-  return { roomId, snapshot, state, connection, refresh };
+  return { roomId, snapshot, state, connection, authError, refresh };
 }

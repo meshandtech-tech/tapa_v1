@@ -1,0 +1,288 @@
+/**
+ * Teste de carga com jogadores DE VERDADE, nos quatro jogos.
+ *
+ * Cada "jogador" é um cliente Supabase próprio: sessão anônima própria,
+ * websocket próprio, assinatura de Realtime própria. É o mais perto que dá
+ * chegar do playtest sem juntar gente numa sala.
+ *
+ * O que ele NÃO cobre, e é importante saber: a UI React, o canvas, o Safari.
+ * Isto exercita o BANCO e o REALTIME sob concorrência real.
+ *
+ * Uso:
+ *   node scripts/stress-players.mjs                 # 8 jogadores, 4 jogos
+ *   node scripts/stress-players.mjs 10              # 10 jogadores
+ *   node scripts/stress-players.mjs 8 drawing-telephone
+ */
+import { createClient } from "@supabase/supabase-js";
+import { readFileSync } from "node:fs";
+
+const N = Number(process.argv[2] ?? 8);
+const SO_ESTE = process.argv[3];
+const JOGOS = ["drawing-telephone", "quem-erra-paga", "advogado-do-diabo", "improv-slides"];
+
+const env = Object.fromEntries(
+  readFileSync(".env", "utf8").split("\n")
+    .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
+    .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]));
+const URL = env.VITE_SUPABASE_URL, KEY = env.VITE_SUPABASE_ANON_KEY;
+if (!URL || !KEY) { console.error("faltam credenciais no .env"); process.exit(1); }
+
+const V = "\x1b[32m✓\x1b[0m", X = "\x1b[31m✗\x1b[0m", A = "\x1b[33m!\x1b[0m";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Métricas acumuladas de toda a execução — viram o audit no fim. */
+const M = { rpc: 0, retries: 0, erros: [], jogos: {} };
+
+/**
+ * Chamada com retry.
+ *
+ * O primeiro stress caiu por falta disto: uma rajada de 8 clientes gera falha
+ * transitória, e sem retry o script morre e parece bug do banco. Retry aqui é
+ * honestidade de instrumentação, não de produto — o retry do APP fica em
+ * `useCloudRoom`.
+ */
+async function rpc(p, fn, args, tentativas = 3) {
+  for (let i = 1; i <= tentativas; i++) {
+    M.rpc++;
+    const { data, error } = await p.sb.rpc(fn, args);
+    if (!error) return { data };
+    if (i === tentativas) { M.erros.push(`${fn}: ${error.code ?? ""} ${error.message}`); return { error }; }
+    M.retries++;
+    await sleep(120 * i);
+  }
+}
+
+async function criarJogador(nome) {
+  const sb = createClient(URL, KEY, {
+    auth: { persistSession: false },
+    realtime: { params: { eventsPerSecond: 10 } },
+  });
+  let data, error;
+  for (let i = 1; i <= 5; i++) {
+    ({ data, error } = await sb.auth.signInAnonymously());
+    if (!error) break;
+    if (!/rate limit/i.test(error.message) || i === 5) throw new Error(`${nome}: ${error.message}`);
+    await sleep(2000 * i);
+  }
+  return { nome, sb, uid: data.user.id, eventos: 0, bytes: 0, maiorEvento: 0, erroCanal: 0 };
+}
+
+/** Assina como o app assina: três tabelas pequenas, filtradas pela sala. */
+function assinar(p, roomId) {
+  return new Promise((resolve) => {
+    const conta = (m) => {
+      const n = JSON.stringify(m).length;
+      p.eventos++; p.bytes += n;
+      if (n > p.maiorEvento) p.maiorEvento = n;
+    };
+    const ch = p.sb.channel(`room:${roomId}:${p.nome}:${Math.random()}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "rooms",   filter: `id=eq.${roomId}` }, conta)
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches", filter: `room_id=eq.${roomId}` }, conta)
+      .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `room_id=eq.${roomId}` }, conta)
+      .subscribe((s) => {
+        if (s === "SUBSCRIBED") resolve(ch);
+        if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") p.erroCanal++;
+      });
+    p.canal = ch;
+  });
+}
+
+function desenho() {
+  return { v: 2, g: 2048, s: Array.from({ length: 40 }, (_, k) =>
+    [0, 28, k % 8, ...Array.from({ length: 60 }, (_, i) => (i * 37 + k * 13) % 2048)]) };
+}
+
+// ---------------------------------------------------------------------------
+async function rodar(gameId) {
+  const res = { gameId, ok: [], falhas: [], avisos: [], fases: new Set(), passos: 0 };
+  const reg = (cond, msg) => (cond ? res.ok : res.falhas).push(msg);
+  const t0 = Date.now();
+
+  // Espaçado de propósito: o Supabase limita cadastro anônimo POR IP, e criar
+  // 8 de uma vez estourou o limite no terceiro jogo da primeira execução.
+  const jogadores = [];
+  for (let i = 0; i < N; i++) {
+    jogadores.push(await criarJogador(`p${i}`));
+    await sleep(250);
+  }
+  const host = jogadores[0];
+
+  const PIN = String(Math.floor(100000 + Math.random() * 899999));
+  let r = await rpc(host, "create_room", { p_pin: PIN, p_game_id: gameId });
+  if (r.error) { res.falhas.push(`create_room: ${r.error.message}`); return res; }
+  const roomId = r.data.id;
+
+  for (const [i, p] of jogadores.entries()) {
+    const j = await rpc(p, "join_room", {
+      p_pin: PIN, p_nickname: `Jogador${i}`, p_color: `#f${i}5c8a`, p_avatar_seed: `s${i}` });
+    if (j.error || j.data?.error) { res.falhas.push(`join ${p.nome}`); return res; }
+    p.playerId = j.data.player_id;
+  }
+  await Promise.all(jogadores.map((p) => assinar(p, roomId)));
+  reg(true, `${N} jogadores conectados com websocket`);
+
+  // Conteúdo que o TS normalmente fornece.
+  const payload = { p_room: roomId };
+  if (gameId === "drawing-telephone")
+    payload.p_prompts = Array.from({ length: N }, (_, i) => ({ id: `t${i}`, text: `tema ${i}`, acceptedAnswers: [] }));
+  if (gameId === "advogado-do-diabo")
+    payload.p_topics = Array.from({ length: 10 }, (_, i) => ({ id: `h${i}`, source: i < 3 ? "custom" : "default", text: `tese ${i}` }));
+  if (gameId === "quem-erra-paga") {
+    payload.p_question_order = Array.from({ length: 5 }, (_, i) => i);
+    payload.p_correct = [1, 2, 0, 3, 1];
+  }
+  if (gameId === "improv-slides") payload.p_slide_ids = ["s1", "s2", "s3", "s4", "s5"];
+
+  r = await rpc(host, "start_match", payload);
+  if (r.error) { res.falhas.push(`start_match: ${r.error.message}`); return res; }
+
+  // -------------------------------------------------------------------------
+  // Motor genérico: olha a fase, faz o que ela pede, avança.
+  // -------------------------------------------------------------------------
+  const temasVistos = [];
+  let caiu = null, guarda = 0;
+
+  while (guarda++ < 400) {
+    const s = await rpc(host, "room_snapshot", { p_room: roomId });
+    if (s.error) { res.falhas.push(`room_snapshot na volta ${guarda}`); break; }
+    const { room, match } = s.data;
+    res.fases.add(room.phase);
+    if (room.phase === "GAME_OVER") break;
+
+    const ativos = jogadores.filter((p) => p !== caiu);
+
+    // Um jogador some no meio e volta — reconexão sob carga.
+    if (guarda === 6 && !caiu) { caiu = jogadores[3]; await caiu.sb.removeChannel(caiu.canal); }
+    else if (guarda === 12 && caiu) {
+      await assinar(caiu, roomId);
+      const v = await rpc(caiu, "join_room", {
+        p_pin: PIN, p_nickname: "Jogador3", p_color: "#f35c8a", p_avatar_seed: "s3" });
+      reg(!v.data?.error, `reconexão no meio da partida (${v.data?.error ?? "voltou"})`);
+      caiu = null;
+    }
+
+    // Ação da fase — todo mundo ao MESMO tempo, que é a rajada real.
+    if (room.phase === "DRAW_STEP" || room.phase === "GUESS_STEP") {
+      res.passos++;
+      const desenhando = room.phase === "DRAW_STEP";
+      const envios = await Promise.all(ativos.map((p) => rpc(p, "submit_contribution", {
+        p_room: roomId,
+        ...(desenhando ? { p_strokes: desenho() } : { p_text: `palpite ${p.nome} ${match.stepIndex}` }) })));
+      const rec = envios.filter((e) => e.error || e.data?.skipped);
+      if (rec.length) res.falhas.push(`passo ${match.stepIndex}: ${rec.length} entregas recusadas`);
+    } else if (room.phase === "ROUND_ACTIVE") {
+      res.passos++;
+      await Promise.all(ativos.map((p, i) => rpc(p, "submit_answer", { p_room: roomId, p_option: i % 4 })));
+    } else if (room.phase === "VOTING") {
+      res.passos++;
+      await Promise.all(ativos.map((p) => rpc(p, "submit_vote", { p_room: roomId, p_rating: 1 + (guarda % 5) })));
+    } else if (room.phase === "TOPIC_REVEAL" && match) {
+      const chave = match.topicCandidates?.[match.topicWinner];
+      if (chave) temasVistos.push(chave);
+    }
+
+    // Avanço concorrente: todos pedem, um só pode valer.
+    const pedidos = await Promise.all(ativos.map((p) => rpc(p, "advance_phase", {
+      p_room: roomId, p_expected_phase: room.phase,
+      p_expected_ends_at: room.phaseEndsAt, p_force: p === host })));
+    // NÃO comparar as fases devolvidas entre si: oito chamadas concorrentes
+    // leem instantes diferentes por definição — quem chega antes do avanço vê
+    // a fase antiga, quem chega depois vê a nova. Isso é o comportamento
+    // correto, e afirmar o contrário só gera ruído (13 falsos alarmes na
+    // primeira execução). A convergência é verificada UMA vez, no fim.
+    const semResposta = pedidos.filter((x) => x.error).length;
+    if (semResposta) res.falhas.push(`${semResposta} advance_phase sem resposta`);
+  }
+
+  const fim = await rpc(host, "room_snapshot", { p_room: roomId });
+  const faseFinal = fim.data?.room?.phase;
+  reg(faseFinal === "GAME_OVER", `terminou em ${faseFinal} (${guarda} voltas)`);
+
+  // -------------------------------------------------------------------------
+  // Checagens específicas
+  // -------------------------------------------------------------------------
+  if (gameId === "drawing-telephone" && fim.data) {
+    const cad = fim.data.chains;
+    const passos = fim.data.match?.stepCount ?? 0;
+    reg(cad.length === N, `${cad.length} cadernos (esperado ${N})`);
+
+    // As checagens abaixo SÓ valem se houver caderno. `[].filter(...)` dá 0 e
+    // passava exatamente no caso pior — quando a foto voltava vazia. Um teste
+    // que mente positivo é pior que não ter teste.
+    if (cad.length === 0) {
+      res.falhas.push("sem cadernos: integridade não pôde ser verificada");
+    } else {
+      const incompletos = cad.filter((c) => c.pages.length !== passos).length;
+      reg(incompletos === 0, `${cad.length} cadernos com ${passos} páginas cada (${incompletos} com buraco)`);
+      const dup = cad.filter((c) => new Set(c.pages.map((p) => p.playerId)).size !== c.pages.length).length;
+      reg(dup === 0, `sem página duplicada (${dup} cadernos com autor repetido)`);
+      const semAceitas = cad.filter((c) => !Array.isArray(c.acceptedAnswers)).length;
+      reg(semAceitas === 0, `respostas aceitas presentes (${semAceitas} cadernos sem)`);
+    }
+    const st = {};
+    for (const c of cad) for (const p of c.pages) st[p.status] = (st[p.status] ?? 0) + 1;
+    res.avisos.push(`páginas: ${JSON.stringify(st)}`);
+  }
+
+  if (gameId === "advogado-do-diabo") {
+    const unicos = new Set(temasVistos);
+    reg(unicos.size === temasVistos.length,
+        `nenhuma tese repetida (${temasVistos.length} sorteadas, ${unicos.size} únicas)`);
+  }
+
+  if (fim.data) {
+    const placar = fim.data.players.map((p) => p.score);
+    res.avisos.push(`placar final: [${placar.join(", ")}]`);
+  }
+
+  // Convergência: todos os clientes veem a mesma coisa?
+  const visoes = await Promise.all(jogadores.map((p) => rpc(p, "room_snapshot", { p_room: roomId })));
+  const fases = new Set(visoes.map((v) => v.data?.room?.phase).filter(Boolean));
+  reg(fases.size === 1, `todos convergiram (${[...fases].join(", ") || "sem resposta"})`);
+
+  // O crash de terça foi UMA MENSAGEM passando de 256 kB, não tráfego somado.
+  // Medir o acumulado e chamar de teto confundia as duas coisas: 250 kB ao
+  // longo de 100 segundos são 2,5 kB/s, o que é irrelevante. O que importa é
+  // a MAIOR mensagem individual.
+  const maior = Math.max(...jogadores.map((p) => p.bytes));
+  const maiorMsg = Math.max(...jogadores.map((p) => p.maiorEvento));
+  reg(maiorMsg < 32 * 1024,
+      `maior mensagem de Realtime: ${(maiorMsg / 1024).toFixed(1)} kB`);
+  res.avisos.push(`tráfego acumulado: ${(maior / 1024).toFixed(1)} kB por cliente na partida inteira`);
+  reg(jogadores.every((p) => p.erroCanal === 0),
+      `erros de canal: ${jogadores.reduce((a, p) => a + p.erroCanal, 0)}`);
+
+  await rpc(host, "close_room", { p_room: roomId });
+  for (const p of jogadores) { try { await p.sb.removeChannel(p.canal); } catch {} }
+
+  res.ms = Date.now() - t0;
+  res.bytesMax = maior;
+  res.eventos = Math.max(...jogadores.map((p) => p.eventos));
+  M.jogos[gameId] = res;
+  return res;
+}
+
+// ---------------------------------------------------------------------------
+console.log(`\n\x1b[1mSTRESS — ${N} jogadores\x1b[0m\n`);
+for (const g of (SO_ESTE ? [SO_ESTE] : JOGOS)) {
+  console.log(`\x1b[1m${g}\x1b[0m`);
+  const r = await rodar(g);
+  for (const m of r.ok) console.log(`  ${V} ${m}`);
+  for (const m of r.falhas) console.log(`  ${X} ${m}`);
+  for (const m of r.avisos) console.log(`  ${A} ${m}`);
+  console.log(`  fases: ${[...r.fases].join(" → ")}`);
+  console.log(`  ${r.ms}ms, ${r.eventos} eventos, ${(r.bytesMax / 1024).toFixed(1)} kB\n`);
+}
+
+console.log("=".repeat(60));
+console.log("\x1b[1mAUDIT\x1b[0m");
+const todas = Object.values(M.jogos);
+const falhas = todas.flatMap((r) => r.falhas.map((f) => `${r.gameId}: ${f}`));
+console.log(`  chamadas RPC:      ${M.rpc}`);
+console.log(`  retries:           ${M.retries} (${((M.retries / M.rpc) * 100).toFixed(2)}%)`);
+console.log(`  erros persistentes:${M.erros.length}`);
+console.log(`  pior tráfego:      ${(Math.max(...todas.map((r) => r.bytesMax)) / 1024).toFixed(1)} kB por cliente`);
+console.log(`  jogos completos:   ${todas.filter((r) => r.fases.has("GAME_OVER")).length}/${todas.length}`);
+console.log(falhas.length ? `\n\x1b[31mFALHAS (${falhas.length})\x1b[0m\n  - ${falhas.join("\n  - ")}`
+                          : `\n\x1b[32mTUDO PASSOU\x1b[0m`);
+process.exit(falhas.length ? 1 : 0);

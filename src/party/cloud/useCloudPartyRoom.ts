@@ -22,7 +22,8 @@ import type { PartyState, Player } from "../types";
  */
 export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } = {}) {
   const ativo = isSupabaseConfigured && !options.spectator;
-  const { roomId, snapshot, state, connection, refresh } = useCloudRoom(ativo ? pin : "");
+  const { roomId, snapshot, state, connection, authError, refresh } =
+    useCloudRoom(ativo ? pin : "");
 
   const meId = snapshot?.me.playerId ?? null;
   const meInParty: Player | null = useMemo(
@@ -249,6 +250,7 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
     // ainda perguntam; sempre falso na nuvem, e é essa a mudança.
     isAuthority: false,
     connection: connection === "offline" ? "connecting" : connection,
+    authError,
     snapshot,
     join,
     updateMe,

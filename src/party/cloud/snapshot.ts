@@ -99,6 +99,12 @@ export interface SnapshotChain {
   ownerPlayerId: string;
   position: number;
   originalPrompt: string;
+  /**
+   * "celular" também vale por "telefone". Precisa chegar na tela: a revelação
+   * desenha o selo de acerto com `chainSurvived`, e sem estas respostas a TELA
+   * discordava do PLACAR que o banco já tinha calculado.
+   */
+  acceptedAnswers: string[];
   countedAsMatch: boolean;
   pages: SnapshotPage[];
 }

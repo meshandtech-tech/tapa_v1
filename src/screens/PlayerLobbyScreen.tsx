@@ -47,7 +47,7 @@ function PlayerLobby({ pin }: { pin: string }) {
   const {
     state, me, meInParty, isHost, connection,
     join, updateMe, answer, vote, submitDrawing, submitGuess, replaceSlides,
-    isAuthority, sendHostCommand, attachDrawing,
+    isAuthority, sendHostCommand, attachDrawing, authError,
   } = usePartyRoom(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
@@ -174,13 +174,43 @@ function PlayerLobby({ pin }: { pin: string }) {
   }
 
   if (connection === "connecting") {
+    /**
+     * Diagnóstico honesto em vez de "procurando a sala" para sempre.
+     *
+     * O limite de cadastro anônimo do Supabase é POR IP, e uma festa inteira
+     * sai do mesmo Wi-Fi — dez pessoas entrando juntas é exatamente o formato
+     * que estoura. Antes disso aqui, a pessoa ficava olhando uma tela de
+     * espera sem nada a fazer, e ninguém na mesa descobria o porquê.
+     */
+    const recado = authError
+      ? {
+          rate_limit: {
+            titulo: "Muita gente entrando de uma vez",
+            texto: "A rede bateu no limite de entradas. Espera uns segundos e tenta de novo — já está tentando sozinho.",
+          },
+          disabled: {
+            titulo: "Entrada anônima desligada",
+            texto: "O login anônimo precisa ser habilitado no painel do Supabase.",
+          },
+          network: {
+            titulo: "Sem conexão",
+            texto: "Confere o Wi-Fi ou os dados do celular.",
+          },
+          unknown: {
+            titulo: "Não deu para entrar",
+            texto: "Algo falhou ao criar a sua sessão. Tenta recarregar a página.",
+          },
+        }[authError]
+      : {
+          titulo: `Procurando a sala ${pin}`,
+          texto: "Confere o PIN se demorar.",
+        };
+
     return (
       <Shell>
         <Card tilt="tilt-3" className="w-full max-w-md p-7 text-center">
-          <h2 className="font-display text-3xl font-bold uppercase">Procurando a sala {pin}</h2>
-          <p className="mt-2 font-hand text-lg">
-            A TV precisa estar com a sala aberta. Confere o PIN se demorar.
-          </p>
+          <h2 className="font-display text-3xl font-bold uppercase">{recado.titulo}</h2>
+          <p className="mt-2 font-hand text-lg">{recado.texto}</p>
           <Button size="md" variant="knockout" className="mt-5 w-full" onClick={() => navigate("/join")}>
             Trocar PIN
           </Button>

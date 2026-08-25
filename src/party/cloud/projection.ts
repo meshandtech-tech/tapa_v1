@@ -75,7 +75,7 @@ function toChain(chain: SnapshotChain): DrawingChain {
     ownerPlayerId: chain.ownerPlayerId,
     promptId: "",
     originalPrompt: chain.originalPrompt,
-    acceptedAnswers: [],
+    acceptedAnswers: chain.acceptedAnswers ?? [],
     pages,
   };
 }

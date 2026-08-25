@@ -42,6 +42,23 @@ export function getSupabase(): SupabaseClient | null {
 /** Promessa única: dez chamadas simultâneas no mount não viram dez sessões. */
 let signingIn: Promise<string | null> | null = null;
 
+/** Por que a sessão não saiu. `null` = saiu. */
+export type AuthFailure = "rate_limit" | "disabled" | "network" | "unknown";
+let ultimaFalha: AuthFailure | null = null;
+export function lastAuthFailure(): AuthFailure | null {
+  return ultimaFalha;
+}
+
+function classificar(mensagem: string): AuthFailure {
+  const m = mensagem.toLowerCase();
+  if (m.includes("rate limit")) return "rate_limit";
+  if (m.includes("disabled") || m.includes("not enabled")) return "disabled";
+  if (m.includes("fetch") || m.includes("network")) return "network";
+  return "unknown";
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * Identidade anônima e DURÁVEL deste aparelho.
  *
@@ -49,6 +66,12 @@ let signingIn: Promise<string | null> | null = null;
  * tela, então recarregar a página fazia da pessoa uma estranha e o reducer a
  * recusava com "a partida já começou". O uid da sessão anônima sobrevive ao
  * F5, à troca de rede e ao celular bloqueando.
+ *
+ * O RETRY existe por um motivo concreto: o Supabase limita cadastros anônimos
+ * POR IP, e uma festa inteira sai do mesmo Wi-Fi. Dez pessoas entrando ao
+ * mesmo tempo na rede do bar é exatamente o formato que estoura o limite — e
+ * foi o que derrubou o terceiro jogo do teste de carga. Espaçar as tentativas
+ * resolve a rajada; o teto por hora continua sendo configuração do painel.
  */
 export async function ensureAnonSession(): Promise<string | null> {
   const supabase = getSupabase();
@@ -56,14 +79,31 @@ export async function ensureAnonSession(): Promise<string | null> {
 
   signingIn ??= (async () => {
     const { data } = await supabase.auth.getSession();
+    // Sessão guardada: NENHUM cadastro novo. É o que faz quem volta não
+    // consumir cota — e por isso `persistSession` importa tanto aqui.
     if (data.session?.user?.id) return data.session.user.id;
 
-    const { data: created, error } = await supabase.auth.signInAnonymously();
-    if (error) {
-      console.error("[tapa] sessão anônima falhou", error);
-      return null;
+    let espera = 700;
+    for (let tentativa = 1; tentativa <= 4; tentativa += 1) {
+      const { data: criada, error } = await supabase.auth.signInAnonymously();
+      if (!error && criada.user?.id) {
+        ultimaFalha = null;
+        return criada.user.id;
+      }
+
+      ultimaFalha = classificar(error?.message ?? "");
+      // Limite desligado no painel não melhora com insistência.
+      if (ultimaFalha === "disabled") break;
+      if (tentativa === 4) break;
+
+      // Espera com jitter: dez celulares que falharam juntos não podem
+      // tentar de novo juntos, senão a rajada se repete igual.
+      await sleep(espera + Math.random() * 400);
+      espera *= 2;
     }
-    return created.user?.id ?? null;
+
+    console.error("[tapa] sessão anônima falhou:", ultimaFalha);
+    return null;
   })();
 
   const id = await signingIn;
@@ -71,7 +111,6 @@ export async function ensureAnonSession(): Promise<string | null> {
   if (!id) signingIn = null;
   return id;
 }
-
 
 /**
  * Promove a sessão anônima a conta Google, MANTENDO o mesmo uid.
