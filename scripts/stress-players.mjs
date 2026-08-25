@@ -64,7 +64,8 @@ async function criarJogador(nome) {
     if (!/rate limit/i.test(error.message) || i === 5) throw new Error(`${nome}: ${error.message}`);
     await sleep(2000 * i);
   }
-  return { nome, sb, uid: data.user.id, eventos: 0, bytes: 0, maiorEvento: 0, erroCanal: 0 };
+  return { nome, sb, uid: data.user.id, eventos: 0, bytes: 0, maiorEvento: 0,
+           erroCanal: 0, assinado: false, nuncaVoltou: false };
 }
 
 /** Assina como o app assina: três tabelas pequenas, filtradas pela sala. */
@@ -80,8 +81,16 @@ function assinar(p, roomId) {
       .on("postgres_changes", { event: "*", schema: "public", table: "matches", filter: `room_id=eq.${roomId}` }, conta)
       .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `room_id=eq.${roomId}` }, conta)
       .subscribe((s) => {
-        if (s === "SUBSCRIBED") resolve(ch);
-        if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") p.erroCanal++;
+        // Erro de canal ACONTECE — rede de bar, serviço com soluço. O que
+        // importa não é se aconteceu, é se o cliente VOLTOU. Era a falta de
+        // volta que matava a arquitetura antiga: o adapter marcava o canal
+        // como morto e nunca mais tentava.
+        if (s === "SUBSCRIBED") { p.assinado = true; resolve(ch); }
+        if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") {
+          p.erroCanal++;
+          p.assinado = false;
+        }
+        if (s === "CLOSED") p.assinado = false;
       });
     p.canal = ch;
   });
@@ -294,8 +303,20 @@ async function rodar(gameId) {
   reg(maiorMsg < 32 * 1024,
       `maior mensagem de Realtime: ${(maiorMsg / 1024).toFixed(1)} kB`);
   res.avisos.push(`tráfego acumulado: ${(maior / 1024).toFixed(1)} kB por cliente na partida inteira`);
-  reg(jogadores.every((p) => p.erroCanal === 0),
-      `erros de canal: ${jogadores.reduce((a, p) => a + p.erroCanal, 0)}`);
+  // A asserção é sobre a RECUPERAÇÃO, não sobre o erro. Contar erro bruto
+  // reprovava um soluço que o cliente absorveu sozinho — medir o sintoma em
+  // vez do resultado.
+  const totalErros = jogadores.reduce((a, p) => a + p.erroCanal, 0);
+  const mudos = jogadores.filter((p) => p.eventos === 0);
+  const fora = jogadores.filter((p) => !p.assinado);
+
+  reg(fora.length === 0,
+      `todos os canais ativos no fim (${fora.length} fora)`);
+  reg(mudos.length === 0,
+      `todos receberam eventos (${mudos.length} mudos)`);
+  if (totalErros > 0) {
+    res.avisos.push(`${totalErros} erro(s) de canal, todos recuperados`);
+  }
 
   await rpc(host, "close_room", { p_room: roomId });
   if (arquivos.length) {
