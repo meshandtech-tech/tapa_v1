@@ -18,6 +18,7 @@ import {
   recordPage,
 } from "../games/drawing/state";
 import {
+  buildTopicPool,
   createDevilState,
   currentPresenter,
   drawCandidates,
@@ -40,6 +41,7 @@ import {
   type Player,
   type CustomTopic,
   type DevilState,
+  type MatchTopic,
   type DrawingState,
   type SlidesState,
   type SubmissionStatus,
@@ -54,7 +56,7 @@ import {
 function withCustomTopics(state: PartyState, customTopics: CustomTopic[]): DevilState {
   if (state.devil) return { ...state.devil, customTopics };
   return {
-    order: [], index: -1, candidates: [], winner: 0, usedTopics: [],
+    order: [], index: -1, pool: [], candidates: [], winner: 0,
     customTopics, votes: {}, scores: {}, disclaimerAccepted: false,
   };
 }
@@ -236,6 +238,16 @@ function ensureHost(state: PartyState): PartyState {
   return { ...state, hostPlayerId: state.players[0]?.id ?? null };
 }
 
+/** Este jogador faz parte da PARTIDA em curso (e não só da sala)? */
+function isMatchParticipant(state: PartyState, playerId: string): boolean {
+  return (
+    state.drawing?.seatOrder.includes(playerId) ||
+    state.devil?.order.includes(playerId) ||
+    state.slides?.order.includes(playerId) ||
+    false
+  );
+}
+
 function joinPlayer(state: PartyState, player: Player): PartyState {
   // Reconexão: o mesmo id reentrando atualiza em vez de duplicar.
   const existing = state.players.findIndex((item) => item.id === player.id);
@@ -245,11 +257,30 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
     return ensureHost({ ...state, players });
   }
 
-  if (state.phase !== "LOBBY") return state;
-  if (state.players.length >= roomCapacity(state.settings.gameId)) return state;
-
   const nickname = sanitizeNickname(player.nickname);
-  if (!nickname || isNicknameTaken(state.players, nickname)) return state;
+  if (!nickname) return state;
+
+  /**
+   * Quem JÁ ESTAVA na partida volta sempre, em qualquer fase.
+   *
+   * Este é o bug do playtest: a pessoa recarregava a página, saía do roster, e
+   * ao voltar era tratada como estranha — recusada por "a partida já começou",
+   * para sempre, enquanto o assento dela continuava na mesa segurando todos os
+   * passos até o prazo estourar. Participar da partida é um fato do
+   * `seatOrder`, e ele é congelado no início justamente para sobreviver a isso.
+   */
+  if (isMatchParticipant(state, player.id)) {
+    return ensureHost({
+      ...state,
+      players: [...state.players, { ...player, nickname }],
+    });
+  }
+
+  // Entrada NOVA. Vale em qualquer fase enquanto houver vaga: pertencer à
+  // SALA e participar da PARTIDA corrente são coisas separadas. Quem chega no
+  // meio fica na sala e entra na próxima partida.
+  if (state.players.length >= roomCapacity(state.settings.gameId)) return state;
+  if (isNicknameTaken(state.players, nickname)) return state;
 
   return ensureHost({
     ...state,
@@ -262,6 +293,17 @@ function joinPlayer(state: PartyState, player: Player): PartyState {
  * primeiro — sem isso a sala ficaria sem ninguém podendo pausar ou pular.
  */
 function leavePlayer(state: PartyState, playerId: string): PartyState {
+  /**
+   * Quem está NA PARTIDA não sai do roster por ter sumido.
+   *
+   * `PLAYER_LEAVE` é disparado ao desmontar a tela — ou seja, também num F5,
+   * numa troca de aba ou num soluço de rede. Apagar a pessoa nesses casos era
+   * o que fazia ela perder o lugar, o apelido e os pontos no meio do jogo.
+   * Durante a partida isto vira presença, não exclusão; sair de verdade só
+   * acontece no lobby.
+   */
+  if (isMatchParticipant(state, playerId)) return state;
+
   const players = state.players.filter((player) => player.id !== playerId);
   if (players.length === state.players.length) return state;
   return ensureHost({ ...state, players });
@@ -373,12 +415,11 @@ function advanceDevil(state: PartyState, now: number): PartyState {
 
     case "TOPIC_SPIN": {
       const escolhido = devil.candidates[devil.winner];
+      if (!escolhido) return enterPhase(state, "TOPIC_REVEAL", now);
+      // Sai do acervo já aqui: se o grupo pedir outro, este não volta — nem
+      // nesta rodada nem nesta partida.
       return enterPhase(state, "TOPIC_REVEAL", now, {
-        devil: {
-          ...devil,
-          // Marca como usado já aqui: se o grupo pedir outro, este não volta.
-          usedTopics: escolhido ? [...devil.usedTopics, escolhido] : devil.usedTopics,
-        },
+        devil: { ...devil, pool: markTopicUsed(devil.pool, escolhido, now) },
       });
     }
 
@@ -558,6 +599,30 @@ function advanceSlides(state: PartyState, now: number, action: PartyAction): Par
   }
 }
 
+/** Marca um tema como usado, sem tocar no resto do acervo. */
+function markTopicUsed(
+  pool: readonly MatchTopic[], alvo: MatchTopic, now: number,
+): MatchTopic[] {
+  const iso = new Date(now).toISOString();
+  return pool.map((topic) =>
+    topic.id === alvo.id && topic.source === alvo.source
+      ? { ...topic, usedAt: topic.usedAt ?? iso }
+      : topic,
+  );
+}
+
+/** Idem, para o tema que o host recusou. */
+function markTopicRejected(
+  pool: readonly MatchTopic[], alvo: MatchTopic, now: number,
+): MatchTopic[] {
+  const iso = new Date(now).toISOString();
+  return pool.map((topic) =>
+    topic.id === alvo.id && topic.source === alvo.source
+      ? { ...topic, rejectedAt: topic.rejectedAt ?? iso, usedAt: topic.usedAt ?? iso }
+      : topic,
+  );
+}
+
 function pickWinner(total: number): number {
   if (total <= 0) return 0;
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
@@ -681,7 +746,12 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
           quiz: null,
           drawing: null,
           slides: null,
-          devil: createDevilState(players, state.devil?.customTopics ?? []),
+          devil: createDevilState(
+            players,
+            state.devil?.customTopics ?? [],
+            // Acervo finito, sorteado UMA vez e congelado para a partida toda.
+            buildTopicPool(state.devil?.customTopics ?? [], state.settings.difficulty),
+          ),
         });
       }
 
@@ -805,15 +875,24 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
     case "REROLL_TOPIC": {
       if (!state.devil) return state;
       if (state.phase !== "TOPIC_REVEAL" && state.phase !== "PREPARATION") return state;
-      const candidates = drawCandidates(state);
+      const agora = Date.now();
+      // O tema recusado sai do acervo ANTES de sortear de novo: é o que
+      // garante que o reroll nunca devolva exatamente o mesmo tema.
+      const recusado = state.devil.candidates[state.devil.winner];
+      const pool = recusado
+        ? markTopicRejected(state.devil.pool, recusado, agora)
+        : state.devil.pool;
+
+      const candidates = drawCandidates({ ...state, devil: { ...state.devil, pool } });
       if (candidates.length === 0) return state;
       // Em TOPIC_REVEAL o apresentador ainda não foi definido; da PREPARATION
       // em diante já foi, e a fila precisa recuar — senão o próximo
       // TOPIC_REVEAL incrementa de novo e pula a vez de alguém.
       const jaEscolheu = state.phase !== "TOPIC_REVEAL";
-      return enterPhase(state, "TOPIC_SPIN", Date.now(), {
+      return enterPhase(state, "TOPIC_SPIN", agora, {
         devil: {
           ...state.devil,
+          pool,
           candidates,
           winner: pickWinner(candidates.length),
           index: jaEscolheu ? state.devil.index - 1 : state.devil.index,

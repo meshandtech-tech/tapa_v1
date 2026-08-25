@@ -1,12 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "./cn";
 
+/**
+ * Uma fatia da roleta.
+ *
+ * Carrega IDENTIDADE, não só rótulo. A versão anterior recebia
+ * `items={candidates.map((_, i) => String(i + 1))}` — ou seja, a roleta só
+ * conhecia posições. Como o conjunto de candidatos era re-sorteado a cada
+ * rodada, a fatia 3 era um tema numa rodada e outro na seguinte, e a mesa via
+ * "caiu no mesmo número" recebendo coisa diferente. Com `id` estável, o
+ * resultado não tem como discordar da fatia que visivelmente venceu.
+ */
+export interface WheelItem {
+  /** Único e estável. Para temas, use `source:id`, nunca a posição. */
+  id: string;
+  /** O que aparece na fatia. Curto — com 8 fatias, texto vira borrão. */
+  label: string;
+}
+
 export interface WheelProps {
-  /** Rótulos dos segmentos, na ordem. Mínimo 2. */
-  items: readonly string[];
+  /** As fatias, na ordem. Mínimo 2. */
+  items: readonly WheelItem[];
   /** Quem vai ganhar. Decidido FORA daqui — a roleta só encena. */
   winnerIndex: number;
-  onFinish?: (index: number) => void;
+  /** Devolve o ID do vencedor, nunca o índice. */
+  onFinish?: (id: string, index: number) => void;
   /** Duração do giro. Menos que ~3s tira o suspense. */
   durationMs?: number;
   className?: string;
@@ -118,7 +136,7 @@ export function Wheel({
       setRotation(alvo);
       setActive(winnerIndex);
       setDone(true);
-      onFinish?.(winnerIndex);
+      onFinish?.(items[winnerIndex]?.id ?? "", winnerIndex);
       return;
     }
 
@@ -142,7 +160,7 @@ export function Wheel({
       setDone(true);
       if (!finished.current) {
         finished.current = true;
-        onFinish?.(winnerIndex);
+        onFinish?.(items[winnerIndex]?.id ?? "", winnerIndex);
       }
     };
 
@@ -166,14 +184,18 @@ export function Wheel({
       <svg
         viewBox="0 0 100 100"
         role="img"
-        aria-label={done ? `Roleta parou em ${items[winnerIndex]}` : "Roleta girando"}
+        aria-label={
+          done ? `Roleta parou em ${items[winnerIndex]?.label ?? ""}` : "Roleta girando"
+        }
         className="size-full drop-shadow-[6px_6px_0_var(--color-ink)]"
         style={{ transform: `rotate(${rotation}deg)` }}
       >
-        {items.map((label, index) => {
+        {items.map((item, index) => {
           const destaque = index === active;
           return (
-            <g key={index}>
+            // Chave pela identidade da fatia, não pela posição: é o que impede
+            // o React de reaproveitar a fatia de um tema para outro.
+            <g key={item.id}>
               <path
                 d={wedgePath(index, count)}
                 fill={
@@ -203,7 +225,7 @@ export function Wheel({
               >
                 {index + 1}
               </text>
-              <title>{label}</title>
+              <title>{item.label}</title>
             </g>
           );
         })}

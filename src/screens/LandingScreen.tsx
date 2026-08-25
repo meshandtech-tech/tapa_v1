@@ -4,9 +4,13 @@ import { useNavigate } from "react-router-dom";
 // o ícone do Claude Code, e não tem nada a ver com festa.
 import { LogIn, PartyPopper, Users } from "lucide-react";
 import { DecorativeDoodles } from "../components/DecorativeDoodles";
+import { HostAccountCard } from "./HostAccountCard";
 import { GAMES } from "../games/registry";
 import { generateFreePin } from "../party/pin";
 import { loadPartyState, markRoomOwner } from "../party/partyStorage";
+import { ensureAnonSession, isSupabaseConfigured } from "../lib/supabase";
+import { createRoom } from "../party/cloud/api";
+import { DEFAULT_GAME_ID, isGameId } from "../games/registry";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -16,13 +20,27 @@ import { tiltByIndex } from "../ui/cn";
 export function LandingScreen() {
   const navigate = useNavigate();
 
-  const createParty = (gameId?: string) => {
+  const createParty = async (gameId?: string) => {
     // Evita cair num PIN cuja sala antiga ainda está salva — senão o host
     // reidrataria o roster da festa passada em vez de abrir uma sala limpa.
     const pin = generateFreePin((candidate) => loadPartyState(candidate) !== null);
-    // Quem cria comanda: este aparelho passa a ser a autoridade da sala, e vai
-    // direto para a tela de JOGADOR — a TV virou opcional.
-    markRoomOwner(pin);
+
+    if (isSupabaseConfigured) {
+      /**
+       * A sala nasce no BANCO, não neste aparelho.
+       *
+       * É a diferença que sustenta o resto: quem cria continua sendo o host
+       * (`rooms.host_player_id` aponta para ele assim que entra), mas a sala
+       * passa a existir independentemente do celular dele. Fechar o navegador
+       * aqui não apaga mais a festa de ninguém.
+       */
+      await ensureAnonSession();
+      await createRoom(pin, gameId && isGameId(gameId) ? gameId : DEFAULT_GAME_ID);
+    } else {
+      // Sem credenciais: caminho local, autoridade neste aparelho.
+      markRoomOwner(pin);
+    }
+
     navigate(gameId ? `/play/${pin}?game=${gameId}` : `/play/${pin}`);
   };
 
@@ -48,7 +66,7 @@ export function LandingScreen() {
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-4">
-          <Button size="tv" variant="paper" tilt="tilt-3" onClick={() => createParty()}>
+          <Button size="tv" variant="paper" tilt="tilt-3" onClick={() => void createParty()}>
             <PartyPopper strokeWidth={3} className="size-7" />
             Criar Party
           </Button>
@@ -70,7 +88,7 @@ export function LandingScreen() {
                 <motion.button
                   key={game.id}
                   type="button"
-                  onClick={() => createParty(game.id)}
+                  onClick={() => void createParty(game.id)}
                   initial={{ opacity: 0, y: 24 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.08, type: "spring", stiffness: 260, damping: 20 }}
@@ -96,6 +114,10 @@ export function LandingScreen() {
               );
             })}
           </div>
+
+        {/* Conta é OPCIONAL e fica DEPOIS dos botões de jogar. Ordem importa:
+            quem chegou para jogar não pode tropeçar num login antes do CTA. */}
+        <HostAccountCard />
         </section>
 
         <ThemeSwitcher className="mt-6" />

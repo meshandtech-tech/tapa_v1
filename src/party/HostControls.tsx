@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import {
   ChevronDown,
   DoorOpen,
@@ -22,7 +22,7 @@ import type { PartyState } from "./types";
  * grupo assiste, e o host é um jogador como os outros. Com o auto-host, estes
  * botões são exceção, não o fluxo normal: vem recolhido de propósito.
  */
-export function HostControls({
+function HostControlsBase({
   state,
   onSkipPhase,
   onPause,
@@ -110,3 +110,14 @@ export function HostControls({
     </Card>
   );
 }
+
+
+/**
+ * Memoizado de propósito.
+ *
+ * O relógio da sala re-renderiza a tela do host 4x por segundo. Sem esta
+ * barreira, cada tique reconstruía também os controles — na mesma tela que já
+ * carrega o jogo inteiro e, antes, serializava o estado da partida. Era daí
+ * que vinha a travadinha no celular do host.
+ */
+export const HostControls = memo(HostControlsBase);

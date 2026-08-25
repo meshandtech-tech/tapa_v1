@@ -104,10 +104,24 @@ function isDevilState(value: unknown): value is DevilState | null {
   const devil = value as Partial<DevilState>;
   const strings = (list: unknown) =>
     Array.isArray(list) && list.every((item) => typeof item === "string");
+  // Um tema é válido quando carrega a identidade inteira: sem `source`, uma
+  // tese do host e uma do sistema voltariam do localStorage indistinguíveis.
+  const temas = (list: unknown) =>
+    Array.isArray(list) &&
+    list.every(
+      (item) =>
+        !!item &&
+        typeof item === "object" &&
+        typeof (item as { id?: unknown }).id === "string" &&
+        ((item as { source?: unknown }).source === "custom" ||
+          (item as { source?: unknown }).source === "default") &&
+        typeof (item as { text?: unknown }).text === "string",
+    );
+
   return (
     strings(devil.order) &&
-    strings(devil.usedTopics) &&
-    strings(devil.candidates) &&
+    temas(devil.pool) &&
+    temas(devil.candidates) &&
     Number.isInteger(devil.index) &&
     Number.isInteger(devil.winner) &&
     Array.isArray(devil.customTopics) &&

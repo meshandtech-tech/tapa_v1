@@ -23,6 +23,7 @@ import {
 } from "./partyStorage";
 import { useNow } from "./useNow";
 import { useWakeLock } from "./useWakeLock";
+import { useCloudPartyRoom } from "./cloud/useCloudPartyRoom";
 import type { PartyState } from "./types";
 
 export type PartyConnection = "connecting" | "connected" | "closed";
@@ -130,8 +131,21 @@ function initRoomState(pin: string): PartyState {
  * aparelho de quem criou a sala, então uma mesa de bar só com celulares
  * funciona igual, e a TV vira um display opcional.
  */
-export function usePartyRoom(pin: string, options: { spectator?: boolean } = {}) {
+function useLocalPartyRoom(
+  pin: string,
+  options: { spectator?: boolean; disabled?: boolean } = {},
+) {
   const spectator = options.spectator ?? false;
+  /**
+   * Desligado quando a nuvem está no comando.
+   *
+   * Os dois hooks são chamados sempre (regra dos hooks), então este precisa
+   * ficar INERTE — sem abrir canal, sem rodar reducer, sem transmitir. Se ele
+   * continuasse ativo com o Supabase configurado, abriria um canal de
+   * broadcast em paralelo e traria de volta exatamente a retransmissão de
+   * estado inteiro que a migração existe para eliminar.
+   */
+  const disabled = options.disabled ?? false;
 
   const [local, dispatch] = useReducer(partyReducer, pin, initRoomState);
   const [remote, setRemote] = useState<PartyState | null>(null);
@@ -155,6 +169,7 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
   const lastStateAt = useRef(Date.now());
 
   useEffect(() => {
+    if (disabled) return;
     const channel = createPartyChannel(pin);
     channelRef.current = channel;
 
@@ -240,14 +255,14 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
       channel.close();
       channelRef.current = null;
     };
-  }, [pin]);
+  }, [pin, disabled]);
 
   // Autoridade persiste e transmite a cada mudança — fonte única da verdade.
   useEffect(() => {
-    if (!authority) return;
+    if (!authority || disabled) return;
     savePartyState(local);
     channelRef.current?.broadcast({ type: "STATE", state: local });
-  }, [authority, local]);
+  }, [authority, local, disabled]);
 
   /**
    * Batimento: reemite o estado mesmo sem mudança. Serve para os outros
@@ -255,13 +270,13 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
    * sumiu sem inventar um servidor.
    */
   useEffect(() => {
-    if (!authority) return;
+    if (!authority || disabled) return;
     const timer = window.setInterval(() => {
       const atual = stateRef.current;
       if (atual) channelRef.current?.broadcast({ type: "STATE", state: atual });
     }, HEARTBEAT_MS);
     return () => window.clearInterval(timer);
-  }, [authority]);
+  }, [authority, disabled]);
 
   const meInParty = state?.players.find((player) => player.id === me?.id) ?? null;
   const isHost = !!meInParty && state?.hostPlayerId === meInParty.id;
@@ -275,7 +290,7 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
    */
   const now = useNow(!authority && !spectator);
   useEffect(() => {
-    if (authority || spectator || !remote || !meInParty) return;
+    if (disabled || authority || spectator || !remote || !meInParty) return;
 
     const souOHost = remote.hostPlayerId === meInParty.id;
     const sumiu =
@@ -286,13 +301,14 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
     // recomeçaria do zero na mão do novo host.
     dispatch({ type: "HYDRATE", state: remote });
     setAuthority(true);
-  }, [authority, spectator, remote, meInParty, now]);
+  }, [authority, spectator, remote, meInParty, now, disabled]);
 
   /**
    * Auto-host: a autoridade toca a partida sozinha. Fecha a fase quando o
    * prazo vence ou (na rodada) quando todo mundo já respondeu.
    */
-  const running = authority && !!state && state.phaseDeadline > 0 && state.pausedAt === null;
+  const running =
+    !disabled && authority && !!state && state.phaseDeadline > 0 && state.pausedAt === null;
   const clock = useNow(running);
   // A folga existe para o desenho: o traço já estava pronto, só a rede que
   // demorou a subir a imagem. Ver `submitGrace`.
@@ -318,10 +334,10 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
    * antes de alguém assumir). O primeiro da fila reivindica.
    */
   useEffect(() => {
-    if (authority || !meInParty || !state || state.hostPlayerId) return;
+    if (disabled || authority || !meInParty || !state || state.hostPlayerId) return;
     if (state.players[0]?.id !== meInParty.id) return;
     channelRef.current?.broadcast({ type: "CLAIM_HOST", playerId: meInParty.id });
-  }, [authority, meInParty, state]);
+  }, [authority, meInParty, state, disabled]);
 
   /** Manda uma intenção, ou aplica direto se eu já sou a autoridade. */
   const send = useCallback((action: PartyAction, remoteEvent: () => void) => {
@@ -446,4 +462,26 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
     sendHostCommand,
     closeParty,
   };
+}
+
+
+/**
+ * A sala.
+ *
+ * Com Supabase configurado, o Postgres é a autoridade e este hook só repassa.
+ * Sem ele, o caminho local (BroadcastChannel, autoridade no aparelho) continua
+ * servindo o desenvolvimento — é o mesmo jogo, entre abas do mesmo navegador.
+ *
+ * Os dois hooks são chamados incondicionalmente porque hooks não podem viver
+ * dentro de `if`. O que decide não é a ordem da chamada e sim a constante de
+ * módulo `isSupabaseConfigured`, que não muda em tempo de execução.
+ */
+export function usePartyRoom(pin: string, options: { spectator?: boolean } = {}) {
+  const cloud = useCloudPartyRoom(pin, options);
+  const local = useLocalPartyRoom(pin, { ...options, disabled: cloud.enabled });
+
+  if (!cloud.enabled) {
+    return { ...local, attachDrawing: undefined, authError: null, leaveParty: undefined };
+  }
+  return cloud;
 }

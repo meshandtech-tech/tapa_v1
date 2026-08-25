@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Check, Dices, Gamepad2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
+import { Check, Dices, DoorOpen, Gamepad2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
 import { isValidPin } from "../party/pin";
 import { canStart, isNicknameTaken, roomCapacity } from "../party/partyReducer";
 import { clearPartyState } from "../party/partyStorage";
@@ -47,7 +47,7 @@ function PlayerLobby({ pin }: { pin: string }) {
   const {
     state, me, meInParty, isHost, connection,
     join, updateMe, answer, vote, submitDrawing, submitGuess, replaceSlides,
-    isAuthority, sendHostCommand,
+    isAuthority, sendHostCommand, attachDrawing, authError, leaveParty,
   } = usePartyRoom(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
@@ -97,21 +97,50 @@ function PlayerLobby({ pin }: { pin: string }) {
    * `useState` da gaveta zerava — com o relógio renderizando a cada 250ms, ela
    * fechava sozinha antes de dar para tocar em qualquer botão.
    */
+  /**
+   * Handlers estáveis.
+   *
+   * `HostControls` é memoizado, mas memo compara props por identidade: uma
+   * arrow nova a cada render anularia a memoização inteira. Como o relógio
+   * re-renderiza esta tela 4x por segundo, sem `useCallback` os controles do
+   * host voltariam a ser reconstruídos 4x por segundo.
+   */
+  const onSkipPhase = useCallback(() => sendHostCommand({ type: "ADVANCE" }), [sendHostCommand]);
+  const onPause = useCallback(() => sendHostCommand({ type: "PAUSE" }), [sendHostCommand]);
+  const onResume = useCallback(() => sendHostCommand({ type: "RESUME" }), [sendHostCommand]);
+  const onReroll = useCallback(
+    () => sendHostCommand({ type: "REROLL_PUNISHMENT" }), [sendHostCommand],
+  );
+  const onRestart = useCallback(
+    () => sendHostCommand({ type: "RESET_TO_LOBBY" }), [sendHostCommand],
+  );
+  const onEndParty = useCallback(() => {
+    clearPartyState(pin);
+    navigate("/");
+  }, [navigate, pin]);
+  const onThemeChange = useCallback(
+    (themeId: PartyState["settings"]["themeId"]) =>
+      sendHostCommand({ type: "SET_THEME", themeId }),
+    [sendHostCommand],
+  );
+  const onThemeModeChange = useCallback(
+    (themeMode: PartyState["settings"]["themeMode"]) =>
+      sendHostCommand({ type: "SET_THEME", themeMode }),
+    [sendHostCommand],
+  );
+
   const hostSection =
     state ? (
       <HostControls
         state={state}
-        onSkipPhase={() => sendHostCommand({ type: "ADVANCE" })}
-        onPause={() => sendHostCommand({ type: "PAUSE" })}
-        onResume={() => sendHostCommand({ type: "RESUME" })}
-        onReroll={() => sendHostCommand({ type: "REROLL_PUNISHMENT" })}
-        onRestart={() => sendHostCommand({ type: "RESET_TO_LOBBY" })}
-        onEndParty={() => {
-          clearPartyState(pin);
-          navigate("/");
-        }}
-        onThemeChange={(themeId) => sendHostCommand({ type: "SET_THEME", themeId })}
-        onThemeModeChange={(themeMode) => sendHostCommand({ type: "SET_THEME", themeMode })}
+        onSkipPhase={onSkipPhase}
+        onPause={onPause}
+        onResume={onResume}
+        onReroll={onReroll}
+        onRestart={onRestart}
+        onEndParty={onEndParty}
+        onThemeChange={onThemeChange}
+        onThemeModeChange={onThemeModeChange}
       />
     ) : null;
 
@@ -145,13 +174,43 @@ function PlayerLobby({ pin }: { pin: string }) {
   }
 
   if (connection === "connecting") {
+    /**
+     * Diagnóstico honesto em vez de "procurando a sala" para sempre.
+     *
+     * O limite de cadastro anônimo do Supabase é POR IP, e uma festa inteira
+     * sai do mesmo Wi-Fi — dez pessoas entrando juntas é exatamente o formato
+     * que estoura. Antes disso aqui, a pessoa ficava olhando uma tela de
+     * espera sem nada a fazer, e ninguém na mesa descobria o porquê.
+     */
+    const recado = authError
+      ? {
+          rate_limit: {
+            titulo: "Muita gente entrando de uma vez",
+            texto: "A rede bateu no limite de entradas. Espera uns segundos e tenta de novo — já está tentando sozinho.",
+          },
+          disabled: {
+            titulo: "Entrada anônima desligada",
+            texto: "O login anônimo precisa ser habilitado no painel do Supabase.",
+          },
+          network: {
+            titulo: "Sem conexão",
+            texto: "Confere o Wi-Fi ou os dados do celular.",
+          },
+          unknown: {
+            titulo: "Não deu para entrar",
+            texto: "Algo falhou ao criar a sua sessão. Tenta recarregar a página.",
+          },
+        }[authError]
+      : {
+          titulo: `Procurando a sala ${pin}`,
+          texto: "Confere o PIN se demorar.",
+        };
+
     return (
       <Shell>
         <Card tilt="tilt-3" className="w-full max-w-md p-7 text-center">
-          <h2 className="font-display text-3xl font-bold uppercase">Procurando a sala {pin}</h2>
-          <p className="mt-2 font-hand text-lg">
-            A TV precisa estar com a sala aberta. Confere o PIN se demorar.
-          </p>
+          <h2 className="font-display text-3xl font-bold uppercase">{recado.titulo}</h2>
+          <p className="mt-2 font-hand text-lg">{recado.texto}</p>
           <Button size="md" variant="knockout" className="mt-5 w-full" onClick={() => navigate("/join")}>
             Trocar PIN
           </Button>
@@ -212,6 +271,7 @@ function PlayerLobby({ pin }: { pin: string }) {
             me={meInParty}
             secondsLeft={computeSecondsLeft(state, now)}
             onSubmitDrawing={submitDrawing}
+            onAttachDrawing={attachDrawing}
             onSubmitGuess={submitGuess}
           />
         ) : (
@@ -330,6 +390,24 @@ function PlayerLobby({ pin }: { pin: string }) {
             <Dices strokeWidth={3} className="size-5" />
             Trocar rosto
           </Button>
+
+          {/* Sair de VERDADE, por decisão da pessoa — diferente de sumir a
+              rede. Sem isto a vaga nunca era devolvida e a sala enchia de
+              gente que já tinha ido embora. */}
+          {state?.phase === "LOBBY" && leaveParty ? (
+            <Button
+              size="sm"
+              variant="paper"
+              className="mt-2 w-full"
+              onClick={async () => {
+                await leaveParty();
+                navigate("/");
+              }}
+            >
+              <DoorOpen strokeWidth={3} className="size-5" />
+              Sair da sala
+            </Button>
+          ) : null}
         </Card>
 
         {/* Sem isto, quem cria a sala pelo celular não tem como chamar ninguém. */}
@@ -513,11 +591,22 @@ function Shell({
     <div
       className={cn(
         pattern,
-        "flex min-h-dvh flex-col items-center justify-center gap-6 bg-accent px-4 pb-32 pt-8",
+        // `justify-start` + `my-auto`, e não `justify-center`.
+        //
+        // Centralizar com flex CORTA o topo quando o conteúdo é mais alto que
+        // a tela, e o pedaço cortado fica inalcançável — não dá para rolar
+        // até ele. Na tela do host, que carrega o jogo MAIS a barra de
+        // controles, era o suficiente para esconder o começo da partida.
+        // Assim continua centralizado quando cabe, e vira rolagem quando não.
+        "flex min-h-dvh flex-col items-center justify-start gap-6 bg-accent px-4 pt-8",
+        // Espaço para a barra fixa do rodapé + a área segura do aparelho.
+        "pb-[calc(8rem+env(safe-area-inset-bottom))]",
       )}
     >
-      <Logo size="sm" />
-      {children}
+      <div className="my-auto flex w-full flex-col items-center gap-6">
+        <Logo size="sm" />
+        {children}
+      </div>
     </div>
   );
 }

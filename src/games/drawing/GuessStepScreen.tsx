@@ -36,6 +36,33 @@ export function GuessStepScreen({
     if (atual) onSubmit(atual);
   }, [secondsLeft, onSubmit]);
 
+  /**
+   * O celular saiu de cena com palpite digitado.
+   *
+   * Este é o caso do teclado aberto: no iOS, trocar de app ou bloquear a tela
+   * SUSPENDE a aba, os temporizadores param, e o efeito acima só rodaria muito
+   * depois — com o passo já fechado e o texto perdido. Quem escreveu
+   * "elefante andando de bicicleta" e não apertou Enviar merece que valha.
+   */
+  useEffect(() => {
+    const salvar = () => {
+      if (enviadoRef.current) return;
+      const atual = textoRef.current.trim();
+      if (!atual) return;
+      enviadoRef.current = true;
+      onSubmit(atual);
+    };
+    const aoEsconder = () => {
+      if (document.visibilityState === "hidden") salvar();
+    };
+    document.addEventListener("visibilitychange", aoEsconder);
+    window.addEventListener("pagehide", salvar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoEsconder);
+      window.removeEventListener("pagehide", salvar);
+    };
+  }, [onSubmit]);
+
   const enviar = () => {
     const limpo = texto.trim();
     if (!limpo || enviadoRef.current) return;

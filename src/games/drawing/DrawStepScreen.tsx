@@ -24,6 +24,14 @@ export interface DrawingSubmission {
 }
 
 /**
+ * Sobe a imagem DEPOIS que a página já existe.
+ *
+ * Devolvido separado de `onSubmit` de propósito — ver o comentário em
+ * `enviar`. A entrega não pode esperar a rede.
+ */
+export type DrawingAttach = (url: string) => void;
+
+/**
  * A tela de desenhar.
  *
  * O canvas manda: cabeçalho compacto, barra de baixo ao alcance do polegar, e
@@ -38,6 +46,7 @@ export function DrawStepScreen({
   playerId,
   secondsLeft,
   onSubmit,
+  onAttach,
 }: {
   pin: string;
   matchId: string;
@@ -45,6 +54,7 @@ export function DrawStepScreen({
   playerId: string;
   secondsLeft: number;
   onSubmit: (submission: DrawingSubmission) => void;
+  onAttach?: DrawingAttach;
 }) {
   const canvasRef = useRef<DrawingCanvasHandle | null>(null);
   const [tool, setTool] = useState<StrokeTool>("brush");
@@ -70,49 +80,89 @@ export function DrawStepScreen({
         ? assignment.previous.text
         : "";
 
+  /**
+   * Entrega o desenho.
+   *
+   * REGISTRA PRIMEIRO, SOBE DEPOIS — e é essa ordem que conserta o bug do
+   * playtest. Antes, a entrega esperava `renderToBlob` + `uploadDrawing`
+   * (até 2 x 8s) enquanto a fase fechava com 3s de folga: quem desenhou 90
+   * segundos numa rede ruim via a própria página virar branco, porque o envio
+   * chegava depois do passo já encerrado.
+   *
+   * Agora a página nasce no mesmo instante em que o dedo sai da tela, com os
+   * traços que já estão em memória. A imagem só a MELHORA, e chega quando
+   * chegar — sem prazo para cumprir.
+   */
   const enviar = useCallback(
-    async (status: SubmissionStatus = "submitted") => {
+    (status: SubmissionStatus = "submitted") => {
       // Trava contra dedo batendo duas vezes E contra o auto-envio do prazo
-      // atropelar um envio manual que já estava subindo.
+      // atropelar um envio manual. A trava definitiva é a unique do banco;
+      // esta só evita o trabalho repetido.
       if (enviadoRef.current) return;
       enviadoRef.current = true;
       setEnviando(true);
 
       const strokes = canvasRef.current?.getStrokes() ?? [];
       const vazio = isBlank(strokes);
-      let url: string | null = null;
 
-      if (!vazio && isStorageAvailable()) {
-        const imagem = await renderToBlob(strokes);
-        if (imagem) {
-          url = await uploadDrawing(
-            drawingPath({
-              pin, matchId, chainId: chain.id, stepIndex, extension: imagem.extension,
-            }),
-            imagem.blob,
-          );
-        }
-      }
-
-      // Sem Storage, ou upload que não foi: os traços viajam pelo canal. O
-      // desenho existe de qualquer jeito — a corrente nunca quebra por rede.
-      const tracosDeReserva = !vazio && !url ? serializeStrokes(strokes) : undefined;
+      // 1. A página existe AGORA. Nada de rede nesta linha.
       onSubmit({
-        url,
-        ...(tracosDeReserva ? { strokes: tracosDeReserva } : {}),
+        url: null,
+        ...(vazio ? {} : { strokes: serializeStrokes(strokes) }),
         status: vazio && status === "submitted" ? "submitted" : status,
       });
       clearDraft(pin, playerId, stepIndex, chain.id);
+
+      // 2. A imagem sobe em segundo plano. Falhar aqui não custa a página:
+      //    os traços já estão guardados e a revelação sabe desenhá-los.
+      if (vazio || !isStorageAvailable() || !onAttach) return;
+      void (async () => {
+        const imagem = await renderToBlob(strokes);
+        if (!imagem) return;
+        const url = await uploadDrawing(
+          drawingPath({
+            pin, matchId, chainId: chain.id, stepIndex, extension: imagem.extension,
+          }),
+          imagem.blob,
+        );
+        if (url) onAttach(url);
+      })();
     },
-    [chain.id, matchId, onSubmit, pin, playerId, stepIndex],
+    [chain.id, matchId, onAttach, onSubmit, pin, playerId, stepIndex],
   );
 
   // Prazo vencido: entrega o que estiver na tela, mesmo em branco. Travar a
   // partida esperando alguém seria pior do que uma página vazia no caderno.
   useEffect(() => {
     if (secondsLeft > 0 || enviadoRef.current) return;
-    void enviar("timeout");
+    enviar("timeout");
   }, [secondsLeft, enviar]);
+
+  /**
+   * O celular saiu de cena com desenho na tela.
+   *
+   * No iOS a aba é SUSPENSA ao trocar de app ou bloquear o aparelho: os
+   * temporizadores param e o efeito acima só rodaria muito depois, com o passo
+   * já fechado. Entregar aqui é a diferença entre o desenho existir e virar
+   * página em branco.
+   */
+  useEffect(() => {
+    const salvar = () => {
+      if (enviadoRef.current) return;
+      const strokes = canvasRef.current?.getStrokes() ?? [];
+      if (isBlank(strokes)) return;
+      enviar("timeout");
+    };
+    const aoEsconder = () => {
+      if (document.visibilityState === "hidden") salvar();
+    };
+    document.addEventListener("visibilitychange", aoEsconder);
+    window.addEventListener("pagehide", salvar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoEsconder);
+      window.removeEventListener("pagehide", salvar);
+    };
+  }, [enviar]);
 
   const guardarRascunho = useCallback(
     (strokes: Drawing) => {
@@ -258,7 +308,7 @@ export function DrawStepScreen({
         />
       </div>
 
-      <Button size="md" variant="solid" disabled={enviando} onClick={() => void enviar()}>
+      <Button size="md" variant="solid" disabled={enviando} onClick={() => enviar()}>
         <Send strokeWidth={3} className="size-5" />
         Enviar desenho
       </Button>

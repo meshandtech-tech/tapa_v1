@@ -459,3 +459,74 @@ script** — foi assim que o QR sumiu sem eu perceber.
   ]
 }
 ```
+
+---
+
+## Nota para retomar depois — início do app iOS
+
+Registrado em 2026-08-20. Esta seção é apenas um checklist para a próxima
+sessão; não altera nem substitui o plano do jogo que já está funcionando.
+
+### Estado atual verificado
+
+- A web está saudável: 323/323 testes passam e `npm run build` conclui.
+- Swift 6.3 e Apple Command Line Tools estão instalados.
+- O Xcode completo ainda não está instalado/configurado; `xcodebuild` aponta
+  apenas para `/Library/Developer/CommandLineTools`.
+- Ainda não existe projeto `.xcodeproj` ou `.xcworkspace` para iOS no repo.
+- As variáveis de URL e chave pública do Supabase já existem na configuração
+  web. Valores não foram copiados nem expostos.
+
+### O que precisamos para começar
+
+1. Instalar o Xcode pela Mac App Store.
+2. Abrir o Xcode uma vez, aceitar a licença e instalar um runtime de simulador
+   iOS.
+3. Usar provisoriamente o bundle identifier `com.nickgaldino.tapa`, até a
+   identidade final da conta Apple ser decidida.
+4. Criar um projeto Supabase separado para desenvolvimento/staging. Não testar
+   migrations, Auth ou policies no projeto usado pela web que está no ar.
+5. Colocar no app somente a URL e a chave publishable do Supabase. A chave
+   secret/service-role nunca entra no Xcode, no app, no bundle ou no git.
+6. Criar uma branch de feature antes de adicionar o projeto iOS.
+
+### Primeira entrega iOS
+
+- App SwiftUI nativo e executando no simulador.
+- Dependência `supabase-swift`.
+- Configuração separada por ambiente, sem secrets versionados.
+- Login anônimo.
+- Navegação básica.
+- Modelos gerados a partir do protocolo TypeScript compartilhado.
+- Entrada em uma sala de staging criada pela web.
+- Lobby nativo atualizando em tempo real.
+
+Não implementar a lógica dos jogos em Swift. Os clientes enviam intenções e o
+backend executa o reducer TypeScript compartilhado. O primeiro jogo nativo será
+`Quem Erra, Paga`, somente depois que o contrato de ações servidor-autoritativo
+estiver definido e testado.
+
+### Ordem segura para retomar
+
+```text
+Instalar Xcode
+    -> criar Supabase de staging
+    -> definir protocolo e API de ações
+    -> criar projeto SwiftUI
+    -> autenticação anônima
+    -> entrar na sala e exibir o lobby
+    -> implementar Quem Erra, Paga
+    -> testar partida mista web + iOS
+```
+
+### O que ainda não é necessário
+
+- Apple Developer Program pago.
+- Domínio definitivo.
+- Universal Links e AASA.
+- Sign in with Apple.
+- TestFlight e configuração da App Store.
+- Supabase Pro de produção.
+
+Esses itens passam a ser necessários nas fases de dispositivo físico,
+Universal Links, distribuição e publicação.

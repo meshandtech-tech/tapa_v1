@@ -1,5 +1,12 @@
 import { findTopic, getTopics } from "../data/topics";
-import type { CustomTopic, DevilState, PartyState, Player } from "../party/types";
+import {
+  isTopicAvailable,
+  type CustomTopic,
+  type DevilState,
+  type MatchTopic,
+  type PartyState,
+  type Player,
+} from "../party/types";
 import { DEVIL_WHEEL_SIZE } from "./registry";
 
 /**
@@ -14,17 +21,20 @@ export function topicText(id: string, custom: readonly CustomTopic[]): string {
   return findTopic(id)?.text ?? "Tema perdido — pule este";
 }
 
-/** Tema sorteado nesta rodada. `null` antes do sorteio. */
-export function currentTopicId(state: PartyState): string | null {
+/**
+ * O tema que a roleta escolheu. `null` antes do sorteio.
+ *
+ * Devolve o ITEM inteiro, não o id: quem chama precisa da identidade completa
+ * (`source` + `id`) para nunca confundir uma tese do host com uma do sistema.
+ */
+export function currentTopic(state: PartyState): MatchTopic | null {
   const devil = state.devil;
   if (!devil || devil.candidates.length === 0) return null;
   return devil.candidates[devil.winner] ?? null;
 }
 
 export function currentTopicText(state: PartyState): string {
-  const id = currentTopicId(state);
-  if (!id || !state.devil) return "";
-  return topicText(id, state.devil.customTopics);
+  return currentTopic(state)?.text ?? "";
 }
 
 /** Quem apresenta agora. `null` fora de uma rodada. */
@@ -79,43 +89,82 @@ function shuffle<T>(items: readonly T[]): T[] {
 }
 
 /**
- * Monta os candidatos da roleta desta rodada.
+ * Quanto tema entra no acervo de uma partida.
  *
- * Teses do host entram PRIMEIRO. Sem isso elas se perderiam no meio de ~50
- * temas do sistema e o host nunca veria aparecer o que escreveu — que é
- * justamente a graça de ter escrito.
+ * Finito de propósito. O jogo não é um gerador infinito: o host configura um
+ * punhado de teses, elas saem uma a uma, e a mesa consegue ver o acervo
+ * diminuir. Imprevisibilidade vem do embaralhamento, não de um sorteio novo a
+ * cada rodada.
  */
-export function drawCandidates(state: PartyState): string[] {
+export const DEFAULT_TOPIC_POOL_SIZE = 10;
+
+/**
+ * Monta o acervo da partida — uma vez, no início.
+ *
+ * As teses do host entram TODAS e primeiro: escrever uma tese e nunca vê-la
+ * aparecer é o pior resultado possível. O resto completa com o sistema até o
+ * tamanho pedido, e o conjunto inteiro é embaralhado.
+ */
+export function buildTopicPool(
+  custom: readonly CustomTopic[],
+  difficulty: PartyState["settings"]["difficulty"],
+  size = DEFAULT_TOPIC_POOL_SIZE,
+  /** Injetável para o teste não depender de sorte. */
+  embaralhar: <T>(items: readonly T[]) => T[] = shuffle,
+): MatchTopic[] {
+  const doHost: MatchTopic[] = custom.map((topic) => ({
+    id: topic.id, source: "custom", text: topic.text,
+    position: 0, usedAt: null, rejectedAt: null, presenterId: null,
+  }));
+
+  const faltam = Math.max(0, size - doHost.length);
+  const doSistema: MatchTopic[] = embaralhar(getTopics(difficulty))
+    .slice(0, faltam)
+    .map((topic) => ({
+      id: topic.id, source: "default", text: topic.text,
+      position: 0, usedAt: null, rejectedAt: null, presenterId: null,
+    }));
+
+  return embaralhar([...doHost, ...doSistema]).map((topic, indice) => ({
+    ...topic,
+    position: indice,
+  }));
+}
+
+/** Chave de identidade. Custom e sistema nunca colidem, mesmo com id igual. */
+export function topicKey(topic: MatchTopic): string {
+  return `${topic.source}:${topic.id}`;
+}
+
+/** O que ainda pode sair nesta partida. */
+export function availableTopics(devil: DevilState): MatchTopic[] {
+  return devil.pool.filter(isTopicAvailable).sort((a, b) => a.position - b.position);
+}
+
+/**
+ * As fatias da roleta desta rodada.
+ *
+ * Saem do acervo restante, em ordem de posição. A roleta mostra só o que
+ * ainda existe — ela nunca exibe um tema já usado, então "caiu no mesmo de
+ * novo" deixa de ser possível.
+ */
+export function drawCandidates(state: PartyState): MatchTopic[] {
   const devil = state.devil;
   if (!devil) return [];
-  const usados = new Set(devil.usedTopics);
-
-  const doHost = devil.customTopics.map((topic) => topic.id).filter((id) => !usados.has(id));
-  const doSistema = getTopics(state.settings.difficulty)
-    .map((topic) => topic.id)
-    .filter((id) => !usados.has(id));
-
-  const pool = [...shuffle(doHost), ...shuffle(doSistema)];
-  // Acabaram os temas inéditos: recomeça em vez de travar a festa.
-  if (pool.length === 0) {
-    return shuffle(getTopics(state.settings.difficulty).map((topic) => topic.id)).slice(
-      0,
-      DEVIL_WHEEL_SIZE,
-    );
-  }
-  return pool.slice(0, Math.min(DEVIL_WHEEL_SIZE, pool.length));
+  return availableTopics(devil).slice(0, DEVIL_WHEEL_SIZE);
 }
 
 export function createDevilState(
   players: readonly Player[],
   customTopics: readonly CustomTopic[],
+  pool: readonly MatchTopic[] = [],
 ): DevilState {
   return {
     order: shuffle(players.map((player) => player.id)),
     index: -1,
+    pool: [...pool],
     candidates: [],
     winner: 0,
-    usedTopics: [],
     customTopics: [...customTopics],
     votes: {},
     scores: {},

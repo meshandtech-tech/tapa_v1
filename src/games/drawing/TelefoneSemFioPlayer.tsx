@@ -8,7 +8,7 @@ import { GuessStepScreen } from "./GuessStepScreen";
 import { PassingScreen } from "./PassingScreen";
 import { RevealScreen } from "./RevealScreen";
 import { WaitingCard } from "./WaitingCard";
-import { assignmentFor } from "./state";
+import { assignmentFor, submissionProgress } from "./state";
 import type { PartyState, Player } from "../../party/types";
 
 /**
@@ -25,6 +25,7 @@ export function TelefoneSemFioPlayer({
   me,
   secondsLeft,
   onSubmitDrawing,
+  onAttachDrawing,
   onSubmitGuess,
 }: {
   pin: string;
@@ -32,6 +33,8 @@ export function TelefoneSemFioPlayer({
   me: Player;
   secondsLeft: number;
   onSubmitDrawing: (submission: DrawingSubmission) => void;
+  /** Chega depois do upload; a página já existe sem ele. */
+  onAttachDrawing?: (url: string) => void;
   onSubmitGuess: (text: string) => void;
 }) {
   const drawing = state.drawing;
@@ -58,15 +61,36 @@ export function TelefoneSemFioPlayer({
     );
   }
 
-  // Chegou depois que a partida começou: fica na sala, entra na próxima.
+  /**
+   * Chegou depois que a partida começou.
+   *
+   * Os cadernos e os assentos são congelados no início — enfiar alguém no meio
+   * da corrente quebraria o rodízio. Então esta pessoa entra na SALA agora e
+   * na PARTIDA na próxima. O que ela NÃO faz é ficar olhando um cartão morto:
+   * acompanha o andamento e assiste à revelação junto com todo mundo, que é a
+   * melhor parte.
+   */
   if (!naPartida) {
+    if (state.phase === "REVEAL_PAGE") return <RevealScreen state={state} drawing={drawing} />;
+
+    const { done, total } = submissionProgress(drawing);
     return (
       <Card tilt="tilt-1" className="w-full max-w-md p-7 text-center">
         <Hourglass strokeWidth={2.5} className="mx-auto mb-3 size-12" />
-        <h2 className="font-display text-2xl font-extrabold uppercase">Partida em andamento</h2>
+        <h2 className="font-display text-2xl font-extrabold uppercase">Você entra na próxima</h2>
         <p className="mt-3 font-ui text-lg leading-snug">
-          Você já está na sala. Assim que esta rodada acabar, você entra na próxima.
+          Já tem uma partida rolando e os cadernos estão a caminho. Você está na
+          sala — assim que esta acabar, você joga.
         </p>
+        <div className="mt-5 border-t-4 border-dashed border-ink pt-5">
+          <p className="font-action text-[0.7rem] uppercase tracking-wide opacity-70">
+            Passo {drawing.stepIndex + 1} de {drawing.stepCount}
+          </p>
+          <p className="mt-1 font-display text-4xl font-extrabold tabular-nums">
+            {done} / {total}
+          </p>
+          <p className="font-hand text-lg">já entregaram</p>
+        </div>
       </Card>
     );
   }
@@ -87,6 +111,7 @@ export function TelefoneSemFioPlayer({
         playerId={me.id}
         secondsLeft={secondsLeft}
         onSubmit={onSubmitDrawing}
+        onAttach={onAttachDrawing}
       />
     );
   }
