@@ -45,6 +45,7 @@ supabase/migrations/0008_metrics.sql
 supabase/migrations/0009_profiles.sql
 supabase/migrations/0010_fix_gameover_snapshot.sql
 supabase/migrations/0011_parity.sql
+supabase/migrations/0012_drop_stale_overload.sql
 ```
 
 - `0004` precisa da extensão **unaccent** (`Database → Extensions`).
