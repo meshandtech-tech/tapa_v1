@@ -46,7 +46,22 @@ supabase/migrations/0009_profiles.sql
 supabase/migrations/0010_fix_gameover_snapshot.sql
 supabase/migrations/0011_parity.sql
 supabase/migrations/0012_drop_stale_overload.sql
+supabase/migrations/0013_reveal_payload.sql
 ```
+
+Ou, num banco **novo e vazio**, cole `supabase/all-migrations.sql` de uma vez
+só — é o mesmo conteúdo, na mesma ordem, sem o `0007`.
+
+### Atualizar um banco que JÁ existe
+
+Rode **só a migration nova**, sozinha. Não recole o `all-migrations.sql`: ele
+é para instalação do zero e começa com `create table` sem `if not exists`, então
+num banco existente ele falha na primeira tabela e **nada depois dele roda** —
+você acha que atualizou e não atualizou.
+
+Da `0006` em diante quase tudo é `create or replace function`: rodar duas vezes
+não faz mal, e não há bloqueio nem perda de dado. A exceção é a `0012`, que dá
+`drop function` explícito antes.
 
 - `0004` precisa da extensão **unaccent** (`Database → Extensions`).
 - `0007` precisa da **pg_cron**. Se ela não estiver disponível no seu plano,
