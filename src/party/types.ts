@@ -1,3 +1,4 @@
+import type { StepType } from "../games/drawing/routing";
 import type { GameId } from "../games/registry";
 import type { ThemeMode } from "../theme/context";
 import type { ThemeId } from "../theme/presets";
@@ -214,6 +215,36 @@ export interface DrawingChain {
 }
 
 /**
+ * O que uma pessoa tem de fazer AGORA — a tarefa do passo corrente.
+ *
+ * Mora aqui, e não só em `state.ts`, porque virou campo de `DrawingState`: no
+ * caminho da nuvem quem decide caderno e página é o Postgres, e a tela recebe
+ * a tarefa pronta. Recalcular no cliente era impossível de qualquer forma —
+ * `room_snapshot` esconde os cadernos até a revelação, que é o segredo do
+ * jogo — e foi exatamente isso que travou a partida de 10 jogadores.
+ */
+export interface DrawingAssignment {
+  /** De quem é esta tarefa. Explícito para nenhuma tela desenhar a do vizinho. */
+  playerId: string;
+  chainIndex: number;
+  chain: DrawingChain;
+  stepIndex: number;
+  stepType: StepType;
+  /**
+   * A ÚNICA coisa que esta pessoa pode ver. Nunca o caderno inteiro: a graça
+   * do jogo é justamente não saber de onde aquilo veio.
+   *
+   * `null` é um estado VÁLIDO e não um erro: o vizinho pode ter entregado
+   * folha em branco. A tela de palpite sabe pedir um chute mesmo assim.
+   */
+  previous:
+    | { kind: "prompt"; text: string }
+    | { kind: "drawing"; page: DrawingPageDraw }
+    | { kind: "guess"; text: string }
+    | null;
+}
+
+/**
  * Estado do Telefone Sem Fio de Desenho.
  *
  * `seatOrder` é embaralhado UMA vez e congelado até a partida acabar: quem
@@ -231,6 +262,15 @@ export interface DrawingState {
   usedPromptIds: string[];
   /** Quem já entregou o passo corrente. É a trava contra entrega dupla. */
   submitted: string[];
+  /**
+   * A tarefa DESTE aparelho no passo corrente, decidida pela autoridade.
+   *
+   * `undefined` = não veio autoridade nenhuma (caminho local de
+   * desenvolvimento), e aí `assignmentFor` deriva de `chains` como sempre
+   * derivou. `null` = a autoridade falou e esta pessoa não tem tarefa agora —
+   * espectador, ou quem entrou depois do início.
+   */
+  assignment?: DrawingAssignment | null;
   revealChainIndex: number;
   revealPageIndex: number;
   /** O host ligou o avanço automático do slideshow? */

@@ -5,6 +5,7 @@ import { cn } from "../../ui/cn";
 import { leaderboard } from "../../party/partyReducer";
 import { DrawStepScreen, type DrawingSubmission } from "./DrawStepScreen";
 import { GuessStepScreen } from "./GuessStepScreen";
+import { MissingTaskCard } from "./MissingTaskCard";
 import { PassingScreen } from "./PassingScreen";
 import { RevealScreen } from "./RevealScreen";
 import { WaitingCard } from "./WaitingCard";
@@ -27,6 +28,7 @@ export function TelefoneSemFioPlayer({
   onSubmitDrawing,
   onAttachDrawing,
   onSubmitGuess,
+  onRefresh,
 }: {
   pin: string;
   state: PartyState;
@@ -36,6 +38,8 @@ export function TelefoneSemFioPlayer({
   /** Chega depois do upload; a página já existe sem ele. */
   onAttachDrawing?: (url: string) => void;
   onSubmitGuess: (text: string) => void;
+  /** Rebusca a foto autoritativa. É a saída de toda espera sem fim. */
+  onRefresh?: () => void;
 }) {
   const drawing = state.drawing;
   if (!drawing) return null;
@@ -97,10 +101,28 @@ export function TelefoneSemFioPlayer({
 
   if (state.phase === "PASSING") return <PassingScreen />;
 
+  /**
+   * "Entreguei" e "não recebi tarefa" são coisas DIFERENTES.
+   *
+   * Estavam no mesmo `if`, e foi isso que escondeu o bug do playtest de 10
+   * jogadores por uma festa inteira: sem atribuição, a tela mostrava "Desenho
+   * enviado / 0 / 10 prontos" — a mensagem de quem já entregou — para gente
+   * que nunca tinha visto um canvas. Espera de entrega vem DEPOIS de entregar;
+   * antes disso, o que aparece é o que está realmente acontecendo.
+   */
   if (state.phase === "DRAW_STEP") {
-    if (jaEntreguei || !assignment) {
+    if (jaEntreguei) {
       return (
         <WaitingCard drawing={drawing} players={state.players} titulo="Desenho enviado" />
+      );
+    }
+    if (!assignment) {
+      return (
+        <MissingTaskCard
+          stepIndex={drawing.stepIndex}
+          stepCount={drawing.stepCount}
+          onRetry={onRefresh}
+        />
       );
     }
     return (
@@ -117,9 +139,18 @@ export function TelefoneSemFioPlayer({
   }
 
   if (state.phase === "GUESS_STEP") {
-    if (jaEntreguei || !assignment) {
+    if (jaEntreguei) {
       return (
         <WaitingCard drawing={drawing} players={state.players} titulo="Palpite enviado" />
+      );
+    }
+    if (!assignment) {
+      return (
+        <MissingTaskCard
+          stepIndex={drawing.stepIndex}
+          stepCount={drawing.stepCount}
+          onRetry={onRefresh}
+        />
       );
     }
     return (

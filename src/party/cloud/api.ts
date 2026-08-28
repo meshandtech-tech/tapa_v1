@@ -7,7 +7,38 @@
  * banco — é isso que impede dez aparelhos de discordarem.
  */
 import { getSupabase } from "../../lib/supabase";
+import { logGameEvent } from "../telemetry";
 import type { RoomSnapshot } from "./snapshot";
+
+export interface RpcFailure {
+  fn: string;
+  message: string;
+  at: number;
+}
+
+/**
+ * A última chamada que falhou, e quem quer saber disso.
+ *
+ * Antes, TODA falha de RPC virava um `console.error` e um `null` — e o
+ * `console` de um celular numa mesa de bar não existe. Na prática o botão
+ * simplesmente não fazia nada: o host apertava "Começar", `start_match`
+ * estourava (não é o host, gente de menos, o que fosse), e a tela ficava
+ * exatamente igual. A pessoa aperta de novo, acha que travou, e ninguém
+ * descobre o motivo.
+ *
+ * Erro de escrita tem de chegar em ALGUÉM. Quem escuta decide o que mostrar.
+ */
+let ultimaFalha: RpcFailure | null = null;
+const ouvintes = new Set<(falha: RpcFailure) => void>();
+
+export function lastRpcFailure(): RpcFailure | null {
+  return ultimaFalha;
+}
+
+export function onRpcFailure(ouvinte: (falha: RpcFailure) => void): () => void {
+  ouvintes.add(ouvinte);
+  return () => ouvintes.delete(ouvinte);
+}
 
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T | null> {
   const supabase = getSupabase();
@@ -15,6 +46,9 @@ async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T
   const { data, error } = await supabase.rpc(fn, args);
   if (error) {
     console.error(`[tapa] rpc ${fn} falhou`, error);
+    ultimaFalha = { fn, message: error.message, at: Date.now() };
+    logGameEvent("RPC_FAILED", { fn, code: error.code, message: error.message });
+    for (const ouvinte of ouvintes) ouvinte(ultimaFalha);
     return null;
   }
   return data as T;
@@ -89,6 +123,12 @@ export async function setSettings(
   });
 }
 
+/**
+ * Começar a partida.
+ *
+ * Devolve a sala quando deu certo e `null` quando não deu — e o `null` agora
+ * chega em quem chamou, em vez de morrer num `console.error`.
+ */
 export async function startMatch(roomId: string, payload: {
   prompts?: unknown[];
   topics?: unknown[];
@@ -98,7 +138,10 @@ export async function startMatch(roomId: string, payload: {
   /** Tamanho do acervo de prendas. O banco sorteia; o cliente não escolhe. */
   punishmentCount?: number;
 }) {
-  return rpc<unknown>("start_match", {
+  logGameEvent("MATCH_INITIALIZATION_STARTED", {
+    prompts: payload.prompts?.length ?? 0,
+  });
+  const sala = await rpc<{ phase?: string }>("start_match", {
     p_room: roomId,
     p_prompts: payload.prompts ?? [],
     p_topics: payload.topics ?? [],
@@ -107,6 +150,11 @@ export async function startMatch(roomId: string, payload: {
     p_slide_ids: payload.slideIds ?? [],
     p_punishment_count: payload.punishmentCount ?? 0,
   });
+  logGameEvent(
+    sala ? "MATCH_INITIALIZATION_COMPLETE" : "MATCH_INITIALIZATION_FAILED",
+    sala ? { phase: sala.phase } : { motivo: lastRpcFailure()?.message ?? "sem resposta" },
+  );
+  return sala;
 }
 
 /**
@@ -137,6 +185,14 @@ export async function submitContribution(roomId: string, payload: {
   text?: string;
   status?: string;
 }) {
+  logGameEvent(
+    payload.text !== undefined
+      ? "GUESS_SUBMITTED"
+      : payload.status === "timeout"
+        ? "DRAWING_AUTO_SUBMITTED"
+        : "DRAWING_SUBMITTED",
+    { status: payload.status ?? "submitted" },
+  );
   return rpc<{ contribution_id?: string; skipped?: string }>("submit_contribution", {
     p_room: roomId,
     p_storage_path: payload.storagePath ?? null,
@@ -148,6 +204,7 @@ export async function submitContribution(roomId: string, payload: {
 
 /** Anexa a imagem DEPOIS: a página já existe, o upload só a melhora. */
 export async function attachDrawing(roomId: string, stepIndex: number, path: string) {
+  logGameEvent("UPLOAD_COMPLETE", { stepIndex });
   return rpc<void>("attach_drawing", {
     p_room: roomId, p_step: stepIndex, p_storage_path: path,
   });

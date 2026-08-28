@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { projectSnapshot } from "./projection";
 import { votesIn, eligibleVoters, currentTopic } from "../../games/advogadoDoDiabo";
 import { roundOutcome } from "../../games/quemErraPaga";
-import { chainSurvived } from "../../games/drawing/state";
+import { assignmentFor, chainSurvived } from "../../games/drawing/state";
 import type { RoomSnapshot } from "./snapshot";
 import type { GameId } from "../types";
 
@@ -170,6 +170,90 @@ describe("projeção: o que a tela lê chega do banco", () => {
   });
 
   describe("Telefone Sem Fio", () => {
+    /**
+     * O travamento do playtest de 10 jogadores, num teste.
+     *
+     * `room_snapshot` esconde `chains` fora da revelação — de propósito, é o
+     * segredo do jogo. A projeção montava `drawing.chains` SÓ a partir dele e
+     * descartava `snapshot.assignment`, que o servidor já mandava pronto.
+     * Resultado: `assignmentFor` não achava caderno nenhum, devolvia `null`,
+     * e `TelefoneSemFioPlayer` caía no ramo `!assignment` — a tela de espera.
+     *
+     * Os dez celulares mostravam "Desenho enviado / 0 / 10 prontos" antes de
+     * qualquer pessoa ter desenhado. Ninguém conseguia entregar, o passo
+     * fechava por prazo com dez páginas em branco, e a partida inteira corria
+     * assim até a revelação vazia.
+     */
+    it("entrega a atribuição do passo, senão ninguém desenha", () => {
+      const snap = snapshotBase("drawing-telephone");
+      snap.room.phase = "DRAW_STEP";
+      snap.match!.stepIndex = 0;
+      snap.match!.submittedPlayerIds = [];
+      snap.me = { playerId: "p0", submitted: false };
+      // Cadernos vêm vazios FORA da revelação. É o comportamento correto do
+      // servidor, e é justamente com ele que a tela tem de funcionar.
+      snap.chains = [];
+      snap.assignment = {
+        chainId: "c0",
+        stepIndex: 0,
+        prompt: "girafa de bicicleta",
+        previous: null,
+      };
+
+      const state = projectSnapshot(snap);
+      const assignment = assignmentFor(state, "p0");
+
+      // `TelefoneSemFioPlayer.tsx:101` — com `null` aqui, canvas nenhum abre.
+      expect(assignment).not.toBeNull();
+      expect(assignment!.stepType).toBe("draw");
+      expect(assignment!.chain.id).toBe("c0");
+      // O tema secreto é o que a tela escreve em "Sua palavra secreta".
+      expect(assignment!.previous).toEqual({ kind: "prompt", text: "girafa de bicicleta" });
+    });
+
+    it("entrega o desenho do vizinho no passo de palpite", () => {
+      const snap = snapshotBase("drawing-telephone");
+      snap.room.phase = "GUESS_STEP";
+      snap.match!.stepIndex = 1;
+      snap.match!.submittedPlayerIds = [];
+      snap.me = { playerId: "p1", submitted: false };
+      snap.chains = [];
+      snap.assignment = {
+        chainId: "c0",
+        stepIndex: 1,
+        prompt: null,
+        previous: {
+          kind: "drawing",
+          text: "",
+          storagePath: null,
+          strokes: { v: 2, g: 2048, s: [[0, 28, 0, 10, 10, 20, 20]] },
+          status: "submitted",
+        },
+      };
+
+      const assignment = assignmentFor(projectSnapshot(snap), "p1");
+
+      expect(assignment).not.toBeNull();
+      expect(assignment!.stepType).toBe("guess");
+      // `GuessStepScreen.tsx:74` só desenha o replay se a página vier aqui.
+      expect(assignment!.previous?.kind).toBe("drawing");
+      expect(assignment!.previous).toMatchObject({ kind: "drawing" });
+      const page = assignment!.previous as { kind: "drawing"; page: { strokes?: string } };
+      expect(page.page.strokes).toContain('"v":2');
+    });
+
+    it("sem atribuição do servidor não inventa uma", () => {
+      const snap = snapshotBase("drawing-telephone");
+      snap.room.phase = "DRAW_STEP";
+      snap.match!.stepIndex = 0;
+      snap.chains = [];
+      snap.assignment = null;
+
+      // Espectador (a TV) e quem entrou depois do início não têm caderno. A
+      // tela precisa distinguir isto de "já entreguei" — são erros diferentes.
+      expect(assignmentFor(projectSnapshot(snap), "p0")).toBeNull();
+    });
+
     it("entrega as respostas aceitas, para o selo casar com o placar", () => {
       const snap = snapshotBase("drawing-telephone");
       snap.room.phase = "GAME_OVER";

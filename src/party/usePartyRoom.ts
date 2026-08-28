@@ -481,7 +481,22 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
   const local = useLocalPartyRoom(pin, { ...options, disabled: cloud.enabled });
 
   if (!cloud.enabled) {
-    return { ...local, attachDrawing: undefined, authError: null, leaveParty: undefined };
+    // No caminho local o estado inteiro mora nesta aba: não há foto a rebuscar.
+    return {
+      ...local,
+      attachDrawing: undefined,
+      authError: null,
+      leaveParty: undefined,
+      refresh: undefined,
+      // Não existe foto do servidor no caminho local: o estado É a aba. O
+      // painel de diagnóstico simplesmente não aparece aqui.
+      snapshot: null,
+      // A partida nasce no próprio reducer, síncrona: não há viagem de rede
+      // que possa falhar nem demorar.
+      initState: "idle" as const,
+      initError: null,
+      retryStart: undefined,
+    };
   }
   return cloud;
 }

@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "slides:sync": "node scripts/sync-slides.mjs"
+    "slides:sync": "node scripts/sync-slides.mjs",
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {
     "@dicebear/core": "^9.4.3",
