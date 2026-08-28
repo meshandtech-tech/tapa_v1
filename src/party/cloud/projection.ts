@@ -8,9 +8,11 @@
  */
 import { getSupabase } from "../../lib/supabase";
 import { DRAWINGS_BUCKET } from "../../lib/storage";
+import { chainIndexFor, stepType } from "../../games/drawing/routing";
 import { createPartyState } from "../partyReducer";
 import type {
   CustomTopic,
+  DrawingAssignment,
   DrawingChain,
   DrawingPage,
   DrawingState,
@@ -18,7 +20,13 @@ import type {
   PartyState,
   Player,
 } from "../types";
-import type { RoomSnapshot, SnapshotChain, SnapshotPage, SnapshotTopic } from "./snapshot";
+import type {
+  RoomSnapshot,
+  SnapshotAssignment,
+  SnapshotChain,
+  SnapshotPage,
+  SnapshotTopic,
+} from "./snapshot";
 
 /** Caminho no bucket vira URL pública. `null` quando não há imagem. */
 export function publicUrl(path: string | null | undefined): string | null {
@@ -77,6 +85,78 @@ function toChain(chain: SnapshotChain): DrawingChain {
     originalPrompt: chain.originalPrompt,
     acceptedAnswers: chain.acceptedAnswers ?? [],
     pages,
+  };
+}
+
+/**
+ * A tarefa do passo, vinda pronta do servidor.
+ *
+ * ESTA função é a correção do travamento de 10 jogadores. `room_snapshot`
+ * devolve `chains: []` fora da revelação — de propósito: o caderno alheio é o
+ * segredo do jogo. A projeção montava `drawing.chains` só a partir dele, e
+ * `assignmentFor` procurava o caderno nessa lista vazia e devolvia `null`.
+ * Com `null`, `TelefoneSemFioPlayer` renderiza a tela de espera — então os dez
+ * celulares mostravam "Desenho enviado / 0 / 10 prontos" sem ninguém ter
+ * desenhado, ninguém conseguia entregar, e o passo só fechava por prazo com
+ * dez páginas em branco. O dado sempre esteve na foto, em `assignment`; nada
+ * no cliente o lia.
+ *
+ * Repare que este é um caderno de UMA página: a que esta pessoa pode ver. O
+ * resto do caderno continua sem sair do servidor.
+ */
+function toAssignment(
+  bruto: SnapshotAssignment,
+  playerId: string,
+  seatOrder: readonly string[],
+): DrawingAssignment {
+  const passo = bruto.stepIndex;
+  const assento = seatOrder.indexOf(playerId);
+  const total = seatOrder.length;
+
+  const pages: DrawingPage[] = [];
+  let previous: DrawingAssignment["previous"] = null;
+
+  if (passo === 0) {
+    // Passo 0: a pessoa desenha o próprio tema secreto.
+    previous = { kind: "prompt", text: bruto.prompt ?? "" };
+  } else if (bruto.previous) {
+    const pagina = toPage({
+      stepIndex: passo - 1,
+      kind: bruto.previous.kind,
+      // Quem fez a página anterior não é dito de propósito: saber de quem veio
+      // é meia resposta. O servidor também não manda.
+      playerId: "",
+      storagePath: bruto.previous.storagePath,
+      strokes: bruto.previous.strokes,
+      text: bruto.previous.text,
+      status: bruto.previous.status,
+    });
+    pages[passo - 1] = pagina;
+    previous =
+      pagina.type === "drawing"
+        ? { kind: "drawing", page: pagina }
+        : { kind: "guess", text: pagina.text };
+  }
+  // `previous` continua `null` quando o vizinho entregou folha em branco.
+  // É estado VÁLIDO: a tela de palpite pede um chute assim mesmo. Tratar isto
+  // como erro travaria a corrente exatamente onde ela deve seguir.
+
+  return {
+    playerId,
+    chainIndex: assento >= 0 && total > 0 ? chainIndexFor(assento, passo, total) : 0,
+    chain: {
+      id: bruto.chainId,
+      // O dono e o tema original do caderno SÓ aparecem na revelação — vê-los
+      // agora entregaria a piada inteira.
+      ownerPlayerId: "",
+      promptId: "",
+      originalPrompt: passo === 0 ? (bruto.prompt ?? "") : "",
+      acceptedAnswers: [],
+      pages,
+    },
+    stepIndex: passo,
+    stepType: stepType(passo),
+    previous,
   };
 }
 
@@ -149,6 +229,18 @@ export function projectSnapshot(snapshot: RoomSnapshot): PartyState {
           chains,
           usedPromptIds: [],
           submitted: match.submittedPlayerIds,
+          /**
+           * Sempre definido no caminho da nuvem — `null` inclusive.
+           *
+           * `undefined` significaria "não há autoridade, derive dos cadernos",
+           * e derivar aqui é impossível: os cadernos não vêm. `null` é a
+           * autoridade dizendo "esta pessoa não tem tarefa agora" — a TV, ou
+           * quem entrou depois de a partida começar.
+           */
+          assignment:
+            snapshot.assignment && snapshot.me.playerId
+              ? toAssignment(snapshot.assignment, snapshot.me.playerId, match.seatOrder)
+              : null,
           revealChainIndex: match.revealChainIndex,
           revealPageIndex: match.revealPageIndex,
           revealAutoPlay: match.revealAutoplay,

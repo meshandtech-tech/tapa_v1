@@ -2,6 +2,7 @@ import type { DrawingPrompt } from "../../data/drawingPrompts";
 import { answersMatch } from "./matching";
 import { chainIndexFor, contributionStepCount, stepType, type StepType } from "./routing";
 import type {
+  DrawingAssignment,
   DrawingChain,
   DrawingPage,
   DrawingPageDraw,
@@ -9,6 +10,13 @@ import type {
   PartyState,
   Player,
 } from "../../party/types";
+
+/**
+ * A tarefa do passo mudou de casa para `party/types`: virou campo de
+ * `DrawingState`, porque na nuvem quem a decide é o Postgres. Reexportado
+ * daqui para as telas continuarem importando do mesmo lugar de sempre.
+ */
+export type { DrawingAssignment } from "../../party/types";
 
 /**
  * Funções puras do Telefone Sem Fio de Desenho.
@@ -63,22 +71,6 @@ export function createDrawingState(
   };
 }
 
-export interface DrawingAssignment {
-  chainIndex: number;
-  chain: DrawingChain;
-  stepIndex: number;
-  stepType: StepType;
-  /**
-   * A ÚNICA coisa que esta pessoa pode ver. Nunca o caderno inteiro: a graça
-   * do jogo é justamente não saber de onde aquilo veio.
-   */
-  previous:
-    | { kind: "prompt"; text: string }
-    | { kind: "drawing"; page: DrawingPageDraw }
-    | { kind: "guess"; text: string }
-    | null;
-}
-
 /**
  * O que este jogador tem de fazer agora.
  *
@@ -90,6 +82,19 @@ export function assignmentFor(state: PartyState, playerId: string): DrawingAssig
   if (!drawing) return null;
   if (state.phase !== "DRAW_STEP" && state.phase !== "GUESS_STEP") return null;
 
+  /**
+   * A autoridade já disse qual é a tarefa: é ela que vale, ponto.
+   *
+   * Derivar de novo aqui seria o cliente inventando a própria tarefa — e no
+   * caminho da nuvem nem daria: `room_snapshot` só devolve os cadernos na
+   * revelação, porque eles SÃO o segredo do jogo. A derivação abaixo
+   * continua servindo o caminho local, onde o estado inteiro mora na aba.
+   */
+  if (drawing.assignment !== undefined) {
+    const tarefa = drawing.assignment;
+    return tarefa && tarefa.playerId === playerId ? tarefa : null;
+  }
+
   const seatIndex = drawing.seatOrder.indexOf(playerId);
   if (seatIndex < 0) return null;
 
@@ -99,6 +104,7 @@ export function assignmentFor(state: PartyState, playerId: string): DrawingAssig
   if (!chain) return null;
 
   return {
+    playerId,
     chainIndex,
     chain,
     stepIndex: drawing.stepIndex,

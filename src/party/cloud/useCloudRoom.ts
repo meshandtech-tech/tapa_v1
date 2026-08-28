@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { ensureAnonSession, getSupabase, lastAuthFailure, type AuthFailure } from "../../lib/supabase";
+import { logGameEvent, setLogContext } from "../telemetry";
 import * as api from "./api";
 import { projectSnapshot } from "./projection";
 import type { RoomSnapshot } from "./snapshot";
@@ -56,6 +57,27 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
     if (snap.error) {
       setConnection("closed");
       return;
+    }
+    // Todo evento seguinte carrega partida, jogador, passo e fase. É o que
+    // torna uma partida falhada legível de ponta a ponta depois.
+    setLogContext({
+      matchId: snap.match?.id ?? null,
+      playerId: snap.me.playerId,
+      stepIndex: snap.match?.stepIndex ?? null,
+      gamePhase: snap.room.phase,
+    });
+    logGameEvent("SNAPSHOT_FETCHED", {
+      submitted: snap.match?.submittedPlayerIds?.length ?? 0,
+      esperados: snap.match?.seatOrder?.length ?? 0,
+      temTarefa: !!snap.assignment,
+    });
+    // A pergunta que a festa não conseguiu responder: esta pessoa recebeu, ou
+    // não recebeu, a tarefa do passo?
+    if (snap.room.phase === "DRAW_STEP" || snap.room.phase === "GUESS_STEP") {
+      logGameEvent(
+        snap.assignment ? "PLAYER_ASSIGNMENT_FETCHED" : "PLAYER_ASSIGNMENT_MISSING",
+        snap.assignment ? { chainId: snap.assignment.chainId } : undefined,
+      );
     }
     setSnapshot(snap);
     setConnection(snap.room.closedAt ? "closed" : "connected");
@@ -142,6 +164,8 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
         .subscribe((status) => {
           if (!vivo) return;
           if (status === "SUBSCRIBED") {
+            logGameEvent(tentativa > 0 ? "REALTIME_RECONNECTED" : "REALTIME_CONNECTED",
+              tentativa > 0 ? { tentativas: tentativa } : undefined);
             tentativa = 0;
             // Toda reconexão termina numa foto nova: o que passou enquanto o
             // socket estava fora chega aqui de uma vez.
@@ -149,6 +173,7 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
             return;
           }
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            logGameEvent("REALTIME_DISCONNECTED", { status });
             setConnection("offline");
             // A versão anterior parava AQUI: marcava o canal como morto e
             // nunca mais tentava. Era o que deixava a sala congelada para
@@ -221,13 +246,40 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
     const meuAssento = Math.max(
       0, (snap.match?.seatOrder ?? []).indexOf(snap.me.playerId ?? ""),
     );
-    const graca = snap.room.gameId === "drawing-telephone"
-      && (snap.room.phase === "DRAW_STEP" || snap.room.phase === "GUESS_STEP") ? 3000 : 0;
+    const passoDeEntrega = snap.room.phase === "DRAW_STEP" || snap.room.phase === "GUESS_STEP";
+    const graca = snap.room.gameId === "drawing-telephone" && passoDeEntrega ? 3000 : 0;
 
-    const alvo = Date.parse(snap.room.phaseEndsAt) + graca + 150 * meuAssento + 250;
+    /**
+     * Todo mundo já entregou: não há o que esperar.
+     *
+     * `advance_phase` JÁ considera este passo vencido quando `all_submitted` —
+     * só que ninguém o chamava antes do prazo, e o prazo é de 90 segundos.
+     * Dez pessoas terminando em 30s ficavam olhando "10 / 10 prontos" por um
+     * minuto, o que na mesa é indistinguível de travamento. O banco continua
+     * sendo quem decide; isto só o avisa mais cedo.
+     *
+     * Só no jogo de desenho de propósito: o quiz tem a mesma regra no banco,
+     * mas mexer no ritmo dele agora seria mudar um jogo que está funcionando.
+     */
+    const assentos = snap.match?.seatOrder ?? [];
+    const entregues = new Set(snap.match?.submittedPlayerIds ?? []);
+    const todosEntregaram =
+      snap.room.gameId === "drawing-telephone"
+      && passoDeEntrega
+      && assentos.length > 0
+      && assentos.every((id) => entregues.has(id));
+
+    // O empurrãozinho de atraso por assento evita dez chamadas no mesmo
+    // milissegundo — não por correção (o banco resolve), mas por educação.
+    const alvo = todosEntregaram
+      ? api.serverNow() + 150 * meuAssento + 120
+      : Date.parse(snap.room.phaseEndsAt) + graca + 150 * meuAssento + 250;
     const espera = Math.max(0, alvo - api.serverNow());
 
     const timer = window.setTimeout(() => {
+      logGameEvent("STEP_ADVANCE_REQUESTED", {
+        motivo: todosEntregaram ? "todos_entregaram" : "prazo_vencido",
+      });
       void api.advancePhase(roomId, snap.room.phase, snap.room.phaseEndsAt);
     }, espera);
     return () => window.clearTimeout(timer);

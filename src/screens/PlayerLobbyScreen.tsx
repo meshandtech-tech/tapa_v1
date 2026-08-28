@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Check, Dices, DoorOpen, Gamepad2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
+import { AlertTriangle, Check, Dices, DoorOpen, Gamepad2, Loader2, LogIn, Play, RotateCcw, Users, WifiOff } from "lucide-react";
 import { isValidPin } from "../party/pin";
 import { canStart, isNicknameTaken, roomCapacity } from "../party/partyReducer";
 import { clearPartyState } from "../party/partyStorage";
@@ -9,6 +9,8 @@ import { usePartyRoom } from "../party/usePartyRoom";
 import { useGameIdentity, usePartyTheme } from "../party/usePartyTheme";
 import { useNow } from "../party/useNow";
 import { HostControls } from "../party/HostControls";
+import { ConnectionBadge } from "../party/ConnectionBadge";
+import { MatchInspector } from "../party/MatchInspector";
 import { InviteCard } from "../party/InviteCard";
 import { AdvogadoDoDiaboPlayer } from "../games/AdvogadoDoDiaboPlayer";
 import { CustomTopics } from "../games/CustomTopics";
@@ -47,7 +49,8 @@ function PlayerLobby({ pin }: { pin: string }) {
   const {
     state, me, meInParty, isHost, connection,
     join, updateMe, answer, vote, submitDrawing, submitGuess, replaceSlides,
-    isAuthority, sendHostCommand, attachDrawing, authError, leaveParty,
+    isAuthority, sendHostCommand, attachDrawing, authError, leaveParty, refresh,
+    snapshot, initState, initError, retryStart,
   } = usePartyRoom(pin);
 
   // O celular pega a cor da sala — inclusive quando ela gira na virada da rodada.
@@ -247,6 +250,8 @@ function PlayerLobby({ pin }: { pin: string }) {
   if (meInParty && state && state.phase !== "LOBBY") {
     return (
       <Shell pattern={jogoNovo ? getGame(state.settings.gameId).identity.pattern : undefined}>
+        <ConnectionBadge connection={connection} />
+        <MatchInspector snapshot={snapshot ?? null} connection={connection} />
         {state.settings.gameId === "advogado-do-diabo" ? (
           <AdvogadoDoDiaboPlayer
             state={state}
@@ -273,6 +278,7 @@ function PlayerLobby({ pin }: { pin: string }) {
             onSubmitDrawing={submitDrawing}
             onAttachDrawing={attachDrawing}
             onSubmitGuess={submitGuess}
+            onRefresh={refresh}
           />
         ) : (
           <QuemErraPagaPlayer
@@ -331,6 +337,8 @@ function PlayerLobby({ pin }: { pin: string }) {
     const game = state ? getGame(state.settings.gameId) : null;
     return (
       <Shell>
+        <ConnectionBadge connection={connection} />
+        <MatchInspector snapshot={snapshot ?? null} connection={connection} />
         <Card tilt="tilt-2" className="w-full max-w-md p-7 text-center">
           <Avatar
             seed={meInParty.avatarSeed}
@@ -451,7 +459,10 @@ function PlayerLobby({ pin }: { pin: string }) {
           <StartBar
             state={state}
             players={players.length}
+            initState={initState}
+            initError={initError}
             onStart={() => sendHostCommand({ type: "START_GAME" })}
+            onRetry={retryStart}
           />
         ) : null}
       </Shell>
@@ -542,15 +553,56 @@ function PlayerLobby({ pin }: { pin: string }) {
 function StartBar({
   state,
   players,
+  initState,
+  initError,
   onStart,
+  onRetry,
 }: {
   state: PartyState;
   players: number;
+  /** `starting` enquanto o banco monta a partida; `failed` quando não deu. */
+  initState: "idle" | "starting" | "failed";
+  initError: string | null;
   onStart: () => void;
+  onRetry?: () => void;
 }) {
   const game = getGame(state.settings.gameId);
   const pronto = canStart(state);
   const faltam = Math.max(0, game.minPlayers - players);
+  const comecando = initState === "starting";
+
+  /**
+   * "Começar" tem de ter três respostas, não uma.
+   *
+   * Antes tinha uma só — nenhuma. A chamada saía, e se ela estourasse o erro
+   * morria no console: a tela ficava idêntica, o host apertava de novo, e a
+   * mesa concluía que o botão estava lento ou que o app tinha travado. Um
+   * botão que não responde é indistinguível de um botão quebrado.
+   */
+  if (initState === "failed") {
+    return (
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t-4 border-ink
+                   bg-ink px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3"
+      >
+        <div className="flex w-full max-w-md flex-col gap-2">
+          <p className="flex items-center justify-center gap-2 text-center font-action text-xs uppercase text-paper">
+            <AlertTriangle strokeWidth={3} className="size-4 shrink-0" />
+            Não deu para começar
+          </p>
+          {initError ? (
+            <p className="text-center font-mono text-[0.6rem] leading-tight text-paper/70">
+              {initError}
+            </p>
+          ) : null}
+          <Button size="md" variant="paper" onClick={() => onRetry?.()}>
+            <RotateCcw strokeWidth={3} className="size-5" />
+            Tentar de novo
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -558,14 +610,25 @@ function StartBar({
                  bg-accent px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3"
     >
       <div className="flex w-full max-w-md flex-col gap-1">
-        <Button size="md" variant="solid" disabled={!pronto} onClick={onStart}>
-          <Play strokeWidth={3} className="size-6" />
-          {pronto ? `Começar ${game.title}` : "Aguardando gente"}
+        <Button size="md" variant="solid" disabled={!pronto || comecando} onClick={onStart}>
+          {comecando ? (
+            <>
+              <Loader2 strokeWidth={3} className="size-6 animate-spin" />
+              Começando…
+            </>
+          ) : (
+            <>
+              <Play strokeWidth={3} className="size-6" />
+              {pronto ? `Começar ${game.title}` : "Aguardando gente"}
+            </>
+          )}
         </Button>
         <p className="text-center font-hand text-sm text-on-accent">
-          {pronto
-            ? `${players} ${players === 1 ? "jogador" : "jogadores"} na sala`
-            : `Faltam ${faltam} ${faltam === 1 ? "pessoa" : "pessoas"} para este jogo`}
+          {comecando
+            ? `Preparando ${players} cadernos…`
+            : pronto
+              ? `${players} ${players === 1 ? "jogador" : "jogadores"} na sala`
+              : `Faltam ${faltam} ${faltam === 1 ? "pessoa" : "pessoas"} para este jogo`}
         </p>
       </div>
     </div>

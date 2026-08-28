@@ -11,7 +11,20 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * que protege a sala é RLS, não o segredo da chave.
  */
 const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+/**
+ * A chave pública, com os DOIS nomes que o painel já usou.
+ *
+ * O Supabase trocou o formato: a `anon key` (um JWT, `eyJ...`) virou
+ * `publishable key` (`sb_publishable_...`), e a tela de conectar passou a
+ * oferecer o nome `VITE_SUPABASE_PUBLISHABLE_KEY`. Quem copia de lá e cola no
+ * `.env` acaba com uma variável que este arquivo não lia — e o efeito é o pior
+ * possível: `isSupabaseConfigured` vira `false`, o app cai no transporte local
+ * sem erro nenhum, e a sala simplesmente não acha ninguém. Aceitar os dois
+ * nomes custa uma linha e evita um bug que não se anuncia.
+ */
+const anonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ??
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export const isSupabaseConfigured = Boolean(url && anonKey);
 

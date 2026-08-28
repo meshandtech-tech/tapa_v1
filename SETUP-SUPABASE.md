@@ -1,18 +1,41 @@
-# Ligar o backend (30 min, uma vez)
+# Ligar o backend (30 min)
 
 Depois disto o celular do host deixa de ser o servidor: a partida existe no
 Postgres e sobrevive a qualquer aparelho cair.
 
-**Nada disto foi executado ainda.** Escrevi as migrations sem acesso a um
-projeto real, então esta é a primeira vez que elas rodam — espere ajustar
-alguma coisa. Faça num projeto novo, não num que já tenha dado certo.
+Serve tanto para a primeira vez quanto para **reconstruir do zero** — projeto
+apagado, ou mudança de região (a região de um projeto Supabase não muda depois
+de criado: reconstruir é o único caminho).
+
+**Antes de abrir o painel, rode `npm run db:verify`.** Ele sobe um Postgres
+descartável, aplica o `all-migrations.sql` inteiro e confere o resultado em
+segundos. Descobrir um erro de SQL ali é barato; descobrir no meio da
+reconstrução deixa metade das migrations aplicadas, que é o pior estado
+possível.
+
+## Reconstrução, em ordem
+
+1. `npm run db:verify` — o esquema aplica limpo?
+2. Painel: **New project**, região **São Paulo** (`sa-east-1`).
+3. Login anônimo + limites de cadastro (§2).
+4. `supabase/all-migrations.sql` de uma vez (§3), e depois o `0007` (opcional).
+5. `supabase/storage.sql` (§4) — o bucket.
+6. `.env` local + Vercel com a URL e a chave NOVAS (§1).
+7. `npm run test:live` — a prova real: 10 sessões anônimas jogam uma partida
+   inteira contra o projeto novo.
+
+O passo 7 é o que fecha. Ele exercita migrations, RLS, RPC, Realtime, Storage
+e login anônimo de uma vez; se ele passa, o backend está de pé.
 
 ---
 
 ## 1. Projeto e credenciais
 
 1. [supabase.com](https://supabase.com) → **New project**. Região mais perto
-   de quem vai jogar (São Paulo, se for aqui).
+   de quem vai jogar — **São Paulo (`sa-east-1`)** para uma festa no Brasil.
+   A região **não muda depois**: escolher errado custa uma reconstrução
+   inteira. Ohio para jogadores no Brasil é meio segundo a mais em cada
+   viagem, e o jogo faz muitas.
 2. **Project Settings → Data API**, copie:
    - *Project URL* → `VITE_SUPABASE_URL`
    - chave **anon** / *publishable* → `VITE_SUPABASE_ANON_KEY`
@@ -27,6 +50,15 @@ Nunca a chave `service_role`. Ela é secreta e não tem uso no Tapa.
 
 É o que dá a cada celular uma identidade que sobrevive ao F5. Sem isto, o
 jogador continua sendo recusado ao voltar — que era o bug.
+
+**E confira o limite de cadastros: Authentication → Rate Limits.**
+
+O limite de sessões anônimas é **por IP**, e uma festa inteira sai do mesmo
+wi-fi: dez pessoas entrando ao mesmo tempo é exatamente o formato que estoura.
+Já derrubou um teste nosso. O app espaça as tentativas sozinho
+(`ensureAnonSession` tenta 4 vezes com jitter) e mostra "Muita gente entrando
+de uma vez" quando bate no teto — mas o teto é configuração do painel, e num
+projeto novo ele volta ao padrão.
 
 ## 3. Migrations
 
@@ -46,7 +78,22 @@ supabase/migrations/0009_profiles.sql
 supabase/migrations/0010_fix_gameover_snapshot.sql
 supabase/migrations/0011_parity.sql
 supabase/migrations/0012_drop_stale_overload.sql
+supabase/migrations/0013_reveal_payload.sql
 ```
+
+Ou, num banco **novo e vazio**, cole `supabase/all-migrations.sql` de uma vez
+só — é o mesmo conteúdo, na mesma ordem, sem o `0007`.
+
+### Atualizar um banco que JÁ existe
+
+Rode **só a migration nova**, sozinha. Não recole o `all-migrations.sql`: ele
+é para instalação do zero e começa com `create table` sem `if not exists`, então
+num banco existente ele falha na primeira tabela e **nada depois dele roda** —
+você acha que atualizou e não atualizou.
+
+Da `0006` em diante quase tudo é `create or replace function`: rodar duas vezes
+não faz mal, e não há bloqueio nem perda de dado. A exceção é a `0012`, que dá
+`drop function` explícito antes.
 
 - `0004` precisa da extensão **unaccent** (`Database → Extensions`).
 - `0007` precisa da **pg_cron**. Se ela não estiver disponível no seu plano,
@@ -55,26 +102,14 @@ supabase/migrations/0012_drop_stale_overload.sql
 
 ## 4. Bucket dos desenhos
 
-Pelo **SQL Editor**, não pelo painel — é reproduzível e não depende de clicar
-na coisa certa:
+Cole **`supabase/storage.sql`** no SQL Editor. Pelo SQL e não pelo painel
+porque é reproduzível e não depende de clicar na coisa certa — e o arquivo é
+idempotente, então numa reconstrução em que você não lembra até onde chegou,
+rodar de novo não custa nada.
 
-```sql
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('tapa-desenhos', 'tapa-desenhos', true, 1048576,
-        array['image/webp','image/png'])
-on conflict (id) do update
-   set public = true,
-       file_size_limit = 1048576,
-       allowed_mime_types = array['image/webp','image/png'];
-
-create policy "tapa upload" on storage.objects
-  for insert to anon, authenticated
-  with check (bucket_id = 'tapa-desenhos');
-
-create policy "tapa leitura" on storage.objects
-  for select to anon, authenticated
-  using (bucket_id = 'tapa-desenhos');
-```
+Ele fica fora de `migrations/` porque mexe em `storage.buckets` e
+`storage.objects`, que são da plataforma: dentro de `migrations/` quebraria o
+`npm run db:verify`, que roda num Postgres comum.
 
 `insert` e `create policy` não devolvem linhas: **"no rows returned" aqui é
 sucesso.**
@@ -188,7 +223,15 @@ sem nuvem, mas jogável. É a rede de segurança para não ficar sem nada.
 
 ---
 
-## Estado verificado (25/08)
+## Estado verificado
+
+> As duas rodadas abaixo foram feitas no projeto **de Ohio, que foi apagado**.
+> Valem como histórico do que o esquema já provou — não como estado do projeto
+> de São Paulo. Para o projeto novo, o que vale é `npm run db:verify` (esquema,
+> offline) seguido de `npm run test:live` (partida inteira, no projeto de
+> verdade).
+
+### Primeira rodada (25/08)
 
 Rodado no projeto real, com sessões anônimas de verdade:
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { drawPrompts } from "../../data/drawingPrompts";
 import { getDeck } from "../../data/questions";
@@ -21,6 +21,14 @@ import type { PartyState, Player } from "../types";
  * `useReducer` no celular do host para o Postgres — e para onde vão as
  * intenções: RPC em vez de broadcast.
  */
+/**
+ * Quanto tempo o host espera antes de a tela admitir que não começou.
+ *
+ * Generoso de propósito: `start_match` numa sala de 10 leva ~200ms, mas no 5G
+ * de um bar a viagem de ida e volta pode custar bem mais que isso.
+ */
+const INIT_TIMEOUT_MS = 12000;
+
 export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } = {}) {
   /**
    * A TV também usa a nuvem.
@@ -133,6 +141,91 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
   );
 
   /**
+   * Começar a partida — com começo, meio e FIM visíveis.
+   *
+   * Antes isto era um `void api.startMatch(...)` solto no meio do switch. Se a
+   * chamada estourasse — não é o host, gente de menos, sala em fase errada —
+   * o erro morria num `console.error` e a tela do host ficava idêntica. Ele
+   * apertava "Começar" de novo, e de novo, e a festa concluía que o app tinha
+   * travado. Era indistinguível de botão lento.
+   *
+   * Agora o host vê "COMEÇANDO...", e se em `INIT_TIMEOUT_MS` a sala não tiver
+   * saído do lobby, vê que não deu e pode tentar de novo. `start_match` é uma
+   * transação só: ou a partida nasceu inteira, ou não nasceu — não existe
+   * partida meio-criada para limpar.
+   */
+  const [initState, setInitState] = useState<"idle" | "starting" | "failed">("idle");
+  const [initError, setInitError] = useState<string | null>(null);
+  const initTimer = useRef<number | null>(null);
+
+  const startMatch = useCallback(async () => {
+    if (!roomId || !state) return;
+    const jogadores = state.players.length;
+    const gameId = state.settings.gameId;
+    const deck = getDeck(state.settings.difficulty);
+    const game = getGame(gameId);
+    // Sorteia UMA vez e reaproveita: sortear de novo para o gabarito daria
+    // uma ordem diferente da das perguntas.
+    const ordem = gameId === "quem-erra-paga" ? drawOrder(deck.length, game.rounds) : [];
+
+    setInitState("starting");
+    setInitError(null);
+
+    const sala = await api.startMatch(roomId, {
+      prompts: gameId === "drawing-telephone" ? drawPrompts(jogadores, []) : [],
+      topics:
+        gameId === "advogado-do-diabo"
+          ? buildTopicPool(
+              state.devil?.customTopics ?? [], state.settings.difficulty,
+            ).map((t) => ({ id: t.id, source: t.source, text: t.text }))
+          : [],
+      questionOrder: ordem,
+      // `-1` para a pegadinha (`correctAnswer: null`): nenhuma alternativa
+      // está certa, então nenhum índice pode casar.
+      correct: ordem.map((indice) => deck[indice]?.correctAnswer ?? -1),
+      slideIds: gameId === "improv-slides" ? activeSlides.map((slide) => slide.id) : [],
+      // O acervo de prendas mora no TS; o banco só precisa do tamanho para
+      // sortear sem perguntar nada ao cliente.
+      punishmentCount: punishments.length,
+    });
+
+    if (!sala) {
+      setInitState("failed");
+      setInitError(api.lastRpcFailure()?.message ?? "a chamada não voltou");
+      return;
+    }
+    await refresh();
+  }, [roomId, state, refresh]);
+
+  /**
+   * A sala saiu do lobby: deu certo, independente de quem apertou.
+   *
+   * Fecha o estado pelo FATO (a fase mudou), e não pela resposta da chamada —
+   * assim o host que recarregou a página no meio do começo também sai da tela
+   * de espera.
+   */
+  const faseAtual = state?.phase;
+  useEffect(() => {
+    if (initState === "idle") return;
+    if (faseAtual && faseAtual !== "LOBBY") {
+      setInitState("idle");
+      setInitError(null);
+    }
+  }, [faseAtual, initState]);
+
+  /** Espera sem fim é proibida, aqui como em qualquer outro lugar. */
+  useEffect(() => {
+    if (initState !== "starting") return;
+    initTimer.current = window.setTimeout(() => {
+      setInitState("failed");
+      setInitError("o servidor não respondeu a tempo");
+    }, INIT_TIMEOUT_MS);
+    return () => {
+      if (initTimer.current) window.clearTimeout(initTimer.current);
+    };
+  }, [initState]);
+
+  /**
    * Comandos do host.
    *
    * Vira chamada de RPC, e o BANCO confere se quem mandou é mesmo o host.
@@ -160,37 +253,9 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
           });
           return;
 
-        case "START_GAME": {
-          // O CONTEÚDO sai daqui (o acervo mora no TS); a ORDEM e os sorteios
-          // acontecem no banco, uma vez, dentro da transação.
-          const jogadores = state.players.length;
-          const gameId = state.settings.gameId;
-          const deck = getDeck(state.settings.difficulty);
-          const game = getGame(gameId);
-          // Sorteia UMA vez e reaproveita: sortear de novo para o gabarito
-          // daria uma ordem diferente da das perguntas.
-          const ordem = gameId === "quem-erra-paga" ? drawOrder(deck.length, game.rounds) : [];
-
-          void api.startMatch(roomId, {
-            prompts: gameId === "drawing-telephone" ? drawPrompts(jogadores, []) : [],
-            topics:
-              gameId === "advogado-do-diabo"
-                ? buildTopicPool(
-                    state.devil?.customTopics ?? [], state.settings.difficulty,
-                  ).map((t) => ({ id: t.id, source: t.source, text: t.text }))
-                : [],
-            questionOrder: ordem,
-            // `-1` para a pegadinha (`correctAnswer: null`): nenhuma
-            // alternativa está certa, então nenhum índice pode casar.
-            correct: ordem.map((indice) => deck[indice]?.correctAnswer ?? -1),
-            slideIds:
-              gameId === "improv-slides" ? activeSlides.map((slide) => slide.id) : [],
-            // O acervo de prendas mora no TS; o banco só precisa do tamanho
-            // para sortear sem perguntar nada ao cliente.
-            punishmentCount: punishments.length,
-          });
+        case "START_GAME":
+          void startMatch();
           return;
-        }
 
         case "ADVANCE":
           // `force`: o host pulando na mão dispensa o prazo, mas o
@@ -255,7 +320,7 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
           return;
       }
     },
-    [roomId, state],
+    [roomId, state, startMatch],
   );
 
   const closeParty = useCallback(() => {
@@ -285,6 +350,20 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
     connection: connection === "offline" ? "connecting" : connection,
     authError,
     snapshot,
+    /** `starting` enquanto o banco monta a partida; `failed` quando não deu. */
+    initState,
+    initError,
+    /** "Tentar de novo" do host. Idempotente: `start_match` só age no lobby. */
+    retryStart: startMatch,
+    /**
+     * Pedir a foto de novo, na mão.
+     *
+     * Existe para as telas que podem ficar sem o que renderizar — a tarefa do
+     * passo que não chegou, por exemplo. Sem isto a única saída era esperar um
+     * evento de Realtime que talvez não venha, que é o formato de todo
+     * travamento que já tivemos.
+     */
+    refresh,
     join,
     updateMe,
     answer,
