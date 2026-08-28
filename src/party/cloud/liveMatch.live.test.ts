@@ -26,7 +26,9 @@ import type { RoomSnapshot } from "./snapshot";
 // O Vite carrega o `.env` e expõe o que tem prefixo `VITE_`. Sem as duas
 // chaves o arquivo inteiro é pulado, em vez de falhar por falta de rede.
 const URL = import.meta.env.VITE_SUPABASE_URL;
-const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const KEY =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ??
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const N = Number(import.meta.env.VITE_TAPA_LIVE_PLAYERS ?? 10);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
