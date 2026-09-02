@@ -530,3 +530,27 @@ Instalar Xcode
 
 Esses itens passam a ser necessários nas fases de dispositivo físico,
 Universal Links, distribuição e publicação.
+
+---
+
+## Registro de correção — criação de salas no 5G
+
+Registrado em 2026-09-02.
+
+- Sintoma: no domínio `gametapav1.vercel.app`, o botão `CRIAR PARTY` mostrava
+  “Não foi possível preparar sua entrada. Tente novamente”, especialmente no
+  teste pelo celular usando 5G.
+- Causa encontrada: as variáveis `VITE_SUPABASE_URL` e
+  `VITE_SUPABASE_ANON_KEY` do projeto `tapaversao1` na Vercel ainda apontavam
+  para o projeto Supabase antigo. O site estava no ar, mas tentava autenticar e
+  criar a sala no backend incorreto.
+- Correção aplicada: as duas variáveis foram atualizadas em Production e
+  Preview com a configuração do Supabase atual, sem salvar seus valores neste
+  arquivo ou no Git.
+- Deploy: o mesmo código do commit `b3f08f9` foi recompilado e publicado em
+  produção no domínio oficial.
+- Validação: a sala de teste `9111` foi criada em produção; uma segunda sessão
+  isolada entrou na mesma sala; host e convidado apareceram em tempo real; o
+  navegador não registrou erros.
+- Escopo preservado: nenhuma lógica de jogo foi alterada e a pasta
+  `PHOTOS_SLIDEGAMES/` permaneceu intacta e fora do commit.
