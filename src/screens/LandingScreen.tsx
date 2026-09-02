@@ -1,47 +1,88 @@
+import { useState } from "react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
 // PartyPopper no lugar do Sparkles: o brilho de quatro pontas lembrava demais
 // o ícone do Claude Code, e não tem nada a ver com festa.
-import { LogIn, PartyPopper, Users } from "lucide-react";
+import { AlertTriangle, Loader2, LogIn, PartyPopper, Users } from "lucide-react";
 import { DecorativeDoodles } from "../components/DecorativeDoodles";
 import { HostAccountCard } from "./HostAccountCard";
 import { GAMES } from "../games/registry";
 import { generateFreePin } from "../party/pin";
 import { loadPartyState, markRoomOwner } from "../party/partyStorage";
-import { ensureAnonSession, isSupabaseConfigured } from "../lib/supabase";
-import { createRoom } from "../party/cloud/api";
+import {
+  ensureAnonSession,
+  isSupabaseConfigured,
+  lastAuthFailure,
+} from "../lib/supabase";
+import { createRoom, lastRpcFailure } from "../party/cloud/api";
 import { DEFAULT_GAME_ID, isGameId } from "../games/registry";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Logo } from "../ui/Logo";
 import { tiltByIndex } from "../ui/cn";
+import { prepareRoom, RoomCreationError } from "./createPartyFlow";
+
+function creationErrorMessage(error: unknown): string {
+  if (error instanceof RoomCreationError && error.stage === "auth") {
+    switch (lastAuthFailure()) {
+      case "rate_limit":
+        return "Muita gente entrou pela mesma rede. Espera alguns segundos e tenta novamente.";
+      case "disabled":
+        return "A entrada anônima está desligada no servidor.";
+      case "network":
+        return "Não foi possível alcançar o servidor. Confira sua conexão e tente novamente.";
+      default:
+        return "Não foi possível preparar sua entrada. Tente novamente.";
+    }
+  }
+
+  const rpcMessage = lastRpcFailure()?.message.toLowerCase() ?? "";
+  if (rpcMessage.includes("create_room") || rpcMessage.includes("schema cache")) {
+    return "O servidor ainda não está atualizado para criar salas.";
+  }
+  if (rpcMessage.includes("jwt") || rpcMessage.includes("permission")) {
+    return "O servidor recusou a criação da sala. Recarregue a página e tente novamente.";
+  }
+  return "Não foi possível criar a sala. Nada foi perdido; tente novamente.";
+}
 
 export function LandingScreen() {
   const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
+  const [creationError, setCreationError] = useState<string | null>(null);
 
   const createParty = async (gameId?: string) => {
+    if (creating) return;
+    setCreating(true);
+    setCreationError(null);
+
     // Evita cair num PIN cuja sala antiga ainda está salva — senão o host
     // reidrataria o roster da festa passada em vez de abrir uma sala limpa.
     const pin = generateFreePin((candidate) => loadPartyState(candidate) !== null);
+    const selectedGameId = gameId && isGameId(gameId) ? gameId : DEFAULT_GAME_ID;
 
-    if (isSupabaseConfigured) {
+    try {
       /**
-       * A sala nasce no BANCO, não neste aparelho.
-       *
-       * É a diferença que sustenta o resto: quem cria continua sendo o host
-       * (`rooms.host_player_id` aponta para ele assim que entra), mas a sala
-       * passa a existir independentemente do celular dele. Fechar o navegador
-       * aqui não apaga mais a festa de ninguém.
+       * A sala nasce no BANCO, não neste aparelho. Só navegamos depois que a
+       * autenticação e o RPC confirmam sucesso; `null` não é uma sala.
        */
-      await ensureAnonSession();
-      await createRoom(pin, gameId && isGameId(gameId) ? gameId : DEFAULT_GAME_ID);
-    } else {
-      // Sem credenciais: caminho local, autoridade neste aparelho.
-      markRoomOwner(pin);
-    }
+      await prepareRoom({
+        pin,
+        gameId: selectedGameId,
+        cloud: isSupabaseConfigured,
+        ensureSession: ensureAnonSession,
+        createCloudRoom: createRoom,
+        markLocalOwner: markRoomOwner,
+      });
 
-    navigate(gameId ? `/play/${pin}?game=${gameId}` : `/play/${pin}`);
+      navigate(gameId ? `/play/${pin}?game=${gameId}` : `/play/${pin}`);
+    } catch (error) {
+      console.error("[tapa] criação de sala falhou", error);
+      setCreationError(creationErrorMessage(error));
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -66,15 +107,45 @@ export function LandingScreen() {
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-4">
-          <Button size="tv" variant="paper" tilt="tilt-3" onClick={() => void createParty()}>
-            <PartyPopper strokeWidth={3} className="size-7" />
-            Criar Party
+          <Button
+            size="tv"
+            variant="paper"
+            tilt="tilt-3"
+            disabled={creating}
+            aria-busy={creating}
+            onClick={() => void createParty()}
+          >
+            {creating ? (
+              <Loader2 strokeWidth={3} className="size-7 animate-spin" />
+            ) : (
+              <PartyPopper strokeWidth={3} className="size-7" />
+            )}
+            {creating ? "Criando..." : "Criar Party"}
           </Button>
-          <Button size="tv" variant="knockout" tilt="tilt-2" onClick={() => navigate("/join")}>
+          <Button
+            size="tv"
+            variant="knockout"
+            tilt="tilt-2"
+            disabled={creating}
+            onClick={() => navigate("/join")}
+          >
             <LogIn strokeWidth={3} className="size-7" />
             Entrar com PIN
           </Button>
         </div>
+
+        {creationError ? (
+          <Card
+            variant="speech"
+            tilt="tilt-2"
+            className="flex max-w-xl items-center gap-3 border-accent-dark px-5 py-3 text-accent-dark"
+          >
+            <AlertTriangle strokeWidth={3} className="size-6 shrink-0" />
+            <p role="alert" className="font-action text-sm uppercase sm:text-base">
+              {creationError}
+            </p>
+          </Card>
+        ) : null}
 
         <section className="mt-8 w-full">
           <h2 className="mb-6 text-center font-display text-4xl font-bold uppercase text-on-accent">
@@ -88,13 +159,15 @@ export function LandingScreen() {
                 <motion.button
                   key={game.id}
                   type="button"
+                  disabled={creating}
+                  aria-busy={creating}
                   onClick={() => void createParty(game.id)}
                   initial={{ opacity: 0, y: 24 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.08, type: "spring", stiffness: 260, damping: 20 }}
                   whileHover={{ y: -6, rotate: index % 2 === 0 ? -1.5 : 1.5 }}
                   whileTap={{ scale: 0.97 }}
-                  className="cursor-pointer text-left focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-ink"
+                  className="cursor-pointer text-left focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Card tilt={tiltByIndex(index)} className="flex h-full flex-col gap-3 p-6">
                     <span className="grid size-14 place-items-center border-4 border-ink bg-accent text-on-accent">
