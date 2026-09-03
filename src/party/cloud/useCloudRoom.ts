@@ -107,23 +107,17 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
         return;
       }
       setAuthError(null);
-      const supabase = getSupabase();
-      if (!supabase || cancelled) return;
+      if (!getSupabase() || cancelled) return;
 
-      const { data } = await supabase
-        .from("rooms")
-        .select("id")
-        .eq("pin", pin)
-        .is("closed_at", null)
-        .maybeSingle();
+      const id = await api.resolveRoom(pin);
 
       if (cancelled) return;
-      if (!data?.id) {
+      if (!id) {
         setConnection("closed");
         return;
       }
-      setRoomId(data.id);
-      roomIdRef.current = data.id;
+      setRoomId(id);
+      roomIdRef.current = id;
       void refresh();
     })();
 
@@ -148,6 +142,10 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
 
     const assinar = () => {
       if (!vivo) return;
+      // `removeChannel` também pode emitir CLOSED. Sem esta trava, um erro
+      // agendava o retry e o CLOSED provocado pela própria limpeza agendava
+      // outro, deixando dois canais vivos depois da reconexão.
+      let reconectando = false;
       const channel = supabase
         .channel(`room:${roomId}`)
         // Três tabelas, todas de linhas pequenas e não secretas. O conteúdo
@@ -173,6 +171,8 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
             return;
           }
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            if (reconectando) return;
+            reconectando = true;
             logGameEvent("REALTIME_DISCONNECTED", { status });
             setConnection("offline");
             // A versão anterior parava AQUI: marcava o canal como morto e

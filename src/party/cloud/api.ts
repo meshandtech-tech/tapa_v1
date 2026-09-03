@@ -75,7 +75,47 @@ function noteServerTime(iso: string | undefined): void {
 }
 
 export async function createRoom(pin: string, gameId: string) {
-  return rpc<unknown>("create_room", { p_pin: pin, p_game_id: gameId });
+  return rpc<{ id: string; pin: string }>("create_room", {
+    p_pin: pin, p_game_id: gameId,
+  });
+}
+
+/**
+ * Resolve o PIN sem criar uma janela de incompatibilidade no deploy.
+ *
+ * A migration cria `resolve_room` antes de fechar a leitura direta de
+ * `rooms`. Até ela entrar, a versão nova do site ainda encontra a sala pelo
+ * caminho antigo; depois dela, usa somente a RPC protegida. Isso permite
+ * publicar cliente → aplicar banco sem derrubar quem está entrando.
+ */
+export async function resolveRoom(pin: string): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.rpc("resolve_room", { p_pin: pin });
+  if (!error) return data as string | null;
+
+  const rpcAindaNaoExiste = error.code === "PGRST202"
+    || error.message.toLowerCase().includes("schema cache");
+  if (!rpcAindaNaoExiste) {
+    console.error("[tapa] rpc resolve_room falhou", error);
+    logGameEvent("RPC_FAILED", {
+      fn: "resolve_room", code: error.code, message: error.message,
+    });
+  }
+
+  // Compatibilidade temporária com produção anterior à migration 0014.
+  const { data: legacy, error: legacyError } = await supabase
+    .from("rooms")
+    .select("id")
+    .eq("pin", pin)
+    .is("closed_at", null)
+    .maybeSingle();
+  if (legacyError) {
+    console.error("[tapa] resolução legada da sala falhou", legacyError);
+    return null;
+  }
+  return legacy?.id ?? null;
 }
 
 export async function joinRoom(

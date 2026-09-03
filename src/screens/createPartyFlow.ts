@@ -21,7 +21,9 @@ interface PrepareRoomOptions {
   gameId: string;
   cloud: boolean;
   ensureSession: () => Promise<string | null>;
-  createCloudRoom: (pin: string, gameId: string) => Promise<unknown | null>;
+  createCloudRoom: (
+    pin: string, gameId: string,
+  ) => Promise<{ pin?: string } | null>;
   markLocalOwner: (pin: string) => void;
 }
 
@@ -39,10 +41,10 @@ export async function prepareRoom({
   ensureSession,
   createCloudRoom,
   markLocalOwner,
-}: PrepareRoomOptions): Promise<void> {
+}: PrepareRoomOptions): Promise<string> {
   if (!cloud) {
     markLocalOwner(pin);
-    return;
+    return pin;
   }
 
   let userId: string | null;
@@ -53,11 +55,12 @@ export async function prepareRoom({
   }
   if (!userId) throw new RoomCreationError("auth");
 
-  let room: unknown | null;
+  let room: { pin?: string } | null;
   try {
     room = await createCloudRoom(pin, gameId);
   } catch (cause) {
     throw new RoomCreationError("room", { cause });
   }
   if (!room) throw new RoomCreationError("room");
+  return room.pin ?? pin;
 }

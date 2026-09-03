@@ -67,7 +67,7 @@ export function LandingScreen() {
        * A sala nasce no BANCO, não neste aparelho. Só navegamos depois que a
        * autenticação e o RPC confirmam sucesso; `null` não é uma sala.
        */
-      await prepareRoom({
+      const confirmedPin = await prepareRoom({
         pin,
         gameId: selectedGameId,
         cloud: isSupabaseConfigured,
@@ -76,7 +76,11 @@ export function LandingScreen() {
         markLocalOwner: markRoomOwner,
       });
 
-      navigate(gameId ? `/play/${pin}?game=${gameId}` : `/play/${pin}`);
+      navigate(
+        gameId
+          ? `/play/${confirmedPin}?game=${gameId}`
+          : `/play/${confirmedPin}`,
+      );
     } catch (error) {
       console.error("[tapa] criação de sala falhou", error);
       setCreationError(creationErrorMessage(error));

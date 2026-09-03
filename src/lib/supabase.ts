@@ -96,8 +96,12 @@ export async function ensureAnonSession(): Promise<string | null> {
     // consumir cota — e por isso `persistSession` importa tanto aqui.
     if (data.session?.user?.id) return data.session.user.id;
 
-    let espera = 700;
-    for (let tentativa = 1; tentativa <= 4; tentativa += 1) {
+    // Com o limite ajustado para a festa, o bucket ainda aceita uma rajada de
+    // 30 e repõe o restante aos poucos. Oito tentativas espalhadas por cerca
+    // de 40s deixam a segunda metade da fila entrar sem exigir refresh.
+    let espera = 900;
+    const tentativas = 8;
+    for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
       const { data: criada, error } = await supabase.auth.signInAnonymously();
       if (!error && criada.user?.id) {
         ultimaFalha = null;
@@ -107,12 +111,12 @@ export async function ensureAnonSession(): Promise<string | null> {
       ultimaFalha = classificar(error?.message ?? "");
       // Limite desligado no painel não melhora com insistência.
       if (ultimaFalha === "disabled") break;
-      if (tentativa === 4) break;
+      if (tentativa === tentativas) break;
 
       // Espera com jitter: dez celulares que falharam juntos não podem
       // tentar de novo juntos, senão a rajada se repete igual.
-      await sleep(espera + Math.random() * 400);
-      espera *= 2;
+      await sleep(espera / 2 + Math.random() * espera);
+      espera = Math.min(8000, espera * 2);
     }
 
     console.error("[tapa] sessão anônima falhou:", ultimaFalha);
