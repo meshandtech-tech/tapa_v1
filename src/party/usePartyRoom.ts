@@ -384,10 +384,11 @@ function useLocalPartyRoom(
   const vote = useCallback(
     (rating: number) => {
       const current = meRef.current;
-      if (!current) return;
+      if (!current) return false;
       send({ type: "VOTE", playerId: current.id, rating }, () =>
         channelRef.current?.broadcast({ type: "VOTE", playerId: current.id, rating }),
       );
+      return true;
     },
     [send],
   );
@@ -398,13 +399,24 @@ function useLocalPartyRoom(
    * vezes no botão não vira duas páginas.
    */
   const submitDrawing = useCallback(
-    (payload: { url: string | null; strokes?: string; status?: "submitted" | "timeout" | "failed" }) => {
+    (payload: {
+      url: string | null;
+      strokes?: string;
+      status?: "submitted" | "timeout" | "failed" | "pending";
+    }) => {
       const current = meRef.current;
       if (!current) return false;
+      // O modo local não usa Storage nem a barreira de finalização; o canvas
+      // só envia `pending` quando `onAttach` existe, mas estreitar aqui mantém
+      // a fronteira do BroadcastChannel segura também em tipos.
+      const localPayload = {
+        ...payload,
+        status: payload.status === "pending" ? "submitted" as const : payload.status,
+      };
       send(
-        { type: "SUBMIT_DRAWING", playerId: current.id, ...payload },
+        { type: "SUBMIT_DRAWING", playerId: current.id, ...localPayload },
         () => channelRef.current?.broadcast({
-          type: "SUBMIT_DRAWING", playerId: current.id, ...payload,
+          type: "SUBMIT_DRAWING", playerId: current.id, ...localPayload,
         }),
       );
       return true;

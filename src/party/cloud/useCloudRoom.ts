@@ -68,6 +68,13 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
       stepIndex: snap.match?.stepIndex ?? null,
       gamePhase: snap.room.phase,
     });
+    const previousHost = snapshotRef.current?.room.hostPlayerId ?? null;
+    if (snapshotRef.current && previousHost !== snap.room.hostPlayerId) {
+      logGameEvent("HOST_CHANGED", {
+        previousHost,
+        nextHost: snap.room.hostPlayerId,
+      });
+    }
     logGameEvent("SNAPSHOT_FETCHED", {
       submitted: snap.match?.submittedPlayerIds?.length ?? 0,
       esperados: snap.match?.seatOrder?.length ?? 0,

@@ -150,11 +150,190 @@ try {
   ok(q(`select submit_grace_ms('drawing-telephone','DRAW_STEP')`) === "10000",
     "Desenho tem 10 segundos para confirmar/repetir a entrega no 5G");
 
-  for (const action of ["submit_vote", "submit_answer"]) {
+  const contributionBody = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                                where n.nspname='public' and p.proname='submit_contribution'`);
+  ok(contributionBody.includes("for share") && contributionBody.includes("'status', v_status"),
+    "Contribuição recebe ACK e termina antes de o passo ser avançado");
+
+  for (const action of ["submit_vote_confirmed", "submit_answer"]) {
     const body = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                      where n.nspname='public' and p.proname='${action}'`);
     ok(body.includes("any(m.seat_order)"), `${action} aceita só participante da partida`);
   }
+
+  const voteBody = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                        where n.nspname='public' and p.proname='submit_vote_confirmed'`);
+  ok(voteBody.includes("for share") && voteBody.includes("'accepted', true"),
+    "voto recebe ACK e termina antes de a votação ser pontuada");
+
+  // Exercita o trigger de verdade: a primeira apresentação recebe cinco
+  // itens; a segunda recebe os outros cinco e um refresh só releria a coluna.
+  q(`do $verify$
+     declare v_room uuid; v_match uuid; v_first text[]; v_refresh text[]; v_second text[];
+     begin
+       insert into rooms(pin, game_id) values ('9876','improv-slides') returning id into v_room;
+       insert into matches(room_id, game_id, slide_ids)
+       values (v_room, 'improv-slides',
+               array['s1','s2','s3','s4','s5','s6','s7','s8','s9','s10'])
+       returning id into v_match;
+
+       if cardinality((select slide_ids from matches where id=v_match)) <> 0 then
+         raise exception 'o acervo vazou como apresentacao';
+       end if;
+       update matches set presenter_index=0 where id=v_match returning slide_ids into v_first;
+       select slide_ids into v_refresh from matches where id=v_match;
+       if v_refresh is distinct from v_first then
+         raise exception 'refresh mudou os slides persistidos';
+       end if;
+       update matches set presenter_index=1 where id=v_match returning slide_ids into v_second;
+       if cardinality(v_first) <> 5 or cardinality(v_second) <> 5 then
+         raise exception 'apresentacao incompleta';
+       end if;
+       if v_first && v_second then
+         raise exception 'duas apresentacoes repetiram slides com acervo suficiente';
+       end if;
+     end $verify$;`);
+  ok(true, "Pitch persiste cinco slides diferentes por apresentador consecutivo");
+
+  // Exercita a barreira de desenho como ela acontece na festa: os traços
+  // chegam como pending, a fase não é liberada, a finalização confirma um
+  // jogador e o timeout materializa o ausente sem deixar buraco na chain.
+  q(`do $verify$
+     declare
+       v_room uuid; v_match uuid; v_p1 uuid; v_p2 uuid;
+       v_u1 uuid := gen_random_uuid(); v_u2 uuid := gen_random_uuid();
+       v_result jsonb; v_contribution uuid;
+     begin
+       insert into rooms(pin, game_id, phase)
+       values ('8765','drawing-telephone','DRAW_STEP') returning id into v_room;
+       insert into players(room_id,user_id,nickname,color,avatar_seed)
+       values (v_room,v_u1,'Um','#000','um') returning id into v_p1;
+       insert into players(room_id,user_id,nickname,color,avatar_seed)
+       values (v_room,v_u2,'Dois','#111','dois') returning id into v_p2;
+       update rooms set host_player_id=v_p1 where id=v_room;
+       insert into matches(room_id,game_id,seat_order,step_index,step_count)
+       values (v_room,'drawing-telephone',array[v_p1,v_p2],0,2)
+       returning id into v_match;
+       insert into chains(match_id,owner_player_id,prompt_id,original_prompt,position)
+       values
+         (v_match,v_p1,'t1','tema 1',0),
+         (v_match,v_p2,'t2','tema 2',1);
+
+       perform set_config('request.jwt.claim.sub', v_u1::text, true);
+       select submit_contribution(
+         v_room, null, '{"v":2,"g":2048,"s":[]}'::jsonb, '', 'pending'
+       ) into v_result;
+       if v_result->>'contribution_id' is null then
+         raise exception 'pending nao foi persistido';
+       end if;
+       v_contribution := (v_result->>'contribution_id')::uuid;
+       select submit_contribution(
+         v_room, null, '{"v":2,"g":2048,"s":[]}'::jsonb, '', 'pending'
+       ) into v_result;
+       if (v_result->>'contribution_id')::uuid is distinct from v_contribution
+          or (select count(*) from contributions
+               where match_id=v_match and step_index=0 and player_id=v_p1) <> 1 then
+         raise exception 'reenvio duplicou a contribuicao';
+       end if;
+       if all_submitted(v_match) then
+         raise exception 'pending liberou o passo cedo';
+       end if;
+       if array_position((select submitted_player_ids from matches where id=v_match), v_p1) is not null then
+         raise exception 'pending apareceu como concluido na UI';
+       end if;
+
+       select finalize_drawing(v_room,0,null,'failed') into v_result;
+       if not coalesce((v_result->>'accepted')::boolean,false) then
+         raise exception 'fallback nao foi confirmado';
+       end if;
+       if array_position((select submitted_player_ids from matches where id=v_match), v_p1) is null then
+         raise exception 'finalizacao nao atualizou progresso';
+       end if;
+       if all_submitted(v_match) then
+         raise exception 'jogador ausente foi ignorado cedo';
+       end if;
+
+       perform backfill_step(v_match);
+       if not all_submitted(v_match) then
+         raise exception 'fallback nao liberou o passo';
+       end if;
+       if exists (select 1 from contributions where match_id=v_match and status='pending') then
+         raise exception 'pending sobreviveu ao timeout maximo';
+       end if;
+       if not exists (select 1 from contributions
+                       where match_id=v_match and player_id=v_p2 and status='missed') then
+         raise exception 'ausente nao ganhou pagina explicita';
+       end if;
+     end $verify$;`);
+  ok(true, "Desenho espera finalização real e materializa ausentes no timeout");
+
+  // Mesma sessão anônima + mesmo PIN é reconexão, não um novo jogador. Até
+  // depois de `left_at`, o índice único permite reativar a mesma identidade.
+  q(`do $verify$
+     declare v_room uuid; v_user uuid := gen_random_uuid(); v_first uuid; v_second uuid;
+             v_result jsonb;
+     begin
+       insert into rooms(pin,game_id) values ('7654','drawing-telephone') returning id into v_room;
+       perform set_config('request.jwt.claim.sub', v_user::text, true);
+       select join_room('7654','Pessoa','#222','avatar') into v_result;
+       v_first := (v_result->>'player_id')::uuid;
+       update players set left_at=now() where id=v_first;
+       select join_room('7654','Pessoa','#222','avatar') into v_result;
+       v_second := (v_result->>'player_id')::uuid;
+
+       if v_first is distinct from v_second then
+         raise exception 'reconexao criou jogador duplicado';
+       end if;
+       if (select count(*) from players where room_id=v_room and user_id=v_user) <> 1 then
+         raise exception 'identidade duplicada na sala';
+       end if;
+       if (select left_at from players where id=v_first) is not null then
+         raise exception 'reconexao nao reativou jogador';
+       end if;
+     end $verify$;`);
+  ok(true, "Refresh/reconexão reutiliza player_id e assento da sessão anônima");
+
+  q(`do $verify$
+     declare v_room uuid; v_match uuid; v_present uuid; v_voter uuid;
+             v_present_user uuid := gen_random_uuid(); v_voter_user uuid := gen_random_uuid();
+             v_result jsonb;
+     begin
+       insert into rooms(pin,game_id,phase,round)
+       values ('6543','improv-slides','VOTING',1) returning id into v_room;
+       insert into players(room_id,user_id,nickname,color,avatar_seed)
+       values (v_room,v_present_user,'Apresenta','#333','apresenta') returning id into v_present;
+       insert into players(room_id,user_id,nickname,color,avatar_seed)
+       values (v_room,v_voter_user,'Vota','#444','vota') returning id into v_voter;
+       update rooms set host_player_id=v_present where id=v_room;
+       insert into matches(room_id,game_id,seat_order,presenter_index)
+       values (v_room,'improv-slides',array[v_present,v_voter],0) returning id into v_match;
+
+       perform set_config('request.jwt.claim.sub', v_voter_user::text, true);
+       select submit_vote_confirmed(v_room,5) into v_result;
+       if not coalesce((v_result->>'accepted')::boolean,false) then
+         raise exception 'primeiro voto recusado';
+       end if;
+       select submit_vote_confirmed(v_room,1) into v_result;
+       if not coalesce((v_result->>'duplicate')::boolean,false) then
+         raise exception 'reenvio nao foi reconhecido como duplicado';
+       end if;
+       if (select count(*) from votes where match_id=v_match and round=1) <> 1
+          or (select rating from votes where match_id=v_match and round=1) <> 5 then
+         raise exception 'voto duplicado alterou a linha original';
+       end if;
+
+       perform set_config('request.jwt.claim.sub', v_present_user::text, true);
+       select submit_vote_confirmed(v_room,5) into v_result;
+       if v_result->>'skipped' is distinct from 'presenter' then
+         raise exception 'apresentador conseguiu votar em si';
+       end if;
+     end $verify$;`);
+  ok(true, "Voto é idempotente e o apresentador não vota em si mesmo");
+
+  const claimHostBody = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                            where n.nspname='public' and p.proname='claim_host'`);
+  ok(claimHostBody.includes("interval '30 seconds'") && claimHostBody.includes("for update"),
+    "Host só transfere após 30 segundos sem presença e com lock da sala");
 
   const views = q(`select string_agg(table_name,',' order by table_name)
                      from information_schema.views where table_schema='public'`);

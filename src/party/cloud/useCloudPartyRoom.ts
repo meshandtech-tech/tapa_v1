@@ -103,10 +103,14 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
   );
 
   const vote = useCallback(
-    (rating: number) => {
-      if (roomId) void api.submitVote(roomId, rating);
+    async (rating: number) => {
+      if (!roomId) return false;
+      const result = await api.submitVote(roomId, rating);
+      if (!result?.accepted) return false;
+      await refresh();
+      return true;
     },
-    [roomId],
+    [refresh, roomId],
   );
 
   /**
@@ -142,12 +146,21 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
     [refresh, roomId],
   );
 
-  /** Chega depois do upload. A página já existe; a imagem só a melhora. */
+  /** Confirma o upload ou fecha a contribuição usando os traços de fallback. */
   const attachDrawing = useCallback(
-    (storagePath: string, stepIndex: number) => {
-      if (roomId) void api.attachDrawing(roomId, stepIndex, storagePath);
+    async (
+      storagePath: string | null,
+      stepIndex: number,
+      status: "submitted" | "timeout" | "failed",
+    ) => {
+      if (!roomId) return false;
+      const confirmed = await api.finalizeDrawingReliable(
+        roomId, stepIndex, storagePath, status,
+      );
+      if (confirmed) await refresh();
+      return confirmed;
     },
-    [roomId],
+    [refresh, roomId],
   );
 
   const submitGuess = useCallback(

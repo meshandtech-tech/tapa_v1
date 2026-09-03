@@ -36,22 +36,36 @@ export function loadDraft(
   chainId: string,
 ): Drawing | null {
   if (typeof localStorage === "undefined") return null;
-  return parseStrokes(localStorage.getItem(draftKey(pin, playerId, stepIndex, chainId)));
+  try {
+    return parseStrokes(localStorage.getItem(draftKey(pin, playerId, stepIndex, chainId)));
+  } catch {
+    // Safari privado pode expor localStorage e ainda assim negar a leitura.
+    return null;
+  }
 }
 
 export function clearDraft(pin: string, playerId: string, stepIndex: number, chainId: string): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.removeItem(draftKey(pin, playerId, stepIndex, chainId));
+  try {
+    localStorage.removeItem(draftKey(pin, playerId, stepIndex, chainId));
+  } catch {
+    // A contribuição já foi confirmada; falhar ao limpar cache não pode
+    // transformar sucesso em erro para a pessoa.
+  }
 }
 
 /** Limpa o que sobrou de partidas anteriores nesta sala. */
 export function clearAllDrafts(pin: string): void {
   if (typeof localStorage === "undefined") return;
-  const prefixo = `tapa:draw:${pin}:`;
-  const chaves: string[] = [];
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const chave = localStorage.key(i);
-    if (chave?.startsWith(prefixo)) chaves.push(chave);
+  try {
+    const prefixo = `tapa:draw:${pin}:`;
+    const chaves: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const chave = localStorage.key(i);
+      if (chave?.startsWith(prefixo)) chaves.push(chave);
+    }
+    chaves.forEach((chave) => localStorage.removeItem(chave));
+  } catch {
+    // Mesmo caso do Safari privado: limpeza oportunista, nunca fatal.
   }
-  chaves.forEach((chave) => localStorage.removeItem(chave));
 }

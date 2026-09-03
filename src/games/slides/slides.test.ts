@@ -187,6 +187,22 @@ describe("rodízio de apresentadores", () => {
     }
   });
 
+  it("duas apresentações consecutivas recebem conjuntos diferentes", () => {
+    let state = comecar(3);
+    let relogio = 2000;
+    const vistos: string[][] = [];
+
+    while (vistos.length < 2) {
+      state = avancar(state, (relogio += 1000), acervo(10));
+      if (state.phase === "PLAYER_SPIN") vistos.push([...state.slides!.slideIds]);
+    }
+
+    expect(vistos[0]).toHaveLength(POR_APRESENTACAO);
+    expect(vistos[1]).toHaveLength(POR_APRESENTACAO);
+    expect(vistos[1]).not.toEqual(vistos[0]);
+    expect(vistos[1].filter((id) => vistos[0].includes(id))).toHaveLength(0);
+  });
+
   it("everyonePresented só é verdade no fim da fila", () => {
     let state = comecar(3);
     expect(everyonePresented(state)).toBe(false);
@@ -261,6 +277,25 @@ describe("votação", () => {
     expect(roundAverage(state)).toBeNull();
     state = avancar(state, 90_000);
     expect(state.slides!.scores[quem.id]).toBeUndefined();
+  });
+
+  it("votante desconectado não impede o host de fechar a votação", () => {
+    let state = naVotacao(4);
+    const [primeiro, segundo, desconectado] = eligibleVoters(state);
+    state = partyReducer(state, { type: "PLAYER_LEAVE", playerId: desconectado.id });
+
+    state = partyReducer(state, { type: "VOTE", playerId: primeiro.id, rating: 5 });
+    state = partyReducer(state, { type: "VOTE", playerId: segundo.id, rating: 3 });
+
+    // Durante a partida, uma queda não apaga a pessoa do roster: ela precisa
+    // poder voltar com assento e pontos intactos. Por isso ainda aparece no
+    // contador, mas o botão do host continua livre para fechar com quem votou.
+    expect(eligibleVoters(state).map((player) => player.id)).toContain(desconectado.id);
+    expect(votesIn(state)).toBe(2);
+
+    state = avancar(state, 90_000);
+    expect(state.phase).toBe("SCORE_REVEAL");
+    expect(roundAverage(state)).toBe(4);
   });
 });
 

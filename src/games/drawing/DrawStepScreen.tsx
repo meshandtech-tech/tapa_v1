@@ -15,21 +15,28 @@ import { clearDraft, loadDraft, saveDraft } from "./draft";
 import { renderToBlob } from "./export";
 import { isBlank, serializeStrokes, type Drawing, type StrokeTool } from "./strokes";
 import type { DrawingAssignment } from "./state";
-import type { SubmissionStatus } from "../../party/types";
+
+type ClientSubmissionStatus = "submitted" | "timeout" | "failed";
+type DeliveryStage = "idle" | "saving" | "preparing" | "uploading" | "finalizing" | "failed";
 
 export interface DrawingSubmission {
   url: string | null;
   strokes?: string;
-  status?: SubmissionStatus;
+  status?: ClientSubmissionStatus | "pending";
 }
 
 /**
- * Sobe a imagem DEPOIS que a página já existe.
+ * Finaliza a imagem DEPOIS que os traços já existem no Postgres.
  *
  * Devolvido separado de `onSubmit` de propósito — ver o comentário em
- * `enviar`. A entrega não pode esperar a rede.
+ * `enviar`. A integridade não depende da imagem, mas o passo espera uma
+ * confirmação terminal (`submitted`, `timeout` ou `failed`) antes de fechar.
  */
-export type DrawingAttach = (storagePath: string, stepIndex: number) => void;
+export type DrawingAttach = (
+  storagePath: string | null,
+  stepIndex: number,
+  status: ClientSubmissionStatus,
+) => boolean | Promise<boolean>;
 
 /**
  * A tela de desenhar.
@@ -61,6 +68,7 @@ export function DrawStepScreen({
   const [color, setColor] = useState(0);
   const [size, setSize] = useState<BrushSize>(DEFAULT_BRUSH_SIZE);
   const [enviando, setEnviando] = useState(false);
+  const [etapaEnvio, setEtapaEnvio] = useState<DeliveryStage>("idle");
   const [falhaEnvio, setFalhaEnvio] = useState(false);
   const [confirmandoLimpar, setConfirmandoLimpar] = useState(false);
   const enviadoRef = useRef(false);
@@ -91,11 +99,11 @@ export function DrawStepScreen({
    * chegava depois do passo já encerrado.
    *
    * Agora os traços vão antes da imagem e ficam no rascunho até o Postgres
-   * confirmar. A chamada é repetida no 5G; a imagem só MELHORA a página e
-   * chega depois, sem prazo para cumprir.
+   * confirmar a finalização. A chamada é repetida no 5G; a imagem melhora a
+   * página, e uma falha explícita usa os traços sem quebrar a corrente.
    */
   const enviar = useCallback(
-    async (status: SubmissionStatus = "submitted") => {
+    async (status: ClientSubmissionStatus = "submitted") => {
       // Trava contra dedo batendo duas vezes E contra o auto-envio do prazo
       // atropelar um envio manual. A trava definitiva é a unique do banco;
       // esta só evita o trabalho repetido.
@@ -103,42 +111,61 @@ export function DrawStepScreen({
       enviadoRef.current = true;
       setEnviando(true);
       setFalhaEnvio(false);
+      setEtapaEnvio("saving");
 
       const strokes = canvasRef.current?.getStrokes() ?? [];
       const vazio = isBlank(strokes);
+      const precisaImagem = !vazio && isStorageAvailable() && !!onAttach;
 
-      // 1. A página só é considerada entregue depois do ACK do Postgres. Até
-      // lá, o rascunho continua neste aparelho e pode ser reenviado no 5G.
+      // 1. Os traços chegam primeiro ao Postgres. Quando haverá imagem, entram
+      // como `pending`: estão seguros, mas ainda não liberam o próximo passo.
       const confirmed = await onSubmit({
         url: null,
         ...(vazio ? {} : { strokes: serializeStrokes(strokes) }),
-        status: vazio && status === "submitted" ? "submitted" : status,
+        status: precisaImagem ? "pending" : status,
       });
       if (!confirmed) {
         enviadoRef.current = false;
         setEnviando(false);
         setFalhaEnvio(true);
+        setEtapaEnvio("failed");
         return;
       }
-      clearDraft(pin, playerId, stepIndex, chain.id);
 
-      // 2. A imagem sobe em segundo plano. Falhar aqui não custa a página:
-      //    os traços já estão guardados e a revelação sabe desenhá-los.
-      if (vazio || !isStorageAvailable() || !onAttach) return;
-      void (async () => {
-        const imagem = await renderToBlob(strokes);
-        if (!imagem) return;
-        const storagePath = await uploadDrawing(
+      if (!precisaImagem || !onAttach) {
+        clearDraft(pin, playerId, stepIndex, chain.id);
+        return;
+      }
+
+      // 2. Gera e sobe a imagem. Se qualquer parte falhar, o backend fecha a
+      // contribuição como `failed` e conserva os traços como fallback. Só o
+      // ACK desta finalização limpa o rascunho do aparelho.
+      setEtapaEnvio("preparing");
+      const imagem = await renderToBlob(strokes);
+      setEtapaEnvio("uploading");
+      const storagePath = imagem
+        ? await uploadDrawing(
           drawingPath({
             pin, matchId, chainId: chain.id, stepIndex, extension: imagem.extension,
           }),
           imagem.blob,
-        );
-        // O passo é o deste canvas, não o passo que estiver na foto quando o
-        // upload acabar. Com todo mundo enviando junto, a fase pode avançar
-        // antes da resposta do Storage chegar.
-        if (storagePath) onAttach(storagePath, stepIndex);
-      })();
+        )
+        : null;
+
+      setEtapaEnvio("finalizing");
+      const finalized = await onAttach(
+        storagePath,
+        stepIndex,
+        storagePath ? status : "failed",
+      );
+      if (!finalized) {
+        enviadoRef.current = false;
+        setEnviando(false);
+        setFalhaEnvio(true);
+        setEtapaEnvio("failed");
+        return;
+      }
+      clearDraft(pin, playerId, stepIndex, chain.id);
     },
     [chain.id, matchId, onAttach, onSubmit, pin, playerId, stepIndex],
   );
@@ -185,6 +212,15 @@ export function DrawStepScreen({
   );
 
   const urgente = secondsLeft <= 10;
+  const textoEtapa = etapaEnvio === "saving"
+    ? "Salvando traços…"
+    : etapaEnvio === "preparing"
+      ? "Preparando imagem…"
+      : etapaEnvio === "uploading"
+        ? "Enviando imagem…"
+        : etapaEnvio === "finalizing"
+          ? "Confirmando envio…"
+          : "Enviando…";
 
   return (
     <div className="flex w-full max-w-md flex-col gap-2">
@@ -223,7 +259,7 @@ export function DrawStepScreen({
           <div className="absolute inset-0 grid place-items-center bg-paper/80">
             <span className="flex items-center gap-2 font-action text-sm uppercase">
               <Loader2 strokeWidth={3} className="size-5 animate-spin" />
-              Enviando…
+              {textoEtapa}
             </span>
           </div>
         ) : null}

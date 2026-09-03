@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { motion } from "motion/react";
 import { Check, Eye, Hourglass, Presentation, Trophy } from "lucide-react";
 import { Avatar } from "../../ui/Avatar";
@@ -28,6 +28,11 @@ const NOTAS = [
   { value: 5, emoji: "🧠", label: "nível TED" },
 ] as const;
 
+type VoteAttempt = {
+  roundKey: string;
+  status: "sending" | "confirmed" | "failed";
+};
+
 /**
  * O Pitch no Escuro inteiro no celular.
  *
@@ -50,12 +55,28 @@ export function PitchNoEscuroPlayer({
   now: number;
   secondsLeft: number;
   canReplaceSlides: boolean;
-  onVote: (rating: number) => void;
+  onVote: (rating: number) => boolean | Promise<boolean>;
   onReplaceSlides: (slideIds: string[]) => void;
 }) {
   const slides = state.slides;
   const apresentador = currentPresenter(state);
   const souEu = apresentador?.id === me.id;
+  const voteRoundKey = `${state.round}:${apresentador?.id ?? "none"}`;
+  const [voteAttempt, setVoteAttempt] = useState<VoteAttempt | null>(null);
+  // Um resultado atrasado da rodada anterior pode chegar depois da troca de
+  // apresentador. A chave torna esse resultado invisível sem efeito de reset
+  // nem um frame mostrando "voto registrado" para a pessoa errada.
+  const votoLocal = voteAttempt?.roundKey === voteRoundKey ? voteAttempt.status : "idle";
+
+  const votar = useCallback(async (rating: number) => {
+    if (votoLocal === "sending" || votoLocal === "confirmed") return;
+    setVoteAttempt({ roundKey: voteRoundKey, status: "sending" });
+    const confirmed = await onVote(rating);
+    setVoteAttempt({
+      roundKey: voteRoundKey,
+      status: confirmed ? "confirmed" : "failed",
+    });
+  }, [onVote, voteRoundKey, votoLocal]);
 
   const espiaPrimeiro = IMPROV_SLIDES_CONFIG.showFirstSlideDuringPreparation;
   const primeiroSlide = slides?.slideIds[0] ? slideSrc(slides.slideIds[0]) : null;
@@ -82,7 +103,7 @@ export function PitchNoEscuroPlayer({
             <strong>5 slides aleatórios</strong>, {IMPROV_SLIDES_CONFIG.slideDurationSeconds}s cada
           </li>
           <li className="border-l-4 border-ink pl-3">
-            <strong>{IMPROV_SLIDES_CONFIG.preparationTimeSeconds}s</strong> para se preparar — sem ver nada
+            <strong>{IMPROV_SLIDES_CONFIG.preparationTimeSeconds}s</strong> para preparar o primeiro slide
           </li>
           <li className="border-l-4 border-ink pl-3">
             Os slides <strong>passam sozinhos</strong>. Não dá para segurar.
@@ -218,7 +239,7 @@ export function PitchNoEscuroPlayer({
   }
 
   if (state.phase === "VOTING") {
-    const jaVotei = slides.votes[me.id] !== undefined;
+    const jaVotei = slides.votes[me.id] !== undefined || votoLocal === "confirmed";
     const faltam = eligibleVoters(state).length - votesIn(state);
 
     if (souEu) {
@@ -264,17 +285,23 @@ export function PitchNoEscuroPlayer({
             <button
               key={nota.value}
               type="button"
-              onClick={() => onVote(nota.value)}
+              onClick={() => void votar(nota.value)}
+              disabled={votoLocal === "sending"}
               className="flex min-h-14 cursor-pointer items-center gap-3 border-4 border-ink bg-paper px-4
                          text-left shadow-brutal transition-transform
                          focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ink
-                         motion-safe:hover:-translate-y-0.5"
+                         disabled:cursor-wait disabled:opacity-60 motion-safe:hover:-translate-y-0.5"
             >
               <span className="text-3xl leading-none">{nota.emoji}</span>
               <span className="font-action text-base uppercase">{nota.label}</span>
             </button>
           ))}
         </div>
+        {votoLocal === "failed" ? (
+          <p role="alert" className="border-4 border-ink bg-paper px-3 py-2 text-center font-action text-xs uppercase">
+            A rede não confirmou seu voto. Toque novamente.
+          </p>
+        ) : null}
       </div>
     );
   }

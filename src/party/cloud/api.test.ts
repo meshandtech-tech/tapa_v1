@@ -23,7 +23,12 @@ vi.mock("../../lib/supabase", () => ({
 
 vi.mock("../telemetry", () => ({ logGameEvent: vi.fn() }));
 
-import { resolveRoom, submitContributionReliable } from "./api";
+import {
+  finalizeDrawingReliable,
+  resolveRoom,
+  submitContributionReliable,
+  submitVote,
+} from "./api";
 
 describe("resolveRoom durante o deploy compatível", () => {
   beforeEach(() => {
@@ -111,5 +116,87 @@ describe("entrega confiável do caderno", () => {
 
     await expect(delivery).resolves.toEqual({ contribution_id: "page-2" });
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it("só finaliza o desenho depois do ACK terminal", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: { accepted: true, status: "submitted", step_index: 2 },
+      error: null,
+    });
+
+    await expect(finalizeDrawingReliable(
+      "room-1", 2, "123/m1/c1/step-2.webp", "submitted",
+    )).resolves.toBe(true);
+    expect(mocks.rpc).toHaveBeenCalledWith("finalize_drawing", {
+      p_room: "room-1",
+      p_step: 2,
+      p_storage_path: "123/m1/c1/step-2.webp",
+      p_status: "submitted",
+    });
+  });
+
+  it("repete a finalização quando a conexão cai", async () => {
+    mocks.rpc
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce({
+        data: { accepted: true, status: "failed", step_index: 2 },
+        error: null,
+      });
+
+    const finalization = finalizeDrawingReliable("room-1", 2, null, "failed");
+    await vi.runAllTimersAsync();
+
+    await expect(finalization).resolves.toBe(true);
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it("usa a finalização antiga durante a janela de deploy", async () => {
+    mocks.rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: "PGRST202", message: "function missing from schema cache" },
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(finalizeDrawingReliable(
+      "room-1", 2, "123/m1/c1/step-2.webp", "submitted",
+    )).resolves.toBe(true);
+    expect(mocks.rpc).toHaveBeenNthCalledWith(2, "attach_drawing", {
+      p_room: "room-1",
+      p_step: 2,
+      p_storage_path: "123/m1/c1/step-2.webp",
+    });
+  });
+
+  it("só conclui o voto depois do ACK autoritativo", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: { accepted: true, duplicate: false, round: 2 },
+      error: null,
+    });
+
+    await expect(submitVote("room-1", 4)).resolves.toMatchObject({
+      accepted: true,
+      duplicate: false,
+    });
+    expect(mocks.rpc).toHaveBeenCalledWith("submit_vote_confirmed", {
+      p_room: "room-1", p_rating: 4,
+    });
+  });
+
+  it("mantém o voto funcionando durante a janela anterior à migration", async () => {
+    mocks.rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: "PGRST202", message: "function missing from schema cache" },
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(submitVote("room-1", 5)).resolves.toMatchObject({
+      accepted: true,
+      legacy: true,
+    });
+    expect(mocks.rpc).toHaveBeenNthCalledWith(2, "submit_vote", {
+      p_room: "room-1", p_rating: 5,
+    });
   });
 });

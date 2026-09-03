@@ -178,8 +178,20 @@ export interface DevilState {
   disclaimerAccepted: boolean;
 }
 
-/** Como a contribuição chegou. `timeout` e `failed` seguem valendo página. */
-export type SubmissionStatus = "submitted" | "timeout" | "failed";
+/**
+ * Como a contribuição chegou ao banco.
+ *
+ * `missed` é criado pelo servidor quando o prazo fecha sem entrega; não é a
+ * mesma coisa que alguém escolher mandar uma folha em branco. `pending` só
+ * aparece durante a curta janela de finalização. Manter os dois no contrato
+ * impede a UI de transformar falha de transporte em "Folha em branco".
+ */
+export type SubmissionStatus =
+  | "submitted"
+  | "timeout"
+  | "failed"
+  | "missed"
+  | "pending";
 
 export interface DrawingPageDraw {
   type: "drawing";

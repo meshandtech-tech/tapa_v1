@@ -16,6 +16,11 @@ export interface RpcFailure {
   at: number;
 }
 
+interface PostgrestFailure {
+  code?: string;
+  message: string;
+}
+
 /**
  * A última chamada que falhou, e quem quer saber disso.
  *
@@ -40,15 +45,19 @@ export function onRpcFailure(ouvinte: (falha: RpcFailure) => void): () => void {
   return () => ouvintes.delete(ouvinte);
 }
 
+function reportRpcFailure(fn: string, error: PostgrestFailure): void {
+    console.error(`[tapa] rpc ${fn} falhou`, error);
+    ultimaFalha = { fn, message: error.message, at: Date.now() };
+    logGameEvent("RPC_FAILED", { fn, code: error.code, message: error.message });
+    for (const ouvinte of ouvintes) ouvinte(ultimaFalha);
+}
+
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
   const { data, error } = await supabase.rpc(fn, args);
   if (error) {
-    console.error(`[tapa] rpc ${fn} falhou`, error);
-    ultimaFalha = { fn, message: error.message, at: Date.now() };
-    logGameEvent("RPC_FAILED", { fn, code: error.code, message: error.message });
-    for (const ouvinte of ouvintes) ouvinte(ultimaFalha);
+    reportRpcFailure(fn, error);
     return null;
   }
   return data as T;
@@ -300,16 +309,110 @@ export async function submitContributionReliable(roomId: string, payload: {
   return null;
 }
 
-/** Anexa a imagem DEPOIS: a página já existe, o upload só a melhora. */
-export async function attachDrawing(roomId: string, stepIndex: number, path: string) {
-  logGameEvent("UPLOAD_COMPLETE", { stepIndex });
-  return rpc<void>("attach_drawing", {
-    p_room: roomId, p_step: stepIndex, p_storage_path: path,
-  });
+/**
+ * Fecha uma contribuição `pending` depois do upload (ou como fallback).
+ *
+ * A repetição é segura: a linha é única por partida/passo/jogador e a RPC é
+ * idempotente. Durante o deploy, cai para `attach_drawing` antigo quando há
+ * imagem; os traços já persistidos continuam protegendo a página.
+ */
+export async function finalizeDrawingReliable(
+  roomId: string,
+  stepIndex: number,
+  path: string | null,
+  status: "submitted" | "timeout" | "failed",
+): Promise<boolean> {
+  for (let attempt = 0; attempt < CONTRIBUTION_ATTEMPTS; attempt += 1) {
+    const supabase = getSupabase();
+    if (!supabase) return false;
+
+    try {
+      const response = await withTimeout(
+        Promise.resolve(supabase.rpc("finalize_drawing", {
+          p_room: roomId,
+          p_step: stepIndex,
+          p_storage_path: path,
+          p_status: status,
+        })),
+        CONTRIBUTION_ACK_TIMEOUT_MS,
+      );
+
+      if (response && !response.error) {
+        const data = response.data as { accepted?: boolean } | null;
+        if (data?.accepted) return true;
+      } else if (response?.error) {
+        const missing = response.error.code === "PGRST202"
+          || response.error.message.toLowerCase().includes("schema cache");
+        if (missing && path) {
+          const legacy = await supabase.rpc("attach_drawing", {
+            p_room: roomId, p_step: stepIndex, p_storage_path: path,
+          });
+          if (!legacy.error) return true;
+          reportRpcFailure("attach_drawing", legacy.error);
+        } else if (!missing) {
+          reportRpcFailure("finalize_drawing", response.error);
+        }
+      }
+    } catch (error) {
+      console.error("[tapa] conexão da finalização caiu", error);
+    }
+
+    if (attempt + 1 < CONTRIBUTION_ATTEMPTS) {
+      await wait(CONTRIBUTION_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+  return false;
 }
 
 export async function submitVote(roomId: string, rating: number) {
-  return rpc<void>("submit_vote", { p_room: roomId, p_rating: rating });
+  logGameEvent("VOTE_SUBMITTED", { rating });
+
+  const once = async (): Promise<{
+    accepted?: boolean;
+    duplicate?: boolean;
+    skipped?: string;
+    legacy?: boolean;
+  } | null> => {
+    const supabase = getSupabase();
+    if (!supabase) return null;
+    const args = { p_room: roomId, p_rating: rating };
+    const confirmed = await supabase.rpc("submit_vote_confirmed", args);
+    if (!confirmed.error) return confirmed.data;
+
+    const missing = confirmed.error.code === "PGRST202"
+      || confirmed.error.message.toLowerCase().includes("schema cache");
+    if (!missing) {
+      reportRpcFailure("submit_vote_confirmed", confirmed.error);
+      return null;
+    }
+
+    // Janela de deploy: a migration 0019 pode chegar alguns segundos depois
+    // do bundle. A RPC antiga continua idempotente pelo índice unique.
+    const legacy = await supabase.rpc("submit_vote", args);
+    if (legacy.error) {
+      reportRpcFailure("submit_vote", legacy.error);
+      return null;
+    }
+    return { accepted: true, legacy: true };
+  };
+
+  for (let attempt = 0; attempt < CONTRIBUTION_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await withTimeout(once(), CONTRIBUTION_ACK_TIMEOUT_MS);
+      if (result) {
+        if (result.accepted) logGameEvent("VOTE_CONFIRMED", {
+          duplicate: result.duplicate ?? false,
+        });
+        return result;
+      }
+    } catch (error) {
+      console.error("[tapa] conexão do voto caiu", error);
+    }
+    if (attempt + 1 < CONTRIBUTION_ATTEMPTS) {
+      await wait(CONTRIBUTION_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+  return null;
 }
 
 export async function submitAnswer(roomId: string, optionIndex: number) {

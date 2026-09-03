@@ -247,4 +247,62 @@ describe("festa de 10 jogadores, partida inteira", () => {
     expect(state.drawing!.seatOrder.indexOf("p4")).toBe(assentoAntes);
     expect(state.drawing!.seatOrder).toHaveLength(JOGADORES);
   });
+
+  it("aguenta duas quedas, uma ausência definitiva, reenvio e prazo no mesmo jogo", () => {
+    let state = salaPronta();
+    state = partyReducer(state, { type: "ADVANCE", now: 1 });
+
+    const p2 = state.players.find((player) => player.id === "p2")!;
+    const assentoP2 = state.drawing!.seatOrder.indexOf("p2");
+
+    // Duas conexões caem. p2 volta com a mesma identidade; p8 não volta.
+    state = partyReducer(state, { type: "PLAYER_LEAVE", playerId: "p2" });
+    state = partyReducer(state, { type: "PLAYER_LEAVE", playerId: "p8" });
+    state = partyReducer(state, { type: "PLAYER_JOIN", player: p2 });
+    expect(state.drawing!.seatOrder.indexOf("p2")).toBe(assentoP2);
+
+    const tracos = serializeStrokes(desenhoRealista());
+    const passos = contributionStepCount(JOGADORES);
+
+    for (let passo = 0; passo < passos; passo += 1) {
+      const desenhando = stepType(passo) === "draw";
+      for (const playerId of state.drawing!.seatOrder) {
+        // p8 continua offline; o fechamento precisa materializar sua página.
+        if (playerId === "p8") continue;
+        const acao: PartyAction = desenhando
+          ? {
+              type: "SUBMIT_DRAWING",
+              playerId,
+              url: null,
+              strokes: tracos,
+              status: playerId === "p6" ? "timeout" : "submitted",
+            }
+          : { type: "SUBMIT_GUESS", playerId, text: `palpite ${playerId} ${passo}` };
+
+        state = partyReducer(state, acao);
+        // Reenvio depois de uma resposta lenta: continua sendo uma página.
+        if (playerId === "p4") state = partyReducer(state, acao);
+      }
+
+      // Uma serialização completa representa recarregar a fonte persistida;
+      // não pode apagar páginas já confirmadas nem trocar o assento de p2.
+      state = JSON.parse(JSON.stringify(state)) as PartyState;
+      expect(state.drawing!.seatOrder.indexOf("p2")).toBe(assentoP2);
+
+      state = partyReducer(state, { type: "ADVANCE", now: 1000 * (passo + 1) });
+      state = partyReducer(state, { type: "ADVANCE", now: 1000 * (passo + 1) + 1 });
+    }
+
+    expect(state.phase).toBe("REVEAL_INTRO");
+    for (const chain of state.drawing!.chains) {
+      expect(chain.pages).toHaveLength(passos);
+    }
+
+    let guarda = 0;
+    while (state.phase !== "GAME_OVER" && guarda < 400) {
+      state = partyReducer(state, { type: "ADVANCE", now: 100_000 + guarda });
+      guarda += 1;
+    }
+    expect(state.phase).toBe("GAME_OVER");
+  });
 });

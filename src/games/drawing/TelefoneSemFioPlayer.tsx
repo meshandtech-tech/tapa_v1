@@ -3,7 +3,11 @@ import { Avatar } from "../../ui/Avatar";
 import { Card } from "../../ui/Card";
 import { cn } from "../../ui/cn";
 import { leaderboard } from "../../party/partyReducer";
-import { DrawStepScreen, type DrawingSubmission } from "./DrawStepScreen";
+import {
+  DrawStepScreen,
+  type DrawingAttach,
+  type DrawingSubmission,
+} from "./DrawStepScreen";
 import { GuessStepScreen } from "./GuessStepScreen";
 import { MissingTaskCard } from "./MissingTaskCard";
 import { PassingScreen } from "./PassingScreen";
@@ -35,8 +39,8 @@ export function TelefoneSemFioPlayer({
   me: Player;
   secondsLeft: number;
   onSubmitDrawing: (submission: DrawingSubmission) => boolean | Promise<boolean>;
-  /** Chega depois do upload; a página já existe sem ele. */
-  onAttachDrawing?: (storagePath: string, stepIndex: number) => void;
+  /** Finaliza a página depois do upload (ou confirma o fallback de traços). */
+  onAttachDrawing?: DrawingAttach;
   onSubmitGuess: (text: string) => boolean | Promise<boolean>;
   /** Rebusca a foto autoritativa. É a saída de toda espera sem fim. */
   onRefresh?: () => void;

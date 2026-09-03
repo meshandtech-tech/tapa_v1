@@ -1,4 +1,5 @@
 import { getSupabase, isSupabaseConfigured } from "./supabase";
+import { logGameEvent } from "../party/telemetry";
 
 /**
  * Guarda dos desenhos.
@@ -13,7 +14,7 @@ export const DRAWINGS_BUCKET = "tapa-desenhos";
 /** Duas tentativas: rede de bar oscila, mas insistir demais atrasa a rodada. */
 const TENTATIVAS = 2;
 /** Acima disto vale mais entregar pelos traços do que continuar esperando. */
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 4000;
 
 export function isStorageAvailable(): boolean {
   return isSupabaseConfigured && getSupabase() !== null;
@@ -41,9 +42,13 @@ export function drawingPath(parts: {
  */
 export async function uploadDrawing(path: string, blob: Blob): Promise<string | null> {
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) {
+    logGameEvent("UPLOAD_FAILED", { path, reason: "storage_unavailable" });
+    return null;
+  }
 
   for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa += 1) {
+    logGameEvent("UPLOAD_STARTED", { path, attempt: tentativa });
     try {
       const envio = supabase.storage.from(DRAWINGS_BUCKET).upload(path, blob, {
         contentType: blob.type || "image/webp",
@@ -56,11 +61,15 @@ export async function uploadDrawing(path: string, blob: Blob): Promise<string | 
       const { error } = await comLimiteDeTempo(envio, TIMEOUT_MS);
       if (error) throw error;
 
+      logGameEvent("UPLOAD_COMPLETE", { path, attempt: tentativa });
       return path;
     } catch (erro) {
       const ultima = tentativa === TENTATIVAS;
       console.error(`[tapa] envio do desenho falhou (${tentativa}/${TENTATIVAS})`, erro);
-      if (ultima) return null;
+      if (ultima) {
+        logGameEvent("UPLOAD_FAILED", { path, attempts: TENTATIVAS });
+        return null;
+      }
     }
   }
   return null;
