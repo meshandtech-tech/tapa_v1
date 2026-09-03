@@ -3,6 +3,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { ensureAnonSession, getSupabase, lastAuthFailure, type AuthFailure } from "../../lib/supabase";
 import { logGameEvent, setLogContext } from "../telemetry";
 import * as api from "./api";
+import { cloudPhaseCompleteEarly } from "./completion";
 import { projectSnapshot } from "./projection";
 import type { RoomSnapshot } from "./snapshot";
 import type { PartyState } from "../types";
@@ -250,35 +251,29 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
     const graca = snap.room.gameId === "drawing-telephone" && passoDeEntrega ? 3000 : 0;
 
     /**
-     * Todo mundo já entregou: não há o que esperar.
+     * Todo mundo já terminou: não há o que esperar. No desenho isso evita até
+     * um minuto de tela "10 / 10 prontos"; no quiz evita deixar a mesa parada
+     * depois de a própria TV anunciar "Todo mundo respondeu".
      *
-     * `advance_phase` JÁ considera este passo vencido quando `all_submitted` —
-     * só que ninguém o chamava antes do prazo, e o prazo é de 90 segundos.
-     * Dez pessoas terminando em 30s ficavam olhando "10 / 10 prontos" por um
-     * minuto, o que na mesa é indistinguível de travamento. O banco continua
-     * sendo quem decide; isto só o avisa mais cedo.
-     *
-     * Só no jogo de desenho de propósito: o quiz tem a mesma regra no banco,
-     * mas mexer no ritmo dele agora seria mudar um jogo que está funcionando.
+     * O banco continua sendo quem decide. Este aparelho só chama a mesma RPC
+     * antes do prazo; as regras server-side validam se todos realmente
+     * terminaram e o compare-and-set descarta chamadas concorrentes.
      */
-    const assentos = snap.match?.seatOrder ?? [];
-    const entregues = new Set(snap.match?.submittedPlayerIds ?? []);
-    const todosEntregaram =
-      snap.room.gameId === "drawing-telephone"
-      && passoDeEntrega
-      && assentos.length > 0
-      && assentos.every((id) => entregues.has(id));
+    const todosTerminaram = cloudPhaseCompleteEarly(snap);
+    const respiroDaConclusao = snap.room.gameId === "quem-erra-paga" ? 500 : 120;
 
     // O empurrãozinho de atraso por assento evita dez chamadas no mesmo
     // milissegundo — não por correção (o banco resolve), mas por educação.
-    const alvo = todosEntregaram
-      ? api.serverNow() + 150 * meuAssento + 120
+    const alvo = todosTerminaram
+      // Meio segundo deixa o último toque produzir feedback visual antes da
+      // revelação. O degrau por assento evita uma rajada de dez RPCs.
+      ? api.serverNow() + 150 * meuAssento + respiroDaConclusao
       : Date.parse(snap.room.phaseEndsAt) + graca + 150 * meuAssento + 250;
     const espera = Math.max(0, alvo - api.serverNow());
 
     const timer = window.setTimeout(() => {
       logGameEvent("STEP_ADVANCE_REQUESTED", {
-        motivo: todosEntregaram ? "todos_entregaram" : "prazo_vencido",
+        motivo: todosTerminaram ? "todos_terminaram" : "prazo_vencido",
       });
       void api.advancePhase(roomId, snap.room.phase, snap.room.phaseEndsAt);
     }, espera);
