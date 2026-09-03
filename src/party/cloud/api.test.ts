@@ -56,6 +56,25 @@ describe("resolveRoom durante o deploy compatível", () => {
     await expect(resolveRoom("1234")).resolves.toBe("room-old");
     expect(mocks.from).toHaveBeenCalledWith("rooms");
   });
+
+  it("não transforma falha transitória em sala encerrada", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST301", message: "JWT expired" },
+    });
+
+    await expect(resolveRoom("1234")).rejects.toMatchObject({
+      code: "PGRST301",
+    });
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it("não transforma queda de rede em sala encerrada", async () => {
+    mocks.rpc.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(resolveRoom("1234")).rejects.toThrow("Failed to fetch");
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
 });
 
 describe("entrega confiável do caderno", () => {

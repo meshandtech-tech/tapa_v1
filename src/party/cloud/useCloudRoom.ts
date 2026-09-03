@@ -107,6 +107,8 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
   useEffect(() => {
     mounted.current = true;
     let cancelled = false;
+    let resolveRetry: number | undefined;
+    let resolveAttempt = 0;
 
     void (async () => {
       const uid = await ensureAnonSession();
@@ -118,21 +120,37 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
       setAuthError(null);
       if (!getSupabase() || cancelled) return;
 
-      const id = await api.resolveRoom(pin);
+      const resolve = async (): Promise<void> => {
+        try {
+          const id = await api.resolveRoom(pin);
+          if (cancelled) return;
+          if (!id) {
+            // Só uma resposta bem-sucedida sem sala prova que ela acabou ou o
+            // PIN não existe. Erros chegam pelo `catch` e são recuperáveis.
+            setConnection("closed");
+            return;
+          }
+          setAuthError(null);
+          setRoomId(id);
+          roomIdRef.current = id;
+          void refresh();
+        } catch {
+          if (cancelled) return;
+          setConnection("offline");
+          setAuthError("network");
+          const delay = Math.min(BACKOFF_MAX_MS, 500 * 2 ** resolveAttempt);
+          resolveAttempt += 1;
+          resolveRetry = window.setTimeout(() => void resolve(), delay);
+        }
+      };
 
-      if (cancelled) return;
-      if (!id) {
-        setConnection("closed");
-        return;
-      }
-      setRoomId(id);
-      roomIdRef.current = id;
-      void refresh();
+      void resolve();
     })();
 
     return () => {
       cancelled = true;
       mounted.current = false;
+      if (resolveRetry) window.clearTimeout(resolveRetry);
       if (pendingFetch.current !== null) window.clearTimeout(pendingFetch.current);
     };
   }, [pin, refresh]);

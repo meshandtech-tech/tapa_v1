@@ -125,28 +125,47 @@ export async function resolveRoom(pin: string): Promise<string | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
 
-  const { data, error } = await supabase.rpc("resolve_room", { p_pin: pin });
+  let data: unknown;
+  let error: PostgrestFailure | null;
+  try {
+    ({ data, error } = await supabase.rpc("resolve_room", { p_pin: pin }));
+  } catch (cause) {
+    reportRpcFailure("resolve_room", {
+      message: cause instanceof Error ? cause.message : "falha de rede",
+    });
+    throw cause;
+  }
   if (!error) return data as string | null;
 
   const rpcAindaNaoExiste = error.code === "PGRST202"
     || error.message.toLowerCase().includes("schema cache");
   if (!rpcAindaNaoExiste) {
-    console.error("[tapa] rpc resolve_room falhou", error);
-    logGameEvent("RPC_FAILED", {
-      fn: "resolve_room", code: error.code, message: error.message,
-    });
+    // `null` significa uma coisa muito específica para a tela: o PIN não
+    // existe mais. Uma falha de rede/JWT não pode usar o mesmo valor, senão um
+    // soluço entre criar a sala e abrir o lobby vira "A sala fechou".
+    reportRpcFailure("resolve_room", error);
+    throw error;
   }
 
   // Compatibilidade temporária com produção anterior à migration 0014.
-  const { data: legacy, error: legacyError } = await supabase
-    .from("rooms")
-    .select("id")
-    .eq("pin", pin)
-    .is("closed_at", null)
-    .maybeSingle();
+  let legacy: { id?: string } | null;
+  let legacyError: PostgrestFailure | null;
+  try {
+    ({ data: legacy, error: legacyError } = await supabase
+      .from("rooms")
+      .select("id")
+      .eq("pin", pin)
+      .is("closed_at", null)
+      .maybeSingle());
+  } catch (cause) {
+    reportRpcFailure("resolve_room", {
+      message: cause instanceof Error ? cause.message : "falha de rede",
+    });
+    throw cause;
+  }
   if (legacyError) {
-    console.error("[tapa] resolução legada da sala falhou", legacyError);
-    return null;
+    reportRpcFailure("resolve_room", legacyError);
+    throw legacyError;
   }
   return legacy?.id ?? null;
 }
