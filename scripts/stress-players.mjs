@@ -31,7 +31,14 @@ const V = "\x1b[32m✓\x1b[0m", X = "\x1b[31m✗\x1b[0m", A = "\x1b[33m!\x1b[0m"
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Métricas acumuladas de toda a execução — viram o audit no fim. */
-const M = { rpc: 0, retries: 0, erros: [], jogos: {} };
+const M = {
+  rpc: 0,
+  rpcFailedAttempts: 0,
+  retries: 0,
+  erros: [],
+  latencias: [],
+  jogos: {},
+};
 
 /**
  * Chamada com retry.
@@ -44,8 +51,17 @@ const M = { rpc: 0, retries: 0, erros: [], jogos: {} };
 async function rpc(p, fn, args, tentativas = 3) {
   for (let i = 1; i <= tentativas; i++) {
     M.rpc++;
-    const { data, error } = await p.sb.rpc(fn, args);
+    const inicio = performance.now();
+    let data, error;
+    try {
+      ({ data, error } = await p.sb.rpc(fn, args));
+    } catch (cause) {
+      error = { message: cause instanceof Error ? cause.message : String(cause) };
+    } finally {
+      M.latencias.push(performance.now() - inicio);
+    }
     if (!error) return { data };
+    M.rpcFailedAttempts++;
     if (i === tentativas) { M.erros.push(`${fn}: ${error.code ?? ""} ${error.message}`); return { error }; }
     M.retries++;
     await sleep(120 * i);
@@ -326,6 +342,8 @@ async function rodar(gameId) {
 
   res.ms = Date.now() - t0;
   res.bytesMax = maior;
+  res.maiorMsg = maiorMsg;
+  res.errosCanal = totalErros;
   res.eventos = Math.max(...jogadores.map((p) => p.eventos));
   M.jogos[gameId] = res;
   return res;
@@ -347,9 +365,22 @@ console.log("=".repeat(60));
 console.log("\x1b[1mAUDIT\x1b[0m");
 const todas = Object.values(M.jogos);
 const falhas = todas.flatMap((r) => r.falhas.map((f) => `${r.gameId}: ${f}`));
+const latencias = [...M.latencias].sort((a, b) => a - b);
+const percentil = (p) => latencias.length
+  ? latencias[Math.min(latencias.length - 1, Math.ceil(latencias.length * p) - 1)]
+  : 0;
+const media = latencias.length
+  ? latencias.reduce((total, valor) => total + valor, 0) / latencias.length
+  : 0;
 console.log(`  chamadas RPC:      ${M.rpc}`);
+console.log(`  tentativas falhas: ${M.rpcFailedAttempts}`);
 console.log(`  retries:           ${M.retries} (${((M.retries / M.rpc) * 100).toFixed(2)}%)`);
 console.log(`  erros persistentes:${M.erros.length}`);
+console.log(`  latência média:    ${media.toFixed(1)} ms`);
+console.log(`  latência p95:      ${percentil(0.95).toFixed(1)} ms`);
+console.log(`  latência p99:      ${percentil(0.99).toFixed(1)} ms`);
+console.log(`  maior msg realtime:${(Math.max(...todas.map((r) => r.maiorMsg)) / 1024).toFixed(1)} kB`);
+console.log(`  erros de canal:    ${todas.reduce((n, r) => n + r.errosCanal, 0)}`);
 console.log(`  pior tráfego:      ${(Math.max(...todas.map((r) => r.bytesMax)) / 1024).toFixed(1)} kB por cliente`);
 console.log(`  jogos completos:   ${todas.filter((r) => r.fases.has("GAME_OVER")).length}/${todas.length}`);
 console.log(falhas.length ? `\n\x1b[31mFALHAS (${falhas.length})\x1b[0m\n  - ${falhas.join("\n  - ")}`

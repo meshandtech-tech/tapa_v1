@@ -26,11 +26,20 @@ on conflict (id) do update
 -- É o que torna este arquivo repetível.
 drop policy if exists "tapa upload"  on storage.objects;
 drop policy if exists "tapa leitura" on storage.objects;
+drop policy if exists "tapa atualiza" on storage.objects;
 
 -- Escrita: qualquer sessão do app pode subir, mas SÓ neste bucket.
 create policy "tapa upload" on storage.objects
   for insert to anon, authenticated
   with check (bucket_id = 'tapa-desenhos');
+
+-- `upload(..., upsert: true)` precisa também de UPDATE. Sem esta policy, uma
+-- primeira tentativa que chegou ao Storage mas perdeu a resposta não podia
+-- ser repetida com segurança pela rede instável.
+create policy "tapa atualiza" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'tapa-desenhos' and owner_id = (select auth.uid()::text))
+  with check (bucket_id = 'tapa-desenhos' and owner_id = (select auth.uid()::text));
 
 -- Leitura: o bucket é público porque a revelação carrega a imagem pela URL.
 -- O que protege o desenho alheio durante a partida não é o bucket e sim o

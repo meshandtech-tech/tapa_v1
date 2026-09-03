@@ -52,6 +52,26 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
   );
   const isHost = !!meInParty && state?.hostPlayerId === meInParty.id;
 
+  /**
+   * Host é permissão, não servidor — mas fases manuais ainda precisam de
+   * alguém com essa permissão. Se o aparelho do host sumir por 31 segundos,
+   * os demais disputam `claim_host`; o lock do banco entrega a permissão para
+   * um só. Presença normal a cada 15s rearma este timer e impede troca falsa.
+   */
+  const hostLastSeenAt = snapshot?.players.find(
+    (player) => player.id === snapshot.room.hostPlayerId,
+  )?.lastSeenAt;
+  useEffect(() => {
+    if (spectator || !roomId || !meId || isHost || !hostLastSeenAt) return;
+
+    const staleAt = Date.parse(hostLastSeenAt) + 31_000;
+    const timer = window.setTimeout(() => {
+      void api.claimHost(roomId).then(() => refresh());
+    }, Math.max(0, staleAt - api.serverNow()));
+
+    return () => window.clearTimeout(timer);
+  }, [hostLastSeenAt, isHost, meId, refresh, roomId, spectator]);
+
   const join = useCallback(
     async (player: Player) => {
       const resultado = await api.joinRoom(
