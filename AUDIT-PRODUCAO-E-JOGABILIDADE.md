@@ -401,3 +401,62 @@ As três são migrations de proteção/paridade; não criam tabela nem removem
 dados.
 
 Próxima etapa: ensaio final de seis salas simultâneas e gate da festa.
+
+## Fase 6 — ensaio final da festa
+
+### Cenário
+
+Seis processos foram iniciados juntos contra o Supabase de produção, cada um
+com dez sessões anônimas próprias e dez WebSockets próprios:
+
+- duas salas de Telefone Sem Fio;
+- duas salas de Quem Erra, Paga;
+- uma sala de Advogado do Diabo;
+- uma sala de Pitch no Escuro.
+
+Cada sala criou PIN e partida próprios, enviou as ações concorrentes de seus
+dez participantes, derrubou e reconectou uma sessão no meio do ciclo e exigiu
+que todos os snapshots convergissem em `GAME_OVER`.
+
+### Evidência consolidada
+
+- 60 sessões e 60 canais Realtime simultâneos; seis jogos completos de seis.
+- 5.980 RPCs; zero tentativa falha, zero retry, zero erro persistente e zero
+  erro de canal.
+- Média ponderada de RPC: aproximadamente 191,4 ms.
+- Pior p95: 996,4 ms; pior p99: 3.469,8 ms, ambos numa das duas salas de
+  desenho durante rajadas simultâneas.
+- Maior mensagem individual de Realtime: 1,5 kB.
+- Pior tráfego acumulado: 284,0 kB por cliente numa partida inteira de
+  Telefone Sem Fio.
+- Cada sala de desenho preservou 10 cadernos × 10 páginas, sem buraco e sem
+  autor duplicado; upload e `attach_drawing` passaram nas duas.
+- As seis reconexões voltaram, todos os canais estavam ativos no fim e nenhum
+  cliente ficou sem evento.
+- As duas salas de Quiz mostraram a roleta; o Advogado sorteou dez teses
+  únicas; Pitch e Advogado completaram dez apresentadores cada.
+
+### Leitura de performance
+
+A cauda de 3,47 s aconteceu no pior 1% de uma carga artificial que comprime
+partidas inteiras em poucos minutos e dispara comandos concorrentes dos dez
+clientes em toda fase. Uma festa humana distribui desenho, leitura, conversa e
+voto por dezenas de segundos, portanto produz muito menos rajadas por segundo.
+
+Mesmo no cenário comprimido não houve perda, retry, desconexão, mensagem
+grande ou divergência. O p95 abaixo de 1 s no caminho mais pesado é aceitável
+para o evento; o p99 deve continuar sendo observado, mas não justifica mudar o
+ciclo ou introduzir infraestrutura nova antes do playtest real.
+
+### Gate final
+
+**READY COM AÇÃO.** O frontend público e os quatro ciclos passaram. Antes de
+liberar os convidados, executar no Supabase, nesta ordem:
+
+1. `supabase/migrations/0015_match_participants.sql`;
+2. `supabase/migrations/0016_slide_preload_window.sql`;
+3. `supabase/migrations/0017_pitch_preparation_parity.sql`.
+
+Depois, fazer um smoke curto: criar uma sala Pitch, confirmar cronômetro de
+preparação começando em 20 e encerrar a sala pelo host. Esse smoke transforma
+o gate em **READY** sem exigir outro teste de carga.
