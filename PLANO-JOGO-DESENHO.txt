@@ -554,3 +554,36 @@ Registrado em 2026-09-02.
   navegador não registrou erros.
 - Escopo preservado: nenhuma lógica de jogo foi alterada e a pasta
   `PHOTOS_SLIDEGAMES/` permaneceu intacta e fora do commit.
+
+---
+
+## Registro de correção — desenho ausente na segunda rodada
+
+Registrado em 2026-09-02.
+
+- Sintoma do playtest: quando todos enviavam o desenho, a rodada de palpite
+  abria sem mostrar a imagem recebida.
+- Causa 1: `uploadDrawing` devolvia a URL pública completa, mas o banco e a
+  projeção esperavam o caminho relativo do objeto. Na leitura, a URL completa
+  era tratada como caminho e ganhava uma segunda URL do Storage por cima.
+- Causa 2: o upload é assíncrono e podia terminar depois que todos enviavam e
+  a sala já havia avançado. O callback consultava o passo da foto mais nova e
+  podia tentar anexar a imagem ao passo seguinte.
+- Correção: o upload agora devolve apenas o caminho relativo e carrega consigo
+  o `stepIndex` do canvas que originou a imagem. A projeção continua sendo o
+  único lugar que transforma caminho em URL pública.
+- Deploys de produção: commits `28902b3` e `a0af59e`, no domínio
+  `gametapav1.vercel.app`.
+- Regressão automatizada: `uploadDrawing` precisa devolver exatamente o mesmo
+  caminho recebido e não pode chamar `getPublicUrl`.
+- Validação local: 357/357 testes e build de produção passaram.
+- Validação ao vivo: jogo completo com 10 sessões e 10 WebSockets; 10
+  cadernos com 10 páginas cada, nenhum buraco ou autor duplicado, upload e
+  `attach_drawing` confirmados, reconexão no meio da partida recuperada, 1.680
+  RPCs com zero erro/retry e maior mensagem Realtime de 1,5 kB.
+- Escopo preservado: regras, telas, tempos e fluxo do jogo não mudaram; apenas
+  a passagem caminho → banco → URL e a associação ao passo correto.
+- Pendente separado do hotfix: aplicar a policy de `UPDATE` do bucket e a
+  migration de isolamento de salas já preparadas localmente. Elas exigem
+  acesso administrativo ao Supabase e não foram colocadas em produção sem
+  essa autorização.
