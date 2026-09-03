@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "slides:sync": "node scripts/sync-slides.mjs",
     "test:live": "vitest run --config vitest.live.config.ts",
+    "verify:production": "node scripts/verify-production-ready.mjs",
     "db:bundle": "node scripts/build-migrations.mjs",
     "db:verify": "node scripts/verify-migrations.mjs"
   },

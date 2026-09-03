@@ -389,16 +389,17 @@ Próxima etapa: Pitch no Escuro.
 
 ### Gate
 
-**READY COM AÇÃO.** Fila, segredo, preload, troca automática, sincronia,
-controles, voto, nota, performance e encerramento passaram. Antes da festa,
-executar no Supabase, em ordem:
+**READY.** Fila, segredo, preload, troca automática, sincronia, controles,
+voto, nota, performance e encerramento passaram. As migrations abaixo foram
+executadas no Supabase e verificadas em produção, em ordem:
 
 1. `supabase/migrations/0015_match_participants.sql`;
 2. `supabase/migrations/0016_slide_preload_window.sql`;
 3. `supabase/migrations/0017_pitch_preparation_parity.sql`.
 
 As três são migrations de proteção/paridade; não criam tabela nem removem
-dados.
+dados. O smoke pós-migração mediu a primeira renderização de `PREPARATION` em
+19 s e depois 18, 17, 16, confirmando o prazo autoritativo de 20 s.
 
 Próxima etapa: ensaio final de seis salas simultâneas e gate da festa.
 
@@ -450,13 +451,20 @@ ciclo ou introduzir infraestrutura nova antes do playtest real.
 
 ### Gate final
 
-**READY COM AÇÃO.** O frontend público e os quatro ciclos passaram. Antes de
-liberar os convidados, executar no Supabase, nesta ordem:
+**READY.** O frontend público, os quatro ciclos e as integrações do Supabase
+passaram. A validação pós-migração confirmou:
 
-1. `supabase/migrations/0015_match_participants.sql`;
-2. `supabase/migrations/0016_slide_preload_window.sql`;
-3. `supabase/migrations/0017_pitch_preparation_parity.sql`.
+- jogador tardio entra na sala, mas não vota na partida ativa;
+- participante elegível continua votando normalmente;
+- convidado não substitui slides;
+- lista incompleta de slides é recusada;
+- host substitui exatamente cinco slides durante a preparação;
+- deadline de preparação em 20 s;
+- somente o apresentador vê o primeiro slide;
+- encerramento da sala chega aos convidados;
+- zero erro de página e zero erro de console no smoke público.
 
-Depois, fazer um smoke curto: criar uma sala Pitch, confirmar cronômetro de
-preparação começando em 20 e encerrar a sala pelo host. Esse smoke transforma
-o gate em **READY** sem exigir outro teste de carga.
+O comando `npm run verify:production` repete as provas de banco com quatro
+sessões anônimas e fecha a sala temporária no final. A festa está liberada; o
+playtest humano agora serve para colher ritmo e diversão, não para descobrir
+falha estrutural.
