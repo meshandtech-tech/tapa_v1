@@ -36,7 +36,7 @@ export function TelefoneSemFioPlayer({
   secondsLeft: number;
   onSubmitDrawing: (submission: DrawingSubmission) => void;
   /** Chega depois do upload; a página já existe sem ele. */
-  onAttachDrawing?: (url: string) => void;
+  onAttachDrawing?: (storagePath: string, stepIndex: number) => void;
   onSubmitGuess: (text: string) => void;
   /** Rebusca a foto autoritativa. É a saída de toda espera sem fim. */
   onRefresh?: () => void;

@@ -29,7 +29,7 @@ export interface DrawingSubmission {
  * Devolvido separado de `onSubmit` de propósito — ver o comentário em
  * `enviar`. A entrega não pode esperar a rede.
  */
-export type DrawingAttach = (storagePath: string) => void;
+export type DrawingAttach = (storagePath: string, stepIndex: number) => void;
 
 /**
  * A tela de desenhar.
@@ -125,7 +125,10 @@ export function DrawStepScreen({
           }),
           imagem.blob,
         );
-        if (storagePath) onAttach(storagePath);
+        // O passo é o deste canvas, não o passo que estiver na foto quando o
+        // upload acabar. Com todo mundo enviando junto, a fase pode avançar
+        // antes da resposta do Storage chegar.
+        if (storagePath) onAttach(storagePath, stepIndex);
       })();
     },
     [chain.id, matchId, onAttach, onSubmit, pin, playerId, stepIndex],

@@ -118,11 +118,10 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
 
   /** Chega depois do upload. A página já existe; a imagem só a melhora. */
   const attachDrawing = useCallback(
-    (url: string) => {
-      const step = snapshot?.match?.stepIndex;
-      if (roomId && step !== undefined) void api.attachDrawing(roomId, step, url);
+    (storagePath: string, stepIndex: number) => {
+      if (roomId) void api.attachDrawing(roomId, stepIndex, storagePath);
     },
-    [roomId, snapshot?.match?.stepIndex],
+    [roomId],
   );
 
   const submitGuess = useCallback(
