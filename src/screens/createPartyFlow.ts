@@ -40,6 +40,7 @@ interface PrepareRoomOptions {
   createCloudRoom: (
     pin: string, gameId: string,
   ) => Promise<{ pin?: string } | null>;
+  shouldRetryAfterAuthFailure?: () => boolean;
   markLocalOwner: (pin: string) => void;
 }
 
@@ -56,6 +57,7 @@ export async function prepareRoom({
   cloud,
   ensureSession,
   createCloudRoom,
+  shouldRetryAfterAuthFailure,
   markLocalOwner,
 }: PrepareRoomOptions): Promise<string> {
   if (!cloud) {
@@ -76,6 +78,25 @@ export async function prepareRoom({
     room = await createCloudRoom(pin, gameId);
   } catch (cause) {
     throw new RoomCreationError("room", { cause });
+  }
+
+  // Uma sessão pode ser revogada entre a confirmação no Auth e o RPC. Um 401
+  // garante que nenhuma sala foi criada, então este é o único erro em que
+  // renovar a identidade e repetir não corre risco de abrir duas salas.
+  if (!room && shouldRetryAfterAuthFailure?.()) {
+    let recovered: string | null;
+    try {
+      recovered = await ensureSession();
+    } catch (cause) {
+      throw new RoomCreationError("auth", { cause });
+    }
+    if (!recovered) throw new RoomCreationError("auth");
+
+    try {
+      room = await createCloudRoom(pin, gameId);
+    } catch (cause) {
+      throw new RoomCreationError("room", { cause });
+    }
   }
   if (!room) throw new RoomCreationError("room");
   return room.pin ?? pin;

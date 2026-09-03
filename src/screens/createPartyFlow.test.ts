@@ -44,6 +44,37 @@ describe("prepareRoom", () => {
     })).rejects.toMatchObject({ stage: "room" } satisfies Partial<RoomCreationError>);
   });
 
+  it("renova a sessão e repete somente quando o RPC recusou a autenticação", async () => {
+    const ensureSession = vi.fn(async () => "user-1");
+    const createCloudRoom = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ pin: "1234" });
+
+    await expect(prepareRoom({
+      ...base,
+      cloud: true,
+      ensureSession,
+      createCloudRoom,
+      shouldRetryAfterAuthFailure: () => true,
+    })).resolves.toBe("1234");
+
+    expect(ensureSession).toHaveBeenCalledTimes(2);
+    expect(createCloudRoom).toHaveBeenCalledTimes(2);
+  });
+
+  it("não repete create_room em falha comum para não abrir duas salas", async () => {
+    const createCloudRoom = vi.fn(async () => null);
+
+    await expect(prepareRoom({
+      ...base,
+      cloud: true,
+      createCloudRoom,
+      shouldRetryAfterAuthFailure: () => false,
+    })).rejects.toMatchObject({ stage: "room" } satisfies Partial<RoomCreationError>);
+
+    expect(createCloudRoom).toHaveBeenCalledOnce();
+  });
+
   it("preserva o caminho local quando o Supabase não está configurado", async () => {
     const markLocalOwner = vi.fn();
     const ensureSession = vi.fn(async () => "user-1");

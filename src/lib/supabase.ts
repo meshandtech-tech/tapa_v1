@@ -72,6 +72,79 @@ function classificar(mensagem: string): AuthFailure {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+interface StoredSessionResult {
+  userId: string | null;
+  canCreateAnonymous: boolean;
+}
+
+/**
+ * Confirma no Auth que a credencial guardada ainda é aceita.
+ *
+ * `getSession()` só lê o localStorage quando o token ainda não venceu. Isso é
+ * ótimo para performance, mas não detecta uma sessão revogada ou parcialmente
+ * gravada pelo Safari: ela parece viva e o primeiro RPC recebe 401. Primeiro
+ * validamos o usuário; se necessário, renovamos com o refresh token. Só
+ * descartamos automaticamente uma identidade anônima — uma conta Google nunca
+ * pode perder o próprio uid silenciosamente.
+ */
+async function verifiedStoredSession(
+  supabase: SupabaseClient,
+): Promise<StoredSessionResult> {
+  const { data, error } = await supabase.auth.getSession();
+  const session = data.session;
+
+  if (!session) {
+    if (error) {
+      ultimaFalha = classificar(error.message);
+      return { userId: null, canCreateAnonymous: ultimaFalha !== "network" };
+    }
+    return { userId: null, canCreateAnonymous: true };
+  }
+
+  const { data: verified, error: verificationError } = await supabase.auth.getUser();
+  if (!verificationError && verified.user?.id) {
+    ultimaFalha = null;
+    return { userId: verified.user.id, canCreateAnonymous: false };
+  }
+
+  // Se só a validação sofreu com a rede, vale deixar o RPC tentar com a
+  // credencial existente. Apagar a sessão neste caso expulsaria uma pessoa da
+  // partida justamente durante uma troca de Wi-Fi/5G.
+  if (classificar(verificationError?.message ?? "") === "network") {
+    ultimaFalha = null;
+    return { userId: session.user.id, canCreateAnonymous: false };
+  }
+
+  const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession({
+    refresh_token: session.refresh_token,
+  });
+  if (!refreshError && refreshed.user?.id) {
+    ultimaFalha = null;
+    return { userId: refreshed.user.id, canCreateAnonymous: false };
+  }
+
+  if (classificar(refreshError?.message ?? "") === "network") {
+    ultimaFalha = null;
+    return { userId: session.user.id, canCreateAnonymous: false };
+  }
+
+  const permanent = session.user.is_anonymous === false
+    || !!session.user.identities?.some((identity) => identity.provider !== "anonymous");
+  if (permanent) {
+    ultimaFalha = classificar(refreshError?.message ?? verificationError?.message ?? "");
+    return { userId: null, canCreateAnonymous: false };
+  }
+
+  // Token anônimo realmente morto: remove apenas desta aba/aparelho e deixa a
+  // continuação criar uma identidade nova. signOut local também limpa o slot
+  // mesmo quando o servidor responde 401 para o token estragado.
+  const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
+  if (signOutError) {
+    console.warn("[tapa] não foi possível limpar a sessão anônima inválida", signOutError);
+  }
+  return { userId: null, canCreateAnonymous: true };
+}
+
 /**
  * Identidade anônima e DURÁVEL deste aparelho.
  *
@@ -90,11 +163,14 @@ export async function ensureAnonSession(): Promise<string | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
 
-  signingIn ??= (async () => {
-    const { data } = await supabase.auth.getSession();
-    // Sessão guardada: NENHUM cadastro novo. É o que faz quem volta não
-    // consumir cota — e por isso `persistSession` importa tanto aqui.
-    if (data.session?.user?.id) return data.session.user.id;
+  if (signingIn) return signingIn;
+
+  const attempt = (async () => {
+    const stored = await verifiedStoredSession(supabase);
+    // Sessão guardada E confirmada: nenhum cadastro novo. É o que faz quem
+    // volta não consumir cota — e evita mandar um JWT inválido ao create_room.
+    if (stored.userId) return stored.userId;
+    if (!stored.canCreateAnonymous) return null;
 
     // Com o limite ajustado para a festa, o bucket ainda aceita uma rajada de
     // 30 e repõe o restante aos poucos. Oito tentativas espalhadas por cerca
@@ -122,11 +198,16 @@ export async function ensureAnonSession(): Promise<string | null> {
     console.error("[tapa] sessão anônima falhou:", ultimaFalha);
     return null;
   })();
+  signingIn = attempt;
 
-  const id = await signingIn;
-  // Falhou: deixa tentar de novo na próxima chamada em vez de cachear o erro.
-  if (!id) signingIn = null;
-  return id;
+  try {
+    return await attempt;
+  } finally {
+    // A promessa deduplica somente chamadas simultâneas. Não cacheamos o uid:
+    // a sessão pode ser revogada ou renovada enquanto a landing continua
+    // aberta e a próxima tentativa precisa verificá-la de novo.
+    if (signingIn === attempt) signingIn = null;
+  }
 }
 
 /**

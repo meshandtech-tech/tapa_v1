@@ -73,6 +73,11 @@ export function LandingScreen() {
         cloud: isSupabaseConfigured,
         ensureSession: ensureAnonSession,
         createCloudRoom: createRoom,
+        shouldRetryAfterAuthFailure: () => {
+          const failure = lastRpcFailure();
+          if (failure?.fn !== "create_room") return false;
+          return /jwt|unauthor|permission|auth|sess[aã]o/i.test(failure.message);
+        },
         markLocalOwner: markRoomOwner,
       });
 
