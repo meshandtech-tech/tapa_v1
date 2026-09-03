@@ -9,6 +9,7 @@ import { punishments } from "../../data/punishments";
 import { getGame } from "../../games/registry";
 import { serializeStrokes } from "../../games/drawing/strokes";
 import * as api from "./api";
+import { expectedPhaseEnd } from "./commandExpectation";
 import { useCloudRoom } from "./useCloudRoom";
 import type { HostCommand } from "../channel";
 import type { PartyState, Player } from "../types";
@@ -281,7 +282,7 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
           // compare-and-set continua valendo.
           void api.advancePhase(
             roomId, state.phase,
-            state.phaseDeadline ? new Date(state.phaseDeadline).toISOString() : null,
+            expectedPhaseEnd(snapshot, state),
             true,
           );
           return;
@@ -339,11 +340,11 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
           return;
       }
     },
-    [roomId, state, startMatch],
+    [roomId, snapshot, state, startMatch],
   );
 
-  const closeParty = useCallback(() => {
-    if (roomId) void api.closeRoom(roomId);
+  const closeParty = useCallback(async () => {
+    if (roomId) await api.closeRoom(roomId);
   }, [roomId]);
 
   /**

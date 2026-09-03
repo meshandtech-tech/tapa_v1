@@ -50,7 +50,7 @@ function PlayerLobby({ pin }: { pin: string }) {
   const {
     state, me, meInParty, isHost, connection,
     join, updateMe, answer, vote, submitDrawing, submitGuess, replaceSlides,
-    isAuthority, sendHostCommand, attachDrawing, authError, leaveParty, refresh,
+    isAuthority, sendHostCommand, attachDrawing, authError, closeParty, leaveParty, refresh,
     snapshot, initState, initError, retryStart,
   } = usePartyRoom(pin);
 
@@ -121,10 +121,11 @@ function PlayerLobby({ pin }: { pin: string }) {
   const onRestart = useCallback(
     () => sendHostCommand({ type: "RESET_TO_LOBBY" }), [sendHostCommand],
   );
-  const onEndParty = useCallback(() => {
+  const onEndParty = useCallback(async () => {
+    await closeParty?.();
     clearPartyState(pin);
     navigate("/");
-  }, [navigate, pin]);
+  }, [closeParty, navigate, pin]);
   const onThemeChange = useCallback(
     (themeId: PartyState["settings"]["themeId"]) =>
       sendHostCommand({ type: "SET_THEME", themeId }),
