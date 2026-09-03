@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createPartyState, partyReducer } from "../party/partyReducer";
 import { PLAYER_COLORS, type PartyState, type Player } from "../party/types";
 import {
+  DEFAULT_TOPIC_POOL_SIZE,
+  buildTopicPool,
   currentPresenter,
   currentTopic,
   topicKey,
@@ -184,6 +186,57 @@ describe("recusar a tese", () => {
  * re-sorteados do zero a cada rodada.
  */
 describe("acervo finito de teses", () => {
+  it("reserva uma troca de tese para cada pessoa numa sala cheia", () => {
+    const pool = buildTopicPool([], "easy", DEFAULT_TOPIC_POOL_SIZE, (items) => [...items]);
+    expect(pool).toHaveLength(20);
+    expect(pool.length).toBeGreaterThanOrEqual(10 + 10);
+    expect(new Set(pool.map(topicKey))).toHaveLength(pool.length);
+  });
+
+  it("mantém todas as teses do host e completa a reserva com o sistema", () => {
+    const custom = Array.from({ length: 10 }, (_, index) => ({
+      id: `custom-${index}`,
+      text: `Tese especial ${index}`,
+    }));
+    const pool = buildTopicPool(custom, "medium", DEFAULT_TOPIC_POOL_SIZE, (items) => [...items]);
+
+    expect(pool).toHaveLength(20);
+    expect(pool.filter((topic) => topic.source === "custom")).toHaveLength(10);
+    expect(pool.filter((topic) => topic.source === "default")).toHaveLength(10);
+  });
+
+  it("leva 10 pessoas até o fim mesmo trocando uma tese por rodada", () => {
+    let state = ate(sala(10), "TOPIC_REVEAL");
+    const apresentadores: string[] = [];
+    const tesesAceitas: string[] = [];
+
+    for (let rodada = 0; rodada < 10; rodada += 1) {
+      // A primeira tese de cada rodada é recusada.
+      expect(currentTopic(state)).not.toBeNull();
+      state = partyReducer(state, { type: "REROLL_TOPIC" });
+      expect(state.phase).toBe("TOPIC_SPIN");
+      state = avancar(state); // TOPIC_REVEAL com a substituta.
+
+      const substituta = currentTopic(state);
+      expect(substituta).not.toBeNull();
+      tesesAceitas.push(topicKey(substituta!));
+
+      state = avancar(state, 3); // PLAYER_SPIN → PLAYER_REVEAL → PREPARATION.
+      apresentadores.push(currentPresenter(state)!.id);
+      while (state.phase !== "SCORE_REVEAL") state = avancar(state);
+
+      state = avancar(state); // Próxima tese, ou GAME_OVER depois da décima.
+      if (rodada < 9) {
+        expect(state.phase).toBe("TOPIC_SPIN");
+        state = avancar(state); // TOPIC_REVEAL da próxima rodada.
+      }
+    }
+
+    expect(state.phase).toBe("GAME_OVER");
+    expect(new Set(apresentadores)).toHaveLength(10);
+    expect(new Set(tesesAceitas)).toHaveLength(10);
+  });
+
   it("nenhuma tese sai duas vezes na mesma partida", () => {
     let state = ate(sala(6), "TOPIC_REVEAL");
     const vistas: string[] = [];

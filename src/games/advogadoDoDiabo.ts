@@ -96,7 +96,15 @@ function shuffle<T>(items: readonly T[]): T[] {
  * diminuir. Imprevisibilidade vem do embaralhamento, não de um sorteio novo a
  * cada rodada.
  */
-export const DEFAULT_TOPIC_POOL_SIZE = 10;
+/**
+ * Dez apresentações no máximo + dez trocas de segurança.
+ *
+ * Antes o acervo tinha exatamente dez itens. Numa sala cheia, trocar UMA tese
+ * desconfortável consumia a única sobra inexistente e o último apresentador
+ * recebia uma tese vazia. Vinte mantém o acervo finito, mas torna verdadeiro o
+ * botão "trocar tese" mesmo no pior tamanho de sala.
+ */
+export const DEFAULT_TOPIC_POOL_SIZE = 20;
 
 /**
  * Monta o acervo da partida — uma vez, no início.
