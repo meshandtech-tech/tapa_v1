@@ -143,6 +143,10 @@ try {
      && replaceSlidesBody.includes("<> 5"),
     "replace_slides recupera preload lento sem aceitar apresentação incompleta");
 
+  ok(q(`select duration_ms from phase_config
+         where game_id='improv-slides' and phase='PREPARATION'`) === "20000",
+    "Pitch mantém os 20 segundos de preparação prometidos na interface");
+
   for (const action of ["submit_vote", "submit_answer"]) {
     const body = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                      where n.nspname='public' and p.proname='${action}'`);

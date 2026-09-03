@@ -306,3 +306,98 @@ manuais e encerramento passaram. Antes da festa, executar no Supabase apenas
 dados.
 
 Próxima etapa: Pitch no Escuro.
+
+## Fase 5 — Pitch no Escuro
+
+### Ciclo respeitado
+
+`GAME_INTRO → PLAYER_SPIN → PLAYER_REVEAL → PREPARATION → COUNTDOWN →`
+`PRESENTATION → VOTING → SCORE_REVEAL → próximo apresentador ou GAME_OVER`.
+
+- `seat_order` congela a fila e cada participante apresenta uma vez.
+- Cada apresentação recebe exatamente cinco imagens únicas. Um único
+  `phase_ends_at` determina os cinco intervalos de 20 s; não existe um segundo
+  relógio de slide capaz de divergir entre celulares.
+- Na preparação, somente o apresentador vê o primeiro slide. A plateia recebe
+  zero imagens até a apresentação começar; os quatro slides seguintes
+  continuam surpresa para todos.
+- O apresentador não vota em si. Cada pessoa elegível vota uma vez, de 1 a 5,
+  e a média com uma casa é calculada no servidor.
+- Pausar, retomar, pular slide, encerrar apresentação, fechar votação e chamar
+  o próximo apresentador permanecem sob controle do host.
+
+### P1 encontrados e resolvidos
+
+- O preload perguntava por `isAuthority`, mas no modo Supabase esse valor é
+  sempre falso por design. Se uma imagem quebrasse no 5G, ninguém acionaria a
+  substituição existente. Agora o host autenticado pode substituir; no modo
+  local, a autoridade atual continua podendo fazê-lo.
+- A troca juntava primeiro todos os slides bons e depois as reservas: mudava a
+  ordem e podia sortear novamente a URL que acabara de falhar. Agora somente a
+  posição quebrada muda, a lista original inteira sai do sorteio e o comando
+  só é enviado se continuar com exatamente cinco imagens.
+- O timeout de preload pode terminar durante `PREPARATION`, mas o banco
+  aceitava substituição apenas no sorteio/revelação. A migration
+  `0016_slide_preload_window.sql` mantém a recuperação aberta até o countdown,
+  ainda antes da apresentação, e recusa qualquer lista com tamanho diferente
+  de cinco.
+- O parâmetro `?game=improv-slides` era reaplicado em todo snapshot durante a
+  partida. O banco protegia a regra e recusava, mas o host gerou 20 RPCs
+  inúteis no primeiro ensaio de navegador. A sincronização agora roda apenas
+  no lobby e somente quando a escolha é diferente; o reteste ficou sem erros.
+- A UI e o registry prometiam 20 s de preparação, mas o seed histórico de
+  `phase_config` tinha 30 s. A migration
+  `0017_pitch_preparation_parity.sql` alinha somente esse prazo para 20 s.
+
+### Evidência de produção
+
+- Stress dedicado: 10 sessões e 10 WebSockets completaram os 10
+  apresentadores e convergiram em `GAME_OVER`, incluindo reconexão no meio.
+- 900 RPCs, zero tentativa falha, zero retry, zero erro persistente e zero
+  erro de canal.
+- Média RPC 64,0 ms, p95 77,1 ms e p99 137,8 ms.
+- Maior evento Realtime: 1,1 kB; tráfego acumulado máximo: 60,6 kB por
+  cliente na partida inteira.
+- Três navegadores reais confirmaram que só o apresentador recebe a imagem na
+  preparação. Os outros dois tinham zero `<img>`; a imagem privada carregou
+  com largura natural de 1.200 px.
+- Durante a apresentação, os três mostraram a mesma URL no slide 2 e depois no
+  slide 3. A diferença visual do cronômetro entre snapshots sequenciais foi no
+  máximo 1 s.
+- O acervo real inteiro respondeu HTTP 200; o recurso mais lento desse ensaio
+  levou 451 ms. O build mantém cada arquivo entre 6,7 e 140,3 kB.
+- Pause congelou os três aparelhos em `00:02`; retomar voltou o relógio e
+  “Pular” levou todos ao slide 4. “Encerrar” abriu a votação imediatamente.
+- Votos 4 e 5 apareceram como `2 / 2`, geraram média 4,5 em todas as telas e
+  o host chamou o apresentador seguinte.
+- O reteste no bundle público do commit `230a37c` terminou sem erro de página
+  e sem erro no console; encerrar a sala propagou para os convidados.
+- Suite completa: 381 testes. Build de produção e reconstrução das 16
+  migrations passaram.
+
+### Ritmo e diversão
+
+- Ver o primeiro slide durante os 20 s de preparação dá um ponto de partida
+  sem retirar a surpresa dos quatro seguintes.
+- As cinco batidas de 20 s sustentam começo, desenvolvimento, virada,
+  encaminhamento e grand finale. O host pode pular uma imagem que não rende ou
+  encerrar uma fala que já fechou, sem desalinhar nenhum aparelho.
+- Votação e nota esperam a mesa porque a reação faz parte da piada. O botão do
+  host mostra quantos votos ainda faltam.
+- No playtest humano, observar se as pessoas usam o primeiro slide para montar
+  a abertura ou apenas esperam. Não reduzir o prazo sem essa evidência.
+
+### Gate
+
+**READY COM AÇÃO.** Fila, segredo, preload, troca automática, sincronia,
+controles, voto, nota, performance e encerramento passaram. Antes da festa,
+executar no Supabase, em ordem:
+
+1. `supabase/migrations/0015_match_participants.sql`;
+2. `supabase/migrations/0016_slide_preload_window.sql`;
+3. `supabase/migrations/0017_pitch_preparation_parity.sql`.
+
+As três são migrations de proteção/paridade; não criam tabela nem removem
+dados.
+
+Próxima etapa: ensaio final de seis salas simultâneas e gate da festa.
