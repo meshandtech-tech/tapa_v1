@@ -99,6 +99,17 @@ describe("registro de respostas", () => {
     expect(state.quiz?.answers).toEqual({});
   });
 
+  it("quem entra no meio espera a próxima partida", () => {
+    let state = emJogo(2);
+    state = partyReducer(state, { type: "PLAYER_JOIN", player: makePlayer("tarde", 2) });
+    state = responder(state, "tarde", 1);
+
+    expect(state.players.map((player) => player.id)).toContain("tarde");
+    expect(state.quiz?.participantIds).toEqual(["p0", "p1"]);
+    expect(state.quiz?.answers.tarde).toBeUndefined();
+    expect(roundOutcome(state).pending.map((player) => player.id)).toEqual(["p0", "p1"]);
+  });
+
   it("ignora alternativa fora do intervalo", () => {
     let state = responder(emJogo(2), "p0", 9);
     state = responder(state, "p1", -1);

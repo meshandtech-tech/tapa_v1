@@ -104,6 +104,15 @@ describe("fluxo da rodada", () => {
 });
 
 describe("votação", () => {
+  it("quem entra no meio não altera votação nem contador", () => {
+    let state = ate(sala(3), "VOTING");
+    state = partyReducer(state, { type: "PLAYER_JOIN", player: makePlayer("tarde", 3) });
+
+    expect(eligibleVoters(state).map((player) => player.id)).not.toContain("tarde");
+    state = partyReducer(state, { type: "VOTE", playerId: "tarde", rating: 5 });
+    expect(state.devil?.votes.tarde).toBeUndefined();
+  });
+
   it("quem apresenta não vota", () => {
     const state = ate(sala(3), "VOTING");
     const apresentador = currentPresenter(state)!;

@@ -1,6 +1,7 @@
 import { getDeck } from "../data/questions";
 import type { PartyState, Player } from "../party/types";
 import type { Question } from "../types/game";
+import { currentMatchPlayers } from "./participants";
 
 /**
  * Regras puras do "Quem Erra, Paga". Sem React e sem acesso a estado externo:
@@ -50,7 +51,7 @@ export function roundOutcome(state: PartyState): RoundOutcome {
   const wrong: Player[] = [];
   const pending: Player[] = [];
 
-  for (const player of state.players) {
+  for (const player of currentMatchPlayers(state)) {
     const answer = answers[player.id];
     if (answer === undefined) pending.push(player);
     // Quem não respondeu conta como erro na hora de pagar a prenda.
@@ -63,9 +64,10 @@ export function roundOutcome(state: PartyState): RoundOutcome {
 
 /** Todo mundo já respondeu? A TV usa isso para não esperar o tempo à toa. */
 export function everyoneAnswered(state: PartyState): boolean {
-  if (state.players.length === 0) return false;
+  const participants = currentMatchPlayers(state);
+  if (participants.length === 0) return false;
   const answers = state.quiz?.answers ?? {};
-  return state.players.every((player) => answers[player.id] !== undefined);
+  return participants.every((player) => answers[player.id] !== undefined);
 }
 
 /** Segundos restantes na fase atual, nunca negativo. */

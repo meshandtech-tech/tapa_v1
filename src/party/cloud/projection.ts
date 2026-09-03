@@ -297,6 +297,7 @@ export function projectSnapshot(snapshot: RoomSnapshot): PartyState {
     quiz:
       match && room.gameId === "quem-erra-paga"
         ? {
+            participantIds: match.seatOrder,
             order: match.questionOrder,
             answers,
             punishmentIndex: match.punishmentIndex,

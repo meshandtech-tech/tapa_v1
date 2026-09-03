@@ -27,6 +27,7 @@ import {
 } from "../games/advogadoDoDiabo";
 import { roundOutcome, sequentialOrder } from "../games/quemErraPaga";
 import { DEFAULT_GAME_ID, getGame, phaseDuration } from "../games/registry";
+import { currentMatchPlayers, isCurrentMatchParticipant } from "../games/participants";
 import { DEFAULT_THEME_ID, nextThemeId } from "../theme/presets";
 import {
   MAX_CUSTOM_TOPICS,
@@ -796,6 +797,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
         drawing: null,
         slides: null,
         quiz: {
+          participantIds: players.map((player) => player.id),
           order: action.order ?? sequentialOrder(deck.length, game.rounds),
           answers: {},
           punishmentIndex: null,
@@ -808,7 +810,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
       // Resposta atrasada não entra. A TV avança com um respiro depois do
       // prazo, e sem esta trava esse respiro viraria tempo extra.
       if (state.phaseDeadline > 0 && (action.now ?? 0) > state.phaseDeadline) return state;
-      if (!state.players.some((player) => player.id === action.playerId)) return state;
+      if (!isCurrentMatchParticipant(state, action.playerId)) return state;
       // Resposta é definitiva: sem trocar depois de ver a cara dos outros.
       if (state.quiz.answers[action.playerId] !== undefined) return state;
       if (!Number.isInteger(action.optionIndex)) return state;
@@ -836,7 +838,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
     case "VOTE": {
       if (state.phase !== "VOTING") return state;
       if (!Number.isInteger(action.rating) || action.rating < 1 || action.rating > 5) return state;
-      if (!state.players.some((player) => player.id === action.playerId)) return state;
+      if (!isCurrentMatchParticipant(state, action.playerId)) return state;
 
       // Mesmas regras nos dois jogos que votam: quem apresenta não se avalia,
       // e ninguém vota duas vezes.
@@ -1070,7 +1072,7 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
 
 /** Ranking por pontuação, desempatando por quem entrou primeiro. */
 export function leaderboard(state: PartyState): Player[] {
-  return [...state.players].sort(
+  return currentMatchPlayers(state).sort(
     (a, b) => b.score - a.score || a.joinedAt - b.joinedAt,
   );
 }

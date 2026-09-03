@@ -185,6 +185,16 @@ describe("votação", () => {
     return state;
   }
 
+  it("quem entra no meio não vota nem aparece no contador", () => {
+    let state = naVotacao(3);
+    const tarde = jogadores(4)[3];
+    state = partyReducer(state, { type: "PLAYER_JOIN", player: tarde });
+
+    expect(eligibleVoters(state).map((player) => player.id)).not.toContain(tarde.id);
+    state = partyReducer(state, { type: "VOTE", playerId: tarde.id, rating: 5 });
+    expect(state.slides?.votes[tarde.id]).toBeUndefined();
+  });
+
   it("quem apresenta não vota em si", () => {
     const state = naVotacao();
     const quem = currentPresenter(state)!;

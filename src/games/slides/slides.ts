@@ -4,6 +4,7 @@ import {
   PRESENTATION_TOTAL_MS,
   SLIDE_DURATION_MS,
 } from "./config";
+import { currentMatchPlayers } from "../participants";
 
 /**
  * Lógica pura do Apresentação Improvisada.
@@ -132,16 +133,20 @@ export function slideProgress(state: PartyState, now: number): SlideProgress {
 /** Quem pode votar: todo mundo menos quem está apresentando. */
 export function eligibleVoters(state: PartyState): Player[] {
   const apresentador = currentPresenter(state);
-  return state.players.filter((player) => player.id !== apresentador?.id);
+  return currentMatchPlayers(state).filter((player) => player.id !== apresentador?.id);
 }
 
 export function votesIn(state: PartyState): number {
-  return Object.keys(state.slides?.votes ?? {}).length;
+  const eligible = new Set(eligibleVoters(state).map((player) => player.id));
+  return Object.keys(state.slides?.votes ?? {}).filter((id) => eligible.has(id)).length;
 }
 
 /** Média da rodada, com uma casa. `null` quando ninguém votou. */
 export function roundAverage(state: PartyState): number | null {
-  const votos = Object.values(state.slides?.votes ?? {});
+  const eligible = new Set(eligibleVoters(state).map((player) => player.id));
+  const votos = Object.entries(state.slides?.votes ?? {})
+    .filter(([id]) => eligible.has(id))
+    .map(([, rating]) => rating);
   if (votos.length === 0) return null;
   const soma = votos.reduce((total, nota) => total + nota, 0);
   return Math.round((soma / votos.length) * 10) / 10;
@@ -150,7 +155,7 @@ export function roundAverage(state: PartyState): number | null {
 /** Ranking por nota média, desempatando por quem entrou primeiro. */
 export function slidesRanking(state: PartyState): Array<{ player: Player; score: number }> {
   const notas = state.slides?.scores ?? {};
-  return state.players
+  return currentMatchPlayers(state)
     .map((player) => ({ player, score: notas[player.id] ?? 0 }))
     .sort((a, b) => b.score - a.score || a.player.joinedAt - b.player.joinedAt);
 }

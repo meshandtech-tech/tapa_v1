@@ -103,6 +103,8 @@ export interface PartySettings {
  * porque toda fase passou a ter prazo próprio (auto-host).
  */
 export interface QuizState {
+  /** Jogadores congelados no início; quem chega depois entra só na próxima. */
+  participantIds?: string[];
   /** Ordem sorteada das perguntas desta partida (índices no deck). */
   order: number[];
   /** Resposta da rodada corrente: id do jogador → índice da alternativa. */

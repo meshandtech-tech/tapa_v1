@@ -8,6 +8,7 @@ import {
   type Player,
 } from "../party/types";
 import { DEVIL_WHEEL_SIZE } from "./registry";
+import { currentMatchPlayers } from "./participants";
 
 /**
  * Regras puras do "Advogado do Diabo". Sem React e sem estado externo: a TV e
@@ -50,22 +51,26 @@ export function remainingPresenters(state: PartyState): Player[] {
   const devil = state.devil;
   if (!devil) return [];
   const jaForam = new Set(devil.order.slice(0, Math.max(0, devil.index + 1)));
-  return state.players.filter((player) => !jaForam.has(player.id));
+  return currentMatchPlayers(state).filter((player) => !jaForam.has(player.id));
 }
 
 /** Quem pode votar: todo mundo menos quem está apresentando. */
 export function eligibleVoters(state: PartyState): Player[] {
   const presenter = currentPresenter(state);
-  return state.players.filter((player) => player.id !== presenter?.id);
+  return currentMatchPlayers(state).filter((player) => player.id !== presenter?.id);
 }
 
 export function votesIn(state: PartyState): number {
-  return Object.keys(state.devil?.votes ?? {}).length;
+  const eligible = new Set(eligibleVoters(state).map((player) => player.id));
+  return Object.keys(state.devil?.votes ?? {}).filter((id) => eligible.has(id)).length;
 }
 
 /** Média das notas da rodada, ou `null` se ninguém votou. */
 export function roundAverage(state: PartyState): number | null {
-  const votos = Object.values(state.devil?.votes ?? {});
+  const eligible = new Set(eligibleVoters(state).map((player) => player.id));
+  const votos = Object.entries(state.devil?.votes ?? {})
+    .filter(([id]) => eligible.has(id))
+    .map(([, rating]) => rating);
   if (votos.length === 0) return null;
   const soma = votos.reduce((total, nota) => total + nota, 0);
   return Math.round((soma / votos.length) * 10) / 10;
@@ -74,7 +79,7 @@ export function roundAverage(state: PartyState): number | null {
 /** Ranking final por nota média, desempatando por quem entrou primeiro. */
 export function devilLeaderboard(state: PartyState): { player: Player; score: number }[] {
   const scores = state.devil?.scores ?? {};
-  return state.players
+  return currentMatchPlayers(state)
     .map((player) => ({ player, score: scores[player.id] ?? 0 }))
     .sort((a, b) => b.score - a.score || a.player.joinedAt - b.player.joinedAt);
 }

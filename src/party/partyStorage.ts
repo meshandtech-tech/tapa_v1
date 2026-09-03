@@ -88,6 +88,10 @@ function isQuizState(value: unknown): value is QuizState | null {
   if (typeof value !== "object") return false;
   const quiz = value as Partial<QuizState>;
   return (
+    (quiz.participantIds === undefined || (
+      Array.isArray(quiz.participantIds) &&
+      quiz.participantIds.every((id) => typeof id === "string")
+    )) &&
     Array.isArray(quiz.order) &&
     quiz.order.every((index) => Number.isInteger(index) && index >= 0) &&
     (quiz.punishmentIndex === null || Number.isInteger(quiz.punishmentIndex)) &&

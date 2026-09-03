@@ -24,6 +24,7 @@ import { SlidesHostActions } from "../games/slides/SlidesHostActions";
 import { secondsLeft as computeSecondsLeft } from "../games/quemErraPaga";
 import { NICKNAME_MAX_LENGTH, PLAYER_COLORS, type PartyState, type Player } from "../party/types";
 import { getGame, isGameId } from "../games/registry";
+import { isCurrentMatchParticipant } from "../games/participants";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
@@ -85,6 +86,9 @@ function PlayerLobby({ pin }: { pin: string }) {
   const trimmed = nickname.trim();
   const nameTaken = isNicknameTaken(players, trimmed, me?.id);
   const canJoin = trimmed.length > 0 && !nameTaken && connection === "connected";
+  const estaNaPartidaAtual = !!meInParty && !!state
+    ? isCurrentMatchParticipant(state, meInParty.id)
+    : false;
 
   // O jogo escolhido na landing chega pela query string.
   const preselected = params.get("game");
@@ -252,7 +256,16 @@ function PlayerLobby({ pin }: { pin: string }) {
       <Shell pattern={jogoNovo ? getGame(state.settings.gameId).identity.pattern : undefined}>
         <ConnectionBadge connection={connection} />
         <MatchInspector snapshot={snapshot ?? null} connection={connection} />
-        {state.settings.gameId === "advogado-do-diabo" ? (
+        {!estaNaPartidaAtual ? (
+          <Card tilt="tilt-2" className="w-full max-w-md p-7 text-center">
+            <Users strokeWidth={2.5} className="mx-auto mb-3 size-12" />
+            <h2 className="font-display text-3xl font-bold uppercase">Partida em andamento</h2>
+            <p className="mt-3 font-hand text-lg leading-snug">
+              Você já está na sala e entra na próxima partida. Por enquanto,
+              acompanha a bagunça com a galera.
+            </p>
+          </Card>
+        ) : state.settings.gameId === "advogado-do-diabo" ? (
           <AdvogadoDoDiaboPlayer
             state={state}
             me={meInParty}

@@ -140,6 +140,12 @@ try {
                                 where n.nspname='public' and p.proname='replace_slides'`);
   ok(replaceSlidesBody.includes("not is_host_of"), "replace_slides exige host");
 
+  for (const action of ["submit_vote", "submit_answer"]) {
+    const body = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                     where n.nspname='public' and p.proname='${action}'`);
+    ok(body.includes("any(m.seat_order)"), `${action} aceita só participante da partida`);
+  }
+
   const views = q(`select string_agg(table_name,',' order by table_name)
                      from information_schema.views where table_schema='public'`);
   ok((views ?? "").includes("metrics_daily"), "views de métricas criadas");
