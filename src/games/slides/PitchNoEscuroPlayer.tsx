@@ -41,7 +41,7 @@ export function PitchNoEscuroPlayer({
   me,
   now,
   secondsLeft,
-  isAuthority,
+  canReplaceSlides,
   onVote,
   onReplaceSlides,
 }: {
@@ -49,7 +49,7 @@ export function PitchNoEscuroPlayer({
   me: Player;
   now: number;
   secondsLeft: number;
-  isAuthority: boolean;
+  canReplaceSlides: boolean;
   onVote: (rating: number) => void;
   onReplaceSlides: (slideIds: string[]) => void;
 }) {
@@ -62,7 +62,7 @@ export function PitchNoEscuroPlayer({
 
   const trocar = useCallback((ids: string[]) => onReplaceSlides(ids), [onReplaceSlides]);
   // Carrega as imagens na janela entre o sorteio e a preparação.
-  useSlidePreload(slides?.slideIds ?? [], isAuthority, trocar);
+  useSlidePreload(slides?.slideIds ?? [], canReplaceSlides, trocar);
 
   if (!slides) return null;
 

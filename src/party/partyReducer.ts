@@ -2,6 +2,7 @@ import type { DrawingPrompt } from "../data/drawingPrompts";
 import { getDeck } from "../data/questions";
 import { DRAWING_TELEPHONE_CONFIG } from "../games/drawing/config";
 import { stepType } from "../games/drawing/routing";
+import { IMPROV_SLIDES_CONFIG } from "../games/slides/config";
 import {
   createSlidesState,
   currentPresenter as slidesPresenter,
@@ -997,15 +998,15 @@ export function partyReducer(state: PartyState, action: PartyAction): PartyState
     /**
      * Imagem que não carregou sai ANTES de alguém apresentar.
      *
-     * Só vale enquanto o sorteio e a revelação estão na tela — depois da
-     * preparação começar, trocar um slide seria mudar o chão no meio do passo.
-     * Descobrir um arquivo quebrado no meio da apresentação de alguém é
-     * exatamente o que o pré-carregamento existe para evitar.
+     * Vale até o fim da preparação. O preload começa no sorteio, mas uma rede
+     * móvel lenta pode descobrir a falha alguns segundos depois. Preservamos a
+     * posição de todo slide bom e ainda bloqueamos qualquer troca assim que a
+     * contagem regressiva da apresentação começa.
      */
     case "REPLACE_SLIDES": {
       if (!state.slides) return state;
-      if (state.phase !== "PLAYER_SPIN" && state.phase !== "PLAYER_REVEAL") return state;
-      if (action.slideIds.length === 0) return state;
+      if (!["PLAYER_SPIN", "PLAYER_REVEAL", "PREPARATION"].includes(state.phase)) return state;
+      if (action.slideIds.length !== IMPROV_SLIDES_CONFIG.slidesPerPresentation) return state;
       return { ...state, slides: { ...state.slides, slideIds: [...action.slideIds] } };
     }
 

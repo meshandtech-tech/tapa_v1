@@ -1,6 +1,22 @@
 export type RoomCreationStage = "auth" | "room";
 
 /**
+ * A query `?game=` só serve para escolher o jogo ao entrar no lobby.
+ *
+ * Mantê-la na URL durante a partida é normal; reaplicá-la a cada snapshot não
+ * é. Além de gastar RPC, o banco corretamente rejeita mudança de jogo fora do
+ * lobby e enche o console de erros em pleno jogo.
+ */
+export function shouldSyncPreselectedGame(
+  isHost: boolean,
+  phase: string | undefined,
+  currentGameId: string | undefined,
+  preselectedGameId: string,
+): boolean {
+  return isHost && phase === "LOBBY" && currentGameId !== preselectedGameId;
+}
+
+/**
  * Falha conhecida no preparo da sala.
  *
  * Separar as etapas deixa a tela mostrar uma orientação útil sem vazar a

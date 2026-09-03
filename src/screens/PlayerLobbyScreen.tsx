@@ -31,6 +31,7 @@ import { Card } from "../ui/Card";
 import { DifficultySlider } from "../ui/DifficultySlider";
 import { Logo } from "../ui/Logo";
 import { cn } from "../ui/cn";
+import { shouldSyncPreselectedGame } from "./createPartyFlow";
 
 function randomId(): string {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -93,8 +94,18 @@ function PlayerLobby({ pin }: { pin: string }) {
   // O jogo escolhido na landing chega pela query string.
   const preselected = params.get("game");
   useEffect(() => {
-    if (isHost && isGameId(preselected)) sendHostCommand({ type: "SET_GAME", gameId: preselected });
-  }, [isHost, preselected, sendHostCommand]);
+    if (
+      isGameId(preselected) &&
+      shouldSyncPreselectedGame(
+        isHost,
+        state?.phase,
+        state?.settings.gameId,
+        preselected,
+      )
+    ) {
+      sendHostCommand({ type: "SET_GAME", gameId: preselected });
+    }
+  }, [isHost, preselected, sendHostCommand, state?.phase, state?.settings.gameId]);
 
   /**
    * Gaveta de exceções. Com o auto-host, quase nunca é usada.
@@ -279,7 +290,7 @@ function PlayerLobby({ pin }: { pin: string }) {
             me={meInParty}
             now={now}
             secondsLeft={computeSecondsLeft(state, now)}
-            isAuthority={isAuthority}
+            canReplaceSlides={isHost || isAuthority}
             onVote={vote}
             onReplaceSlides={replaceSlides}
           />

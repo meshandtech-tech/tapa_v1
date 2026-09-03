@@ -8,6 +8,7 @@ import {
   everyonePresented,
   pickSlides,
   rememberSlides,
+  replaceFailedSlides,
   roundAverage,
   slideProgress,
   slidesRanking,
@@ -88,6 +89,25 @@ describe("sorteio dos slides", () => {
     for (let i = 0; i < 40; i += 1) usados = rememberSlides(usados, pickSlides(acervo(12), usados), 12);
     // Sempre sobra pelo menos uma apresentação de onde tirar.
     expect(usados.length).toBeLessThanOrEqual(12 - POR_APRESENTACAO);
+  });
+
+  it("troca só as posições quebradas e nunca sorteia a URL que falhou de novo", () => {
+    const atuais = ["a", "b", "c", "d", "e"];
+    const trocados = replaceFailedSlides(atuais, ["b", "d"], [...atuais, "f", "g"], () => 0);
+
+    expect(trocados).not.toBeNull();
+    expect(trocados![0]).toBe("a");
+    expect(trocados![2]).toBe("c");
+    expect(trocados![4]).toBe("e");
+    expect(trocados).toHaveLength(POR_APRESENTACAO);
+    expect(new Set(trocados).size).toBe(POR_APRESENTACAO);
+    expect(trocados).not.toContain("b");
+    expect(trocados).not.toContain("d");
+  });
+
+  it("não envia lista incompleta quando não há reservas suficientes", () => {
+    expect(replaceFailedSlides(["a", "b", "c", "d", "e"], ["b", "d"], ["a", "b", "c", "d", "e", "f"]))
+      .toBeNull();
   });
 });
 
@@ -261,6 +281,26 @@ describe("pular slide (emergência do host)", () => {
   it("só vale durante a apresentação", () => {
     const state = comecar(3);
     expect(partyReducer(state, { type: "SKIP_SLIDE", now: 1 })).toBe(state);
+  });
+});
+
+describe("recuperação de slide quebrado", () => {
+  const novos = ["novo-1", "novo-2", "novo-3", "novo-4", "novo-5"];
+
+  it("aceita exatamente cinco slides até o fim da preparação", () => {
+    const state = { ...comecar(3), phase: "PREPARATION" as const };
+    const depois = partyReducer(state, { type: "REPLACE_SLIDES", slideIds: novos });
+    expect(depois.slides?.slideIds).toEqual(novos);
+  });
+
+  it("não troca depois que a contagem regressiva começou", () => {
+    const state = { ...comecar(3), phase: "COUNTDOWN" as const };
+    expect(partyReducer(state, { type: "REPLACE_SLIDES", slideIds: novos })).toBe(state);
+  });
+
+  it("não aceita uma apresentação incompleta", () => {
+    const state = { ...comecar(3), phase: "PLAYER_REVEAL" as const };
+    expect(partyReducer(state, { type: "REPLACE_SLIDES", slideIds: novos.slice(0, 4) })).toBe(state);
   });
 });
 

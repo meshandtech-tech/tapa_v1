@@ -75,6 +75,36 @@ export function pickSlides(
   return escolhidos;
 }
 
+/**
+ * Troca somente as posições cujas imagens falharam no pré-carregamento.
+ *
+ * A lista original inteira fica fora do sorteio das reservas: uma URL que já
+ * falhou não pode voltar na mesma tentativa, e um slide bom não deve mudar de
+ * posição só porque outro arquivo quebrou.
+ */
+export function replaceFailedSlides(
+  slideIds: readonly string[],
+  failedIds: readonly string[],
+  pool: readonly string[],
+  random: () => number = Math.random,
+): string[] | null {
+  const atuais = new Set(slideIds);
+  const falharam = new Set(failedIds.filter((id) => atuais.has(id)));
+  if (falharam.size === 0) return [...slideIds];
+
+  const reservas = pickSlides(
+    pool.filter((id) => !atuais.has(id)),
+    [],
+    falharam.size,
+    random,
+  );
+  // Nunca manda uma apresentação incompleta para o servidor.
+  if (reservas.length !== falharam.size) return null;
+
+  let proxima = 0;
+  return slideIds.map((id) => (falharam.has(id) ? reservas[proxima++] : id));
+}
+
 /** Fisher-Yates com cópia; a lista de origem nunca é mexida. */
 export function shuffle<T>(items: readonly T[], random: () => number = Math.random): T[] {
   const saida = [...items];

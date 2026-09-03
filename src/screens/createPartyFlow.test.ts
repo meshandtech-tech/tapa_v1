@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { prepareRoom, RoomCreationError } from "./createPartyFlow";
+import { prepareRoom, RoomCreationError, shouldSyncPreselectedGame } from "./createPartyFlow";
 
 const base = {
   pin: "1234",
@@ -68,5 +68,27 @@ describe("prepareRoom", () => {
       cloud: true,
       createCloudRoom: vi.fn(async () => ({ pin: "9876" })),
     })).resolves.toBe("9876");
+  });
+});
+
+describe("shouldSyncPreselectedGame", () => {
+  it("sincroniza apenas o host no lobby quando a escolha ainda é diferente", () => {
+    expect(shouldSyncPreselectedGame(true, "LOBBY", "quem-erra-paga", "improv-slides"))
+      .toBe(true);
+  });
+
+  it("não reenvia a escolha que a sala já possui", () => {
+    expect(shouldSyncPreselectedGame(true, "LOBBY", "improv-slides", "improv-slides"))
+      .toBe(false);
+  });
+
+  it("nunca tenta mudar o jogo durante uma partida", () => {
+    expect(shouldSyncPreselectedGame(true, "PRESENTATION", "quem-erra-paga", "improv-slides"))
+      .toBe(false);
+  });
+
+  it("convidado não aplica configuração de host", () => {
+    expect(shouldSyncPreselectedGame(false, "LOBBY", "quem-erra-paga", "improv-slides"))
+      .toBe(false);
   });
 });
