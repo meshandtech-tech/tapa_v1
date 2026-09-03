@@ -233,3 +233,76 @@ perguntas, respostas, pontuação, revelação e roleta não foram alterados.
 pontuação, pegadinha, roleta, troca de host e encerramento passaram.
 
 Próxima etapa: Advogado do Diabo.
+
+## Fase 4 — Advogado do Diabo
+
+### Ciclo respeitado
+
+`GAME_INTRO → TOPIC_SPIN → TOPIC_REVEAL → PLAYER_SPIN → PLAYER_REVEAL →`
+`PREPARATION → COUNTDOWN → PRESENTATION → VOTING → SCORE_REVEAL →`
+`próximo apresentador ou GAME_OVER`.
+
+- A tese é sorteada antes da pessoa; essa ordem preserva a reação coletiva que
+  dá graça ao jogo.
+- `seat_order` garante uma apresentação por participante, sem repetição.
+- O apresentador não vota em si; cada eleitor vota uma vez, de 1 a 5, e a
+  média com uma casa é calculada no servidor.
+- Votos alheios ficam mascarados durante `VOTING`; contador e nota só fecham
+  quando o host decide.
+- Reroll elimina a tese recusada e mantém a mesma pessoa na vez.
+- Aviso de contexto e saída para tema desconfortável aparecem na TV e nos
+  celulares antes da partida.
+
+### P1 encontrados e resolvidos
+
+- O acervo tinha 10 teses para até 10 apresentações. Em sala cheia, uma única
+  troca deixaria o último participante sem tema. Agora são 20 teses: dez
+  apresentações e uma troca de segurança por pessoa; o acervo continua finito
+  e sem repetição.
+- Comandos manuais de fase convertiam o deadline do Postgres para `Date` e
+  perdiam microssegundos. O compare-and-set recusava “Pular” e “Encerrar
+  apresentação” silenciosamente. O cliente agora devolve o timestamp original
+  do snapshot, mantendo a trava e aceitando o comando legítimo.
+- “Encerrar sala” limpava apenas o estado local do host. Agora espera a RPC
+  `close_room`; os demais aparelhos recebem o encerramento em tempo real.
+- Quem entra no meio continua dentro da sala, mas a UI aguarda a próxima
+  partida e contadores/rankings usam somente a lista congelada de assentos.
+  A migration `0015_match_participants.sql` aplica a mesma regra em
+  `submit_vote` e `submit_answer` no banco.
+
+### Evidência de produção
+
+- Stress dedicado: 10 sessões e 10 WebSockets, 10 apresentadores, 10 teses
+  sorteadas e 10 únicas; `GAME_OVER` em todos os clientes.
+- 1.120 RPCs, zero tentativa falha, zero retry, zero erro persistente e zero
+  erro de canal.
+- Média RPC 64,7 ms, p95 79,3 ms e p99 172,6 ms.
+- Maior evento Realtime: 1,2 kB; tráfego acumulado máximo: 82,4 kB por cliente.
+- Navegador real: tese recusada voltou com o mesmo apresentador e mostrou 18
+  teses restantes; preparação, countdown e apresentação permaneceram
+  sincronizados nos dois celulares.
+- Após a correção do timestamp, “Encerrar apresentação” abriu `VOTING` em
+  menos de 1 segundo; voto 5 gerou nota 5,0 e avançou para o próximo jogador.
+- Encerrar pelo host levou o convidado à tela “A sala fechou”; zero erro de
+  página e zero erro de console.
+- Teste de pior caso: 10 pessoas, uma tese recusada em cada uma das 10 rodadas,
+  10 apresentadores únicos e `GAME_OVER` sem tema vazio.
+
+### Ritmo e diversão
+
+- Roleta, revelação da tese e sorteio do apresentador criam três batidas
+  distintas; preparação de 50 s e apresentação de 60 s têm saída antecipada
+  pelo host para quem terminar antes.
+- Votação e nota esperam decisão humana porque a conversa da mesa faz parte da
+  rodada; o botão informa quantos votos ainda faltam.
+- No playtest, observar se 50 s de preparação é demais para o modo fácil. Não
+  reduzir antes de medir: o host agora consegue encerrar cada fase na mão.
+
+### Gate
+
+**READY COM AÇÃO.** Fluxo, reroll, fila, votação, nota, performance, comandos
+manuais e encerramento passaram. Antes da festa, executar no Supabase apenas
+`supabase/migrations/0015_match_participants.sql`; não cria tabela nem remove
+dados.
+
+Próxima etapa: Pitch no Escuro.
