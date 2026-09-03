@@ -1,5 +1,6 @@
 import { everyoneAnswered } from "./quemErraPaga";
 import { everyoneSubmitted } from "./drawing/state";
+import { DRAWING_TELEPHONE_CONFIG } from "./drawing/config";
 import type { PartyState } from "../party/types";
 
 /**
@@ -30,7 +31,5 @@ export function phaseCompleteEarly(state: PartyState): boolean {
 export function submitGrace(state: PartyState): number {
   if (state.settings.gameId !== "drawing-telephone") return 0;
   if (state.phase !== "DRAW_STEP" && state.phase !== "GUESS_STEP") return 0;
-  return SUBMIT_GRACE_MS;
+  return DRAWING_TELEPHONE_CONFIG.submitGraceMs;
 }
-
-const SUBMIT_GRACE_MS = 3000;

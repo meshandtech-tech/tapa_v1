@@ -147,6 +147,9 @@ try {
          where game_id='improv-slides' and phase='PREPARATION'`) === "20000",
     "Pitch mantém os 20 segundos de preparação prometidos na interface");
 
+  ok(q(`select submit_grace_ms('drawing-telephone','DRAW_STEP')`) === "10000",
+    "Desenho tem 10 segundos para confirmar/repetir a entrega no 5G");
+
   for (const action of ["submit_vote", "submit_answer"]) {
     const body = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                      where n.nspname='public' and p.proname='${action}'`);

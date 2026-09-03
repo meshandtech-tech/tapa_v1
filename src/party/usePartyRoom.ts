@@ -400,13 +400,14 @@ function useLocalPartyRoom(
   const submitDrawing = useCallback(
     (payload: { url: string | null; strokes?: string; status?: "submitted" | "timeout" | "failed" }) => {
       const current = meRef.current;
-      if (!current) return;
+      if (!current) return false;
       send(
         { type: "SUBMIT_DRAWING", playerId: current.id, ...payload },
         () => channelRef.current?.broadcast({
           type: "SUBMIT_DRAWING", playerId: current.id, ...payload,
         }),
       );
+      return true;
     },
     [send],
   );
@@ -414,10 +415,11 @@ function useLocalPartyRoom(
   const submitGuess = useCallback(
     (text: string) => {
       const current = meRef.current;
-      if (!current) return;
+      if (!current) return false;
       send({ type: "SUBMIT_GUESS", playerId: current.id, text }, () =>
         channelRef.current?.broadcast({ type: "SUBMIT_GUESS", playerId: current.id, text }),
       );
+      return true;
     },
     [send],
   );

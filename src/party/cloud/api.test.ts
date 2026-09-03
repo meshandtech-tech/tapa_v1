@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const query = {
@@ -23,7 +23,7 @@ vi.mock("../../lib/supabase", () => ({
 
 vi.mock("../telemetry", () => ({ logGameEvent: vi.fn() }));
 
-import { resolveRoom } from "./api";
+import { resolveRoom, submitContributionReliable } from "./api";
 
 describe("resolveRoom durante o deploy compatível", () => {
   beforeEach(() => {
@@ -50,5 +50,66 @@ describe("resolveRoom durante o deploy compatível", () => {
 
     await expect(resolveRoom("1234")).resolves.toBe("room-old");
     expect(mocks.from).toHaveBeenCalledWith("rooms");
+  });
+});
+
+describe("entrega confiável do caderno", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mocks.rpc.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("repete uma falha de rede e só confirma depois do ACK", async () => {
+    mocks.rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: "NETWORK", message: "Failed to fetch" },
+      })
+      .mockResolvedValueOnce({
+        data: { contribution_id: "page-1" },
+        error: null,
+      });
+
+    const delivery = submitContributionReliable("room-1", {
+      strokes: { v: 2, g: 2048, s: [[0, 28, 0, 10, 10]] },
+    });
+    await vi.runAllTimersAsync();
+
+    await expect(delivery).resolves.toEqual({ contribution_id: "page-1" });
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it("repete uma chamada sem resposta sem duplicar a página lógica", async () => {
+    mocks.rpc
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce({
+        data: { contribution_id: "page-1" },
+        error: null,
+      });
+
+    const delivery = submitContributionReliable("room-1", { text: "girafa" });
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(delivery).resolves.toEqual({ contribution_id: "page-1" });
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it("repete também quando o fetch rejeita em vez de devolver erro", async () => {
+    mocks.rpc
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce({
+        data: { contribution_id: "page-2" },
+        error: null,
+      });
+
+    const delivery = submitContributionReliable("room-1", { text: "avião" });
+    await vi.runAllTimersAsync();
+
+    await expect(delivery).resolves.toEqual({ contribution_id: "page-2" });
+    expect(mocks.rpc).toHaveBeenCalledTimes(2);
   });
 });

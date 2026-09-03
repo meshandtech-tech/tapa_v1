@@ -53,7 +53,7 @@ export function DrawStepScreen({
   assignment: DrawingAssignment;
   playerId: string;
   secondsLeft: number;
-  onSubmit: (submission: DrawingSubmission) => void;
+  onSubmit: (submission: DrawingSubmission) => boolean | Promise<boolean>;
   onAttach?: DrawingAttach;
 }) {
   const canvasRef = useRef<DrawingCanvasHandle | null>(null);
@@ -61,6 +61,7 @@ export function DrawStepScreen({
   const [color, setColor] = useState(0);
   const [size, setSize] = useState<BrushSize>(DEFAULT_BRUSH_SIZE);
   const [enviando, setEnviando] = useState(false);
+  const [falhaEnvio, setFalhaEnvio] = useState(false);
   const [confirmandoLimpar, setConfirmandoLimpar] = useState(false);
   const enviadoRef = useRef(false);
 
@@ -89,28 +90,36 @@ export function DrawStepScreen({
    * segundos numa rede ruim via a própria página virar branco, porque o envio
    * chegava depois do passo já encerrado.
    *
-   * Agora a página nasce no mesmo instante em que o dedo sai da tela, com os
-   * traços que já estão em memória. A imagem só a MELHORA, e chega quando
-   * chegar — sem prazo para cumprir.
+   * Agora os traços vão antes da imagem e ficam no rascunho até o Postgres
+   * confirmar. A chamada é repetida no 5G; a imagem só MELHORA a página e
+   * chega depois, sem prazo para cumprir.
    */
   const enviar = useCallback(
-    (status: SubmissionStatus = "submitted") => {
+    async (status: SubmissionStatus = "submitted") => {
       // Trava contra dedo batendo duas vezes E contra o auto-envio do prazo
       // atropelar um envio manual. A trava definitiva é a unique do banco;
       // esta só evita o trabalho repetido.
       if (enviadoRef.current) return;
       enviadoRef.current = true;
       setEnviando(true);
+      setFalhaEnvio(false);
 
       const strokes = canvasRef.current?.getStrokes() ?? [];
       const vazio = isBlank(strokes);
 
-      // 1. A página existe AGORA. Nada de rede nesta linha.
-      onSubmit({
+      // 1. A página só é considerada entregue depois do ACK do Postgres. Até
+      // lá, o rascunho continua neste aparelho e pode ser reenviado no 5G.
+      const confirmed = await onSubmit({
         url: null,
         ...(vazio ? {} : { strokes: serializeStrokes(strokes) }),
         status: vazio && status === "submitted" ? "submitted" : status,
       });
+      if (!confirmed) {
+        enviadoRef.current = false;
+        setEnviando(false);
+        setFalhaEnvio(true);
+        return;
+      }
       clearDraft(pin, playerId, stepIndex, chain.id);
 
       // 2. A imagem sobe em segundo plano. Falhar aqui não custa a página:
@@ -138,7 +147,7 @@ export function DrawStepScreen({
   // partida esperando alguém seria pior do que uma página vazia no caderno.
   useEffect(() => {
     if (secondsLeft > 0 || enviadoRef.current) return;
-    enviar("timeout");
+    void enviar("timeout");
   }, [secondsLeft, enviar]);
 
   /**
@@ -154,7 +163,7 @@ export function DrawStepScreen({
       if (enviadoRef.current) return;
       const strokes = canvasRef.current?.getStrokes() ?? [];
       if (isBlank(strokes)) return;
-      enviar("timeout");
+      void enviar("timeout");
     };
     const aoEsconder = () => {
       if (document.visibilityState === "hidden") salvar();
@@ -311,9 +320,20 @@ export function DrawStepScreen({
         />
       </div>
 
-      <Button size="md" variant="solid" disabled={enviando} onClick={() => enviar()}>
+      {falhaEnvio ? (
+        <p role="alert" className="border-4 border-ink bg-paper px-3 py-2 text-center font-action text-xs uppercase">
+          Seu desenho está salvo. A rede falhou — tente enviar de novo.
+        </p>
+      ) : null}
+
+      <Button
+        size="md"
+        variant="solid"
+        disabled={enviando || !temTraco}
+        onClick={() => void enviar()}
+      >
         <Send strokeWidth={3} className="size-5" />
-        Enviar desenho
+        {falhaEnvio ? "Tentar enviar de novo" : "Enviar desenho"}
       </Button>
 
       {/* Limpar apaga 90 segundos de trabalho: nunca no primeiro toque. */}

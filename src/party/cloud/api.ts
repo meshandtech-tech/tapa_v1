@@ -55,6 +55,30 @@ async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T
 }
 
 /**
+ * Uma chamada de contribuição é pequena, idempotente e vale uma página
+ * inteira do caderno. No 5G, deixar uma única tentativa decidir se o desenho
+ * existe é uma troca ruim: timeout do navegador não significa que o Postgres
+ * não recebeu, e repetir é seguro por causa da unique da contribuição.
+ */
+const CONTRIBUTION_ATTEMPTS = 3;
+const CONTRIBUTION_ACK_TIMEOUT_MS = 2500;
+const CONTRIBUTION_RETRY_DELAY_MS = 250;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = globalThis.setTimeout(() => resolve(null), timeoutMs);
+  });
+  const result = await Promise.race([promise, timeout]);
+  if (timer !== undefined) globalThis.clearTimeout(timer);
+  return result;
+}
+
+/**
  * Diferença entre o relógio deste aparelho e o do servidor.
  *
  * O prazo da fase é um carimbo do Postgres. Um celular com a hora errada
@@ -240,6 +264,40 @@ export async function submitContribution(roomId: string, payload: {
     p_text: payload.text ?? "",
     p_status: payload.status ?? "submitted",
   });
+}
+
+/**
+ * Confirma a contribuição no servidor, repetindo quando a rede some.
+ *
+ * `submit_contribution` é idempotente: duas respostas atrasadas continuam
+ * representando uma só página. O limite curto por tentativa permite que uma
+ * segunda conexão 5G seja aberta ainda dentro da folga antes da fase avançar.
+ */
+export async function submitContributionReliable(roomId: string, payload: {
+  storagePath?: string | null;
+  strokes?: unknown;
+  text?: string;
+  status?: string;
+}) {
+  for (let attempt = 0; attempt < CONTRIBUTION_ATTEMPTS; attempt += 1) {
+    let result: Awaited<ReturnType<typeof submitContribution>> = null;
+    try {
+      result = await withTimeout(
+        submitContribution(roomId, payload),
+        CONTRIBUTION_ACK_TIMEOUT_MS,
+      );
+    } catch (error) {
+      // `supabase-js` normalmente devolve `{ error }`, mas uma troca brusca
+      // de Wi-Fi/5G também pode rejeitar o fetch. A próxima tentativa ainda
+      // é segura porque a contribuição tem chave única no banco.
+      console.error("[tapa] conexão da contribuição caiu", error);
+    }
+    if (result) return result;
+    if (attempt + 1 < CONTRIBUTION_ATTEMPTS) {
+      await wait(CONTRIBUTION_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+  return null;
 }
 
 /** Anexa a imagem DEPOIS: a página já existe, o upload só a melhora. */

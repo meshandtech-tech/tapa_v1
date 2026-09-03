@@ -34,10 +34,10 @@ export function TelefoneSemFioPlayer({
   state: PartyState;
   me: Player;
   secondsLeft: number;
-  onSubmitDrawing: (submission: DrawingSubmission) => void;
+  onSubmitDrawing: (submission: DrawingSubmission) => boolean | Promise<boolean>;
   /** Chega depois do upload; a página já existe sem ele. */
   onAttachDrawing?: (storagePath: string, stepIndex: number) => void;
-  onSubmitGuess: (text: string) => void;
+  onSubmitGuess: (text: string) => boolean | Promise<boolean>;
   /** Rebusca a foto autoritativa. É a saída de toda espera sem fim. */
   onRefresh?: () => void;
 }) {

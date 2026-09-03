@@ -78,8 +78,8 @@ function montar(snap: RoomSnapshot): string {
       state={state}
       me={me}
       secondsLeft={90}
-      onSubmitDrawing={() => {}}
-      onSubmitGuess={() => {}}
+      onSubmitDrawing={() => true}
+      onSubmitGuess={() => true}
     />,
   );
 }

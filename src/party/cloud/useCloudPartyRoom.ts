@@ -118,23 +118,28 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
    * retransmissão do estado inteiro, que era o que estourava o canal.
    */
   const submitDrawing = useCallback(
-    (payload: { url: string | null; strokes?: string; status?: string }) => {
-      if (!roomId) return;
+    async (payload: { url: string | null; strokes?: string; status?: string }) => {
+      if (!roomId) return false;
       let strokes: unknown = null;
       if (payload.strokes) {
         try {
           strokes = JSON.parse(payload.strokes);
         } catch {
-          strokes = null;
+          return false;
         }
       }
-      void api.submitContribution(roomId, {
+      const result = await api.submitContributionReliable(roomId, {
         storagePath: null,
         strokes,
         status: payload.status ?? "submitted",
       });
+      if (!result || result.skipped) return false;
+      // Não depende do Realtime para tirar o jogador do canvas: a confirmação
+      // volta acompanhada por uma foto autoritativa da sala.
+      await refresh();
+      return true;
     },
-    [roomId],
+    [refresh, roomId],
   );
 
   /** Chega depois do upload. A página já existe; a imagem só a melhora. */
@@ -146,10 +151,17 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
   );
 
   const submitGuess = useCallback(
-    (text: string) => {
-      if (roomId) void api.submitContribution(roomId, { text, status: "submitted" });
+    async (text: string) => {
+      if (!roomId) return false;
+      const result = await api.submitContributionReliable(
+        roomId,
+        { text, status: "submitted" },
+      );
+      if (!result || result.skipped) return false;
+      await refresh();
+      return true;
     },
-    [roomId],
+    [refresh, roomId],
   );
 
   /** Imagem que não carregou sai ANTES de alguém apresentar. */

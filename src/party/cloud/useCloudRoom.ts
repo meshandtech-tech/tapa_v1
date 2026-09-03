@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { ensureAnonSession, getSupabase, lastAuthFailure, type AuthFailure } from "../../lib/supabase";
 import { logGameEvent, setLogContext } from "../telemetry";
+import { DRAWING_TELEPHONE_CONFIG } from "../../games/drawing/config";
 import * as api from "./api";
 import { cloudPhaseCompleteEarly } from "./completion";
 import { projectSnapshot } from "./projection";
@@ -248,7 +249,9 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
       0, (snap.match?.seatOrder ?? []).indexOf(snap.me.playerId ?? ""),
     );
     const passoDeEntrega = snap.room.phase === "DRAW_STEP" || snap.room.phase === "GUESS_STEP";
-    const graca = snap.room.gameId === "drawing-telephone" && passoDeEntrega ? 3000 : 0;
+    const graca = snap.room.gameId === "drawing-telephone" && passoDeEntrega
+      ? DRAWING_TELEPHONE_CONFIG.submitGraceMs
+      : 0;
 
     /**
      * Todo mundo já terminou: não há o que esperar. No desenho isso evita até

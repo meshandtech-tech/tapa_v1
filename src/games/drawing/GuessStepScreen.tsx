@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
@@ -20,21 +20,36 @@ export function GuessStepScreen({
 }: {
   assignment: DrawingAssignment;
   secondsLeft: number;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => boolean | Promise<boolean>;
 }) {
   const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [falhaEnvio, setFalhaEnvio] = useState(false);
   const enviadoRef = useRef(false);
   const textoRef = useRef("");
   textoRef.current = texto;
+
+  const enviarTexto = useCallback(async (valor: string) => {
+    const limpo = valor.trim();
+    if (!limpo || enviadoRef.current) return;
+    enviadoRef.current = true;
+    setEnviando(true);
+    setFalhaEnvio(false);
+    const confirmed = await onSubmit(limpo);
+    if (!confirmed) {
+      enviadoRef.current = false;
+      setEnviando(false);
+      setFalhaEnvio(true);
+    }
+  }, [onSubmit]);
 
   // Prazo vencido: manda o que já estava digitado. Só não INVENTA palpite —
   // campo vazio vira página em branco, e a revelação mostra isso como tal.
   useEffect(() => {
     if (secondsLeft > 0 || enviadoRef.current) return;
-    enviadoRef.current = true;
     const atual = textoRef.current.trim();
-    if (atual) onSubmit(atual);
-  }, [secondsLeft, onSubmit]);
+    if (atual) void enviarTexto(atual);
+  }, [enviarTexto, secondsLeft]);
 
   /**
    * O celular saiu de cena com palpite digitado.
@@ -49,8 +64,7 @@ export function GuessStepScreen({
       if (enviadoRef.current) return;
       const atual = textoRef.current.trim();
       if (!atual) return;
-      enviadoRef.current = true;
-      onSubmit(atual);
+      void enviarTexto(atual);
     };
     const aoEsconder = () => {
       if (document.visibilityState === "hidden") salvar();
@@ -61,13 +75,10 @@ export function GuessStepScreen({
       document.removeEventListener("visibilitychange", aoEsconder);
       window.removeEventListener("pagehide", salvar);
     };
-  }, [onSubmit]);
+  }, [enviarTexto]);
 
   const enviar = () => {
-    const limpo = texto.trim();
-    if (!limpo || enviadoRef.current) return;
-    enviadoRef.current = true;
-    onSubmit(limpo);
+    void enviarTexto(texto);
   };
 
   const urgente = secondsLeft <= 10;
@@ -112,6 +123,7 @@ export function GuessStepScreen({
           type="text"
           value={texto}
           onChange={(event) => setTexto(event.target.value)}
+          disabled={enviando}
           maxLength={60}
           // Autocorreção do teclado fica LIGADA de propósito: é palpite de
           // festa, não ditado — brigar com o corretor só atrasa quem digita.
@@ -123,9 +135,14 @@ export function GuessStepScreen({
                      shadow-brutal placeholder:opacity-50
                      focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-ink"
         />
-        <Button type="submit" size="md" variant="solid" disabled={!texto.trim()}>
+        {falhaEnvio ? (
+          <p role="alert" className="border-4 border-ink bg-paper px-3 py-2 text-center font-action text-xs uppercase">
+            Seu palpite está salvo. A rede falhou — tente de novo.
+          </p>
+        ) : null}
+        <Button type="submit" size="md" variant="solid" disabled={enviando || !texto.trim()}>
           <Send strokeWidth={3} className="size-5" />
-          Enviar palpite
+          {enviando ? "Enviando…" : falhaEnvio ? "Tentar de novo" : "Enviar palpite"}
         </Button>
       </form>
     </div>

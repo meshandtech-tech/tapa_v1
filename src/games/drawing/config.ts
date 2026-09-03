@@ -18,10 +18,10 @@ export const DRAWING_TELEPHONE_CONFIG = {
   /**
    * Folga entre o prazo vencer e a autoridade dar o passo por perdido.
    *
-   * Sem ela, um upload lento no wi-fi do bar apagaria um desenho que a pessoa
-   * fez inteiro — o traço estava pronto, só a rede que demorou.
+   * Sem ela, um ACK lento no 5G deixaria `advance_phase` preencher `missed`
+   * antes de uma segunda tentativa guardar os traços.
    */
-  submitGraceMs: 3000,
+  submitGraceMs: 10000,
 } as const;
 
 /**
