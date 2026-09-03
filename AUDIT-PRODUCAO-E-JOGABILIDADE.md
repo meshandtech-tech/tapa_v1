@@ -64,32 +64,32 @@ forma assíncrona e fora das transações do jogo.
 ### Evidência medida
 
 - Navegador público: criação, entrada de host, entrada de convidado, roster em
-  tempo real, reload do convidado e encerramento passaram.
+  tempo real, reload do convidado e encerramento passaram já com o RLS novo.
 - Queda do host: outro membro assumiu após 31 segundos e encerrou a sala.
-- Carga já executada: 6 salas × 10 sessões, 5.420 RPCs, zero erro persistente,
-  zero retry e seis jogos concluídos.
-- Pior p95 de RPC: 560,5 ms; pior p99: 917,2 ms.
+- Carga depois do hardening: 6 salas × 10 sessões, 5.421 RPCs, uma tentativa
+  transitória recuperada (0,02%), zero erro persistente e seis jogos
+  concluídos.
+- Média ponderada de RPC: 99,6 ms; pior p95: 336,0 ms; pior p99: 672,9 ms.
 - Maior evento individual de Realtime: 1,5 kB.
-- Teste mais recente do desenho: 1.680 RPCs, média 137,2 ms, p95 252,9 ms,
-  p99 626,4 ms e zero erro/retry.
+- Teste mais recente do desenho: 1.680 RPCs, média 114,3 ms, p95 336,0 ms,
+  p99 672,9 ms e zero erro/retry.
 - Criação controlada em produção: 74–256,6 ms.
+- Capacidade concorrente: 10 de 11 entradas aceitas; a décima primeira recebeu
+  `room_full` e o roster permaneceu exatamente com 10.
+- Storage: primeiro upload e retry com `upsert` passaram; URL pública respondeu
+  HTTP 200 com os bytes esperados.
 - Suite: 359 testes e build de produção verdes.
 
-### P0/P1 encontrados
+### P0/P1 encontrados e resolvidos
 
-Produção ainda não recebeu a migration `0014_party_isolation.sql`:
-
-- criar outra sala com o mesmo PIN fecha a sala anterior;
-- um membro de uma sala consegue pedir `room_snapshot` de outra sala se souber
-  o UUID;
-- entradas simultâneas ainda não estão serializadas pela linha da sala;
-- `replace_slides` ainda não valida host no banco.
-
-O teste público confirmou a versão antiga: `resolve_room` ainda não existe,
-uma colisão fechou a primeira sala e o snapshot cruzado foi devolvido.
-
-Também falta aplicar a policy de `UPDATE` de `supabase/storage.sql`, necessária
-para o retry idempotente de upload com `upsert`.
+- Colisão de PIN agora reserva outro código e preserva a sala anterior.
+- `resolve_room` substituiu a enumeração de salas abertas.
+- Um membro recebe `room_forbidden` ao pedir snapshot de outra sala.
+- Entradas são serializadas com lock na sala; capacidade não pode ser furada.
+- RPCs internas não têm permissão de execução pelo cliente.
+- `advance_phase` exige membro e `replace_slides` exige host.
+- Storage aceita o retry idempotente de upload com `upsert`.
+- O limite de Auth anônimo foi ajustado para 3.600/hora por IP.
 
 ### Capacidade do Supabase
 
@@ -112,14 +112,7 @@ Referências oficiais:
 
 ### Gate atual
 
-**NOT READY**, somente porque o hardening pronto ainda não foi aplicado ao
-Supabase de produção.
+**READY.** Criação, entrada, isolamento, capacidade, reconexão, sucessão de
+host, Storage e carga de 60 sessões passaram em produção.
 
-Para fechar a fase 1:
-
-1. Aplicar `supabase/migrations/0014_party_isolation.sql` no SQL Editor.
-2. Aplicar `supabase/storage.sql` no SQL Editor.
-3. Ajustar o limite de usuários anônimos para a entrada concentrada da festa.
-4. Repetir colisão, isolamento, capacidade concorrente, 6 × 10 conexões e
-   reconexão de host.
-5. Marcando READY, iniciar o Telefone Sem Fio sem alterar seu ciclo de jogo.
+Próxima etapa: auditar o Telefone Sem Fio sem alterar seu ciclo de jogo.

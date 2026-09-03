@@ -74,11 +74,16 @@ async function criarJogador(nome) {
     realtime: { params: { eventsPerSecond: 10 } },
   });
   let data, error;
-  for (let i = 1; i <= 5; i++) {
+  let espera = 900;
+  const tentativas = 8;
+  for (let i = 1; i <= tentativas; i++) {
     ({ data, error } = await sb.auth.signInAnonymously());
     if (!error) break;
-    if (!/rate limit/i.test(error.message) || i === 5) throw new Error(`${nome}: ${error.message}`);
-    await sleep(2000 * i);
+    if (!/rate limit/i.test(error.message) || i === tentativas) {
+      throw new Error(`${nome}: ${error.message}`);
+    }
+    await sleep(espera / 2 + Math.random() * espera);
+    espera = Math.min(8000, espera * 2);
   }
   return { nome, sb, uid: data.user.id, eventos: 0, bytes: 0, maiorEvento: 0,
            erroCanal: 0, assinado: false, nuncaVoltou: false };
@@ -137,15 +142,33 @@ async function rodar(gameId) {
   }
   const host = jogadores[0];
 
-  const PIN = String(Math.floor(100000 + Math.random() * 899999));
+  let roomId = null;
+  const abortar = async (mensagem) => {
+    res.falhas.push(mensagem);
+    if (roomId) await rpc(host, "close_room", { p_room: roomId });
+    for (const p of jogadores) {
+      if (p.canal) try { await p.sb.removeChannel(p.canal); } catch {}
+    }
+    res.ms = Date.now() - t0;
+    res.bytesMax = Math.max(0, ...jogadores.map((p) => p.bytes));
+    res.maiorMsg = Math.max(0, ...jogadores.map((p) => p.maiorEvento));
+    res.errosCanal = jogadores.reduce((total, p) => total + p.erroCanal, 0);
+    res.eventos = Math.max(0, ...jogadores.map((p) => p.eventos));
+    M.jogos[gameId] = res;
+    return res;
+  };
+
+  const PIN = String(Math.floor(1000 + Math.random() * 9000));
   let r = await rpc(host, "create_room", { p_pin: PIN, p_game_id: gameId });
-  if (r.error) { res.falhas.push(`create_room: ${r.error.message}`); return res; }
-  const roomId = r.data.id;
+  if (r.error) return abortar(`create_room: ${r.error.message}`);
+  roomId = r.data.id;
 
   for (const [i, p] of jogadores.entries()) {
     const j = await rpc(p, "join_room", {
       p_pin: PIN, p_nickname: `Jogador${i}`, p_color: `#f${i}5c8a`, p_avatar_seed: `s${i}` });
-    if (j.error || j.data?.error) { res.falhas.push(`join ${p.nome}`); return res; }
+    if (j.error || j.data?.error) {
+      return abortar(`join ${p.nome}: ${j.error?.message ?? j.data?.error}`);
+    }
     p.playerId = j.data.player_id;
   }
   await Promise.all(jogadores.map((p) => assinar(p, roomId)));
@@ -167,7 +190,7 @@ async function rodar(gameId) {
   if (gameId === "improv-slides") payload.p_slide_ids = ["s1", "s2", "s3", "s4", "s5"];
 
   r = await rpc(host, "start_match", payload);
-  if (r.error) { res.falhas.push(`start_match: ${r.error.message}`); return res; }
+  if (r.error) return abortar(`start_match: ${r.error.message}`);
 
   // -------------------------------------------------------------------------
   // Motor genérico: olha a fase, faz o que ela pede, avança.
@@ -379,9 +402,9 @@ console.log(`  erros persistentes:${M.erros.length}`);
 console.log(`  latência média:    ${media.toFixed(1)} ms`);
 console.log(`  latência p95:      ${percentil(0.95).toFixed(1)} ms`);
 console.log(`  latência p99:      ${percentil(0.99).toFixed(1)} ms`);
-console.log(`  maior msg realtime:${(Math.max(...todas.map((r) => r.maiorMsg)) / 1024).toFixed(1)} kB`);
+console.log(`  maior msg realtime:${(Math.max(0, ...todas.map((r) => r.maiorMsg)) / 1024).toFixed(1)} kB`);
 console.log(`  erros de canal:    ${todas.reduce((n, r) => n + r.errosCanal, 0)}`);
-console.log(`  pior tráfego:      ${(Math.max(...todas.map((r) => r.bytesMax)) / 1024).toFixed(1)} kB por cliente`);
+console.log(`  pior tráfego:      ${(Math.max(0, ...todas.map((r) => r.bytesMax)) / 1024).toFixed(1)} kB por cliente`);
 console.log(`  jogos completos:   ${todas.filter((r) => r.fases.has("GAME_OVER")).length}/${todas.length}`);
 console.log(falhas.length ? `\n\x1b[31mFALHAS (${falhas.length})\x1b[0m\n  - ${falhas.join("\n  - ")}`
                           : `\n\x1b[32mTUDO PASSOU\x1b[0m`);
