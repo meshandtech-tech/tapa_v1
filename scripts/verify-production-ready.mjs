@@ -91,11 +91,12 @@ try {
     current.playerId = joined.player_id;
   }
 
-  const initialSlides = ["ready-a", "ready-b", "ready-c", "ready-d", "ready-e"];
-  await rpc(host, "start_match", { p_room: roomId, p_slide_ids: initialSlides });
+  const slidePool = Array.from({ length: 10 }, (_, index) => `ready-${index}`);
+  await rpc(host, "start_match", { p_room: roomId, p_slide_ids: slidePool });
   let state = await snapshot(host);
   check(state.room.phase === "GAME_INTRO", "Pitch iniciou em GAME_INTRO");
   check(state.match.seatOrder.length === 3, "seat_order congelou os três participantes iniciais");
+  check(state.match.slideIds.length === 0, "acervo não vaza como apresentação antes do primeiro turno");
 
   const lateJoin = await rpc(late, "join_room", {
     p_pin: room.pin,
@@ -109,6 +110,12 @@ try {
 
   state = await advance();
   check(state.room.phase === "PLAYER_SPIN", "GAME_INTRO avançou para PLAYER_SPIN");
+  const firstPresentation = [...state.match.slideIds];
+  check(firstPresentation.length === 5 && new Set(firstPresentation).size === 5,
+    "primeira apresentação recebeu cinco slides persistidos e únicos");
+  const refreshedPresentation = (await snapshot(host)).match.slideIds;
+  check(JSON.stringify(refreshedPresentation) === JSON.stringify(firstPresentation),
+    "refresh mantém exatamente os mesmos slides");
   state = await advance();
   check(state.room.phase === "PLAYER_REVEAL", "PLAYER_SPIN avançou para PLAYER_REVEAL");
   state = await advance();
@@ -122,7 +129,7 @@ try {
     p_slide_ids: ["invalid-1", "invalid-2", "invalid-3", "invalid-4"],
   });
   state = await snapshot(host);
-  check(JSON.stringify(state.match.slideIds) === JSON.stringify(initialSlides), "lista incompleta de slides foi recusada");
+  check(JSON.stringify(state.match.slideIds) === JSON.stringify(firstPresentation), "lista incompleta de slides foi recusada");
 
   const guestReplacement = await memberA.sb.rpc("replace_slides", {
     p_room: roomId,
@@ -148,11 +155,34 @@ try {
 
   const presenter = state.match.seatOrder[state.match.presenterIndex];
   const eligible = [host, memberA, memberB].find((current) => current.playerId !== presenter);
-  await rpc(eligible, "submit_vote", { p_room: roomId, p_rating: 4 });
+  const confirmedVote = await rpc(eligible, "submit_vote_confirmed", {
+    p_room: roomId, p_rating: 4,
+  });
+  check(confirmedVote.accepted === true && confirmedVote.duplicate === false,
+    "voto recebeu ACK autoritativo");
+  const duplicateVote = await rpc(eligible, "submit_vote_confirmed", {
+    p_room: roomId, p_rating: 1,
+  });
+  check(duplicateVote.accepted === true && duplicateVote.duplicate === true,
+    "reenvio do voto foi reconhecido como duplicado");
   state = await snapshot(host);
   check(eligible.playerId in state.votes, "participante elegível continua votando normalmente");
 
-  console.log("\n  PRODUÇÃO READY: migrations 0015, 0016 e 0017 ativas.\n");
+  state = await advance();
+  check(state.room.phase === "SCORE_REVEAL", "votação fechou sem corrida com o voto confirmado");
+  state = await advance();
+  check(state.room.phase === "PLAYER_SPIN", "segundo apresentador começou normalmente");
+  const secondPresentation = state.match.slideIds;
+  check(secondPresentation.length === 5 && !secondPresentation.some((id) => firstPresentation.includes(id)),
+    "apresentações consecutivas usam conjuntos diferentes com acervo suficiente");
+
+  const drawingFinalizationProbe = await rpc(host, "finalize_drawing", {
+    p_room: roomId, p_step: 0, p_storage_path: null, p_status: "failed",
+  });
+  check(drawingFinalizationProbe.skipped === "contribution_missing",
+    "RPC de finalização do desenho está ativa no PostgREST");
+
+  console.log("\n  PRODUÇÃO READY: migrations 0015 até 0020 ativas.\n");
 } finally {
   if (host && roomId) {
     const { error } = await host.sb.rpc("close_room", { p_room: roomId });
