@@ -29,7 +29,7 @@ export interface DrawingSubmission {
  * Devolvido separado de `onSubmit` de propósito — ver o comentário em
  * `enviar`. A entrega não pode esperar a rede.
  */
-export type DrawingAttach = (url: string) => void;
+export type DrawingAttach = (storagePath: string) => void;
 
 /**
  * A tela de desenhar.
@@ -119,13 +119,13 @@ export function DrawStepScreen({
       void (async () => {
         const imagem = await renderToBlob(strokes);
         if (!imagem) return;
-        const url = await uploadDrawing(
+        const storagePath = await uploadDrawing(
           drawingPath({
             pin, matchId, chainId: chain.id, stepIndex, extension: imagem.extension,
           }),
           imagem.blob,
         );
-        if (url) onAttach(url);
+        if (storagePath) onAttach(storagePath);
       })();
     },
     [chain.id, matchId, onAttach, onSubmit, pin, playerId, stepIndex],

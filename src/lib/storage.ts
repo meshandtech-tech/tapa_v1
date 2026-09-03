@@ -30,7 +30,11 @@ export function drawingPath(parts: {
 }
 
 /**
- * Sobe a imagem e devolve a URL pública. `null` quando não deu.
+ * Sobe a imagem e devolve o CAMINHO do objeto. `null` quando não deu.
+ *
+ * O banco guarda esse caminho relativo e a projeção o transforma em URL só
+ * quando lê a página. Guardar a URL completa aqui faria a rodada seguinte
+ * passar uma URL como se fosse caminho e gerar um endereço inválido.
  *
  * Nunca lança: falhar aqui não pode derrubar a rodada. Quem chama trata o
  * `null` caindo para os traços pelo canal, e a corrente segue.
@@ -52,8 +56,7 @@ export async function uploadDrawing(path: string, blob: Blob): Promise<string | 
       const { error } = await comLimiteDeTempo(envio, TIMEOUT_MS);
       if (error) throw error;
 
-      const { data } = supabase.storage.from(DRAWINGS_BUCKET).getPublicUrl(path);
-      return data.publicUrl ?? null;
+      return path;
     } catch (erro) {
       const ultima = tentativa === TENTATIVAS;
       console.error(`[tapa] envio do desenho falhou (${tentativa}/${TENTATIVAS})`, erro);
