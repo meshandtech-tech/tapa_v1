@@ -41,8 +41,16 @@ public final class LobbyViewModel {
 
         do {
             try await service.prepareSession()
-            guard let roomID = try await service.resolveRoom(pin: normalizedPIN) else {
-                throw RoomServiceError.roomNotFound
+            let resolution = try await service.resolveRoom(pin: normalizedPIN)
+            guard resolution.status == .open, let roomID = resolution.roomID else {
+                switch resolution.status {
+                case .roomNotFound: throw RoomServiceError.roomNotFound
+                case .roomClosed: throw RoomServiceError.roomClosed
+                case .roomExpired: throw RoomServiceError.roomExpired
+                case .invalidPIN: throw RoomServiceError.invalidPIN
+                case .authError: throw RoomServiceError.authentication
+                case .open: throw RoomServiceError.roomNotFound
+                }
             }
 
             let result = try await service.joinRoom(

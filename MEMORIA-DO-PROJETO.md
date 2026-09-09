@@ -69,3 +69,10 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --package-pa
 
 Não registrar chaves reais. `apps/ios/Config/Secrets.xcconfig` permanece
 ignorado; somente o exemplo pode entrar no Git.
+
+## Implementação iOS em andamento
+
+- O cliente Swift passou a consumir `resolve_room_state` e a distinguir sala
+  inexistente, encerrada, expirada, PIN inválido e sessão expirada.
+- Próximo incremento: preservar o último snapshot durante falha de transporte e
+  ressincronizar ao reconectar, antes de implementar comandos de jogo.

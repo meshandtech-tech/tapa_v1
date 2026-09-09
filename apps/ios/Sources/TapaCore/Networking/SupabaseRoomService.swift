@@ -18,7 +18,7 @@ public actor SupabaseRoomService: RoomService {
         }
     }
 
-    public func resolveRoom(pin: String) async throws -> String? {
+    public func resolveRoom(pin: String) async throws -> RoomResolution {
         struct Parameters: Encodable {
             let pin: String
 
@@ -27,7 +27,7 @@ public actor SupabaseRoomService: RoomService {
             }
         }
         return try await client
-            .rpc("resolve_room", params: Parameters(pin: pin))
+            .rpc("resolve_room_state", params: Parameters(pin: pin))
             .execute()
             .value
     }
