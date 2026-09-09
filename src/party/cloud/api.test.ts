@@ -25,7 +25,9 @@ vi.mock("../telemetry", () => ({ logGameEvent: vi.fn() }));
 
 import {
   finalizeDrawingReliable,
+  fetchSnapshot,
   resolveRoom,
+  resolveRoomState,
   submitContributionReliable,
   submitVote,
 } from "./api";
@@ -74,6 +76,63 @@ describe("resolveRoom durante o deploy compatível", () => {
 
     await expect(resolveRoom("1234")).rejects.toThrow("Failed to fetch");
     expect(mocks.from).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveRoomState com diagnóstico de lifecycle", () => {
+  beforeEach(() => {
+    mocks.rpc.mockReset();
+    mocks.from.mockClear();
+  });
+
+  it.each([
+    ["room_not_found", "room_not_found"],
+    ["room_closed", "room_closed"],
+    ["room_expired", "room_expired"],
+    ["invalid_pin", "invalid_pin"],
+  ] as const)("preserva o status %s sem chamar isso de sala fechada", async (status, expected) => {
+    mocks.rpc.mockResolvedValue({ data: { status }, error: null });
+    await expect(resolveRoomState("1234")).resolves.toEqual({
+      status: expected,
+      roomId: null,
+    });
+  });
+
+  it("devolve a sala aberta e o id autoritativo", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: { status: "open", room_id: "room-1" }, error: null,
+    });
+    await expect(resolveRoomState("1234")).resolves.toEqual({
+      status: "open", roomId: "room-1",
+    });
+  });
+
+  it("mantém compatibilidade enquanto a migration nova ainda não entrou", async () => {
+    mocks.rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: "PGRST202", message: "function missing from schema cache" },
+      })
+      .mockResolvedValueOnce({ data: "room-legacy", error: null });
+
+    await expect(resolveRoomState("1234")).resolves.toEqual({
+      status: "open", roomId: "room-legacy",
+    });
+  });
+});
+
+describe("snapshot não transforma transporte em lifecycle", () => {
+  beforeEach(() => mocks.rpc.mockReset());
+
+  it("propaga erro HTTP/RPC em vez de devolver snapshot nulo", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST301", message: "JWT expired" },
+    });
+    await expect(fetchSnapshot("room-1")).rejects.toMatchObject({
+      name: "RpcRequestError",
+      code: "PGRST301",
+    });
   });
 });
 

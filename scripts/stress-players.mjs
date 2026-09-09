@@ -143,9 +143,26 @@ async function rodar(gameId) {
   const host = jogadores[0];
 
   let roomId = null;
+  let roomPin = null;
   const abortar = async (mensagem) => {
     res.falhas.push(mensagem);
-    if (roomId) await rpc(host, "close_room", { p_room: roomId });
+    if (roomId) {
+      // Uma falha entre create e o primeiro join ainda deixa a sala sem host.
+      // Tenta assumir a própria sala antes da limpeza para o teste nunca
+      // deixar resíduos em produção.
+      if (!host.playerId && roomPin) {
+        const cleanupJoin = await rpc(host, "join_room", {
+          p_pin: roomPin,
+          p_nickname: "StressCleanup",
+          p_color: "#5b8def",
+          p_avatar_seed: "stress-cleanup",
+        });
+        if (!cleanupJoin.error && !cleanupJoin.data?.error) {
+          host.playerId = cleanupJoin.data.player_id;
+        }
+      }
+      if (host.playerId) await rpc(host, "close_room", { p_room: roomId });
+    }
     for (const p of jogadores) {
       if (p.canal) try { await p.sb.removeChannel(p.canal); } catch {}
     }
@@ -162,12 +179,24 @@ async function rodar(gameId) {
   let r = await rpc(host, "create_room", { p_pin: PIN, p_game_id: gameId });
   if (r.error) return abortar(`create_room: ${r.error.message}`);
   roomId = r.data.id;
+  const actualPin = r.data.pin;
+  roomPin = actualPin;
+
+  const justCreated = await rpc(host, "resolve_room_state", { p_pin: actualPin });
+  if (justCreated.error || justCreated.data?.status !== "open") {
+    return abortar(
+      `sala recém-criada não ficou aberta (pin=${actualPin}, status=${justCreated.data?.status ?? justCreated.error?.message ?? "sem resposta"})`,
+    );
+  }
 
   for (const [i, p] of jogadores.entries()) {
     const j = await rpc(p, "join_room", {
-      p_pin: PIN, p_nickname: `Jogador${i}`, p_color: `#f${i}5c8a`, p_avatar_seed: `s${i}` });
+      p_pin: actualPin, p_nickname: `Jogador${i}`, p_color: `#f${i}5c8a`, p_avatar_seed: `s${i}` });
     if (j.error || j.data?.error) {
-      return abortar(`join ${p.nome}: ${j.error?.message ?? j.data?.error}`);
+      const state = await rpc(host, "resolve_room_state", { p_pin: actualPin });
+      return abortar(
+        `join ${p.nome}: ${j.error?.message ?? j.data?.error} (pin=${actualPin}, status=${state.data?.status ?? state.error?.message ?? "sem resposta"})`,
+      );
     }
     p.playerId = j.data.player_id;
   }
@@ -213,7 +242,7 @@ async function rodar(gameId) {
     else if (guarda === 12 && caiu) {
       await assinar(caiu, roomId);
       const v = await rpc(caiu, "join_room", {
-        p_pin: PIN, p_nickname: "Jogador3", p_color: "#f35c8a", p_avatar_seed: "s3" });
+        p_pin: actualPin, p_nickname: "Jogador3", p_color: "#f35c8a", p_avatar_seed: "s3" });
       reg(!v.data?.error, `reconexão no meio da partida (${v.data?.error ?? "voltou"})`);
       caiu = null;
     }
@@ -236,7 +265,7 @@ async function rodar(gameId) {
       // traços e só as métricas denunciam, depois da festa.
       if (desenhando && !subiuImagem) {
         subiuImagem = true;
-        const caminho = `${PIN}/${match.id}/${match.stepIndex}-${host.playerId}.png`;
+        const caminho = `${actualPin}/${match.id}/${match.stepIndex}-${host.playerId}.png`;
         const { error: upErr } = await host.sb.storage.from("tapa-desenhos")
           .upload(caminho, PNG, { contentType: "image/png", upsert: true });
         if (upErr) {

@@ -17,10 +17,19 @@
  */
 
 export type GameEvent =
+  // Lifecycle da sala e da identidade
+  | "ROOM_CREATE_ATTEMPT"
+  | "ROOM_CREATED"
+  | "ROOM_JOIN"
+  | "ROOM_JOIN_FAILED"
+  | "ROOM_RECOVERY"
+  | "PLAYER_RECOVERY"
+  | "ROOM_CLOSED"
   // Início da partida
   | "MATCH_INITIALIZATION_STARTED"
   | "MATCH_INITIALIZATION_COMPLETE"
   | "MATCH_INITIALIZATION_FAILED"
+  | "MATCH_STARTED"
   // Passo
   | "STEP_STARTED"
   | "STEP_ADVANCE_REQUESTED"
@@ -38,11 +47,14 @@ export type GameEvent =
   | "REALTIME_CONNECTED"
   | "REALTIME_DISCONNECTED"
   | "REALTIME_RECONNECTED"
+  | "RECONNECT_STARTED"
+  | "RECONNECT_SUCCESS"
   | "HOST_CHANGED"
   | "SNAPSHOT_FETCHED"
-  | "RPC_FAILED";
+  | "RPC_ERROR";
 
 interface Contexto {
+  roomId?: string | null;
   matchId?: string | null;
   playerId?: string | null;
   stepIndex?: number | null;
@@ -58,9 +70,21 @@ export interface LoggedEvent extends Contexto {
 }
 
 const TETO = 200;
-const anel: LoggedEvent[] = [];
+const STORAGE_KEY = "tapa:diagnostics:v1";
+
+function restoreEvents(): LoggedEvent[] {
+  if (typeof sessionStorage === "undefined") return [];
+  try {
+    const value = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "[]");
+    return Array.isArray(value) ? value.slice(-TETO) : [];
+  } catch {
+    return [];
+  }
+}
+
+const anel: LoggedEvent[] = restoreEvents();
 let contexto: Contexto = {};
-let ultimoEm = 0;
+let ultimoEm = anel.at(-1)?.timestamp ?? 0;
 
 /**
  * Liga com `?debug=1` na URL, e desliga com `?debug=0`.
@@ -110,6 +134,11 @@ export function logGameEvent(event: GameEvent, detail?: Record<string, unknown>)
   ultimoEm = timestamp;
   anel.push(registro);
   if (anel.length > TETO) anel.shift();
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(anel));
+  } catch {
+    // Safari privado pode negar storage; o anel em memória continua útil.
+  }
 }
 
 /** Os eventos guardados, do mais antigo para o mais novo. */
@@ -130,6 +159,7 @@ export function dumpGameEvents(): string {
       const passo = e.stepIndex ?? "-";
       const extra = e.detail ? ` ${JSON.stringify(e.detail)}` : "";
       return `${t} +${String(e.sinceLastMs).padStart(5)}ms  ${e.event.padEnd(30)} `
+        + `room=${(e.roomId ?? "-").slice(0, 8)} `
         + `match=${(e.matchId ?? "-").slice(0, 8)} player=${(e.playerId ?? "-").slice(0, 8)} `
         + `step=${passo} phase=${e.gamePhase ?? "-"}${extra}`;
     })

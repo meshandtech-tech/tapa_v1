@@ -137,5 +137,15 @@ export interface RoomSnapshot {
   /** Preenchido só na revelação. Antes disso entregaria a piada. */
   chains: SnapshotChain[];
   serverTime: string;
-  error?: string;
+  error?: SnapshotErrorCode;
 }
+
+/** Erros de acesso que a RPC devolve como dado, não como falha HTTP. */
+export type SnapshotErrorCode =
+  | "sem_sessao"
+  | "room_forbidden"
+  | "room_not_found"
+  | "room_closed"
+  | "room_expired"
+  | "invalid_pin"
+  | string;

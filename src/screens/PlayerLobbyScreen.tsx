@@ -51,7 +51,7 @@ function PlayerLobby({ pin }: { pin: string }) {
   const {
     state, me, meInParty, isHost, connection,
     join, updateMe, answer, vote, submitDrawing, submitGuess, replaceSlides,
-    isAuthority, sendHostCommand, attachDrawing, authError, closeParty, leaveParty, refresh,
+    isAuthority, sendHostCommand, attachDrawing, roomIssue, authError, closeParty, leaveParty, refresh,
     snapshot, initState, initError, retryStart,
   } = usePartyRoom(pin);
 
@@ -178,21 +178,62 @@ function PlayerLobby({ pin }: { pin: string }) {
   };
 
   if (connection === "closed") {
+    const recado = {
+      not_found: {
+        titulo: "Sala não encontrada",
+        texto: "Esse PIN não existe. Confere os quatro números e tenta novamente.",
+      },
+      closed: {
+        titulo: "A sala foi encerrada",
+        texto: "A party terminou. Você já pode entrar em outra ou criar uma nova.",
+      },
+      expired: {
+        titulo: "Essa sala expirou",
+        texto: "Ela ficou aberta por muito tempo. Crie uma nova party para continuar.",
+      },
+      invalid_pin: {
+        titulo: "PIN inválido",
+        texto: "O PIN precisa ter exatamente quatro números.",
+      },
+      stale_session: {
+        titulo: "Sessão ligada a outra sala",
+        texto: "Sua sessão antiga não foi liberada pelo servidor. Tente novamente; se continuar, troque o PIN.",
+      },
+      auth: {
+        titulo: "Sua entrada expirou",
+        texto: "Não foi possível recuperar sua identidade. Recarregue a página para entrar novamente.",
+      },
+      rate_limited: {
+        titulo: "Muita gente entrando",
+        texto: "O servidor limitou novas entradas por alguns segundos. Espere um pouco e tente novamente.",
+      },
+      server: {
+        titulo: "O servidor não respondeu direito",
+        texto: "A sala não foi marcada como fechada. Tente novamente em alguns segundos.",
+      },
+      network: {
+        titulo: "Sem conexão",
+        texto: "A sala continua no servidor. Confira sua internet e tente reconectar.",
+      },
+    }[roomIssue ?? "closed"];
     return (
       <Shell>
         <Card tilt="tilt-1" className="w-full max-w-md p-7 text-center">
           <WifiOff strokeWidth={2.5} className="mx-auto mb-3 size-12" />
-          <h2 className="font-display text-3xl font-bold uppercase">A sala fechou</h2>
-          <p className="mt-2 font-hand text-lg">O host encerrou a party.</p>
+          <h2 className="font-display text-3xl font-bold uppercase">{recado.titulo}</h2>
+          <p className="mt-2 font-hand text-lg">{recado.texto}</p>
           <Button size="md" className="mt-5 w-full" onClick={() => navigate("/join")}>
-            Entrar em outra
+            Informar outro PIN
+          </Button>
+          <Button size="md" variant="knockout" className="mt-3 w-full" onClick={() => navigate("/")}>
+            Voltar ao início
           </Button>
         </Card>
       </Shell>
     );
   }
 
-  if (connection === "connecting") {
+  if (!state && (connection === "connecting" || connection === "offline")) {
     /**
      * Diagnóstico honesto em vez de "procurando a sala" para sempre.
      *
@@ -201,7 +242,12 @@ function PlayerLobby({ pin }: { pin: string }) {
      * que estoura. Antes disso aqui, a pessoa ficava olhando uma tela de
      * espera sem nada a fazer, e ninguém na mesa descobria o porquê.
      */
-    const recado = authError
+    const recado = connection === "offline" && !authError
+      ? {
+          titulo: "Sem conexão",
+          texto: "A sala continua no servidor. Assim que a internet voltar, vamos buscar o estado atual.",
+        }
+      : authError
       ? {
           rate_limit: {
             titulo: "Muita gente entrando de uma vez",

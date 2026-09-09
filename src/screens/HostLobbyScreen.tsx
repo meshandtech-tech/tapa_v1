@@ -40,7 +40,7 @@ export function HostLobbyScreen() {
  */
 function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
   // Espectador: a TV só exibe. Nunca comanda e nunca vira autoridade.
-  const { state } = usePartyRoom(pin, { spectator: true });
+  const { state, connection, roomIssue } = usePartyRoom(pin, { spectator: true });
 
   usePartyTheme(state);
   // Enquanto o jogo roda, a paleta é a do jogo; no lobby volta a da party.
@@ -53,6 +53,16 @@ function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
    * Até esse aparelho transmitir o primeiro estado, não há nada para exibir.
    */
   if (!state) {
+    const unavailable = connection === "closed" || connection === "offline";
+    const title = connection === "offline"
+      ? "Sem conexão"
+      : roomIssue === "not_found"
+        ? "Sala não encontrada"
+        : roomIssue === "expired"
+          ? "Sala expirada"
+          : roomIssue === "closed"
+            ? "Sala encerrada"
+            : "Esperando a sala abrir";
     return (
       <div className="zine-grain flex min-h-dvh flex-col items-center justify-center gap-6 bg-accent px-6 text-center">
         <Logo size="md" />
@@ -63,8 +73,9 @@ function HostLobby({ pin, onExit }: { pin: string; onExit: () => void }) {
           </p>
         </Knockout>
         <p className="max-w-xl font-hand text-2xl text-on-accent">
-          Esperando a sala abrir. Quem criou a party comanda pelo celular — esta
-          tela só mostra o jogo.
+          {unavailable
+            ? `${title}. Confira a conexão ou o PIN antes de continuar.`
+            : "Esperando a sala abrir. Quem criou a party comanda pelo celular — esta tela só mostra o jogo."}
         </p>
       </div>
     );

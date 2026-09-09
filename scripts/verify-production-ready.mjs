@@ -26,6 +26,9 @@ if (!URL || !KEY) throw new Error("faltam VITE_SUPABASE_URL/VITE_SUPABASE_ANON_K
 const clients = [];
 let host = null;
 let roomId = null;
+let lifecycleClient = null;
+const lifecycleRoomIds = [];
+const concurrencyRooms = [];
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
@@ -90,6 +93,11 @@ try {
     check(!joined?.error && Boolean(joined?.player_id), `${current.label} entrou antes da partida`);
     current.playerId = joined.player_id;
   }
+
+  // Só consulta o gate novo depois de estabelecer `host_player_id`, para que
+  // o finally consiga encerrar a sala mesmo quando a 0021 ainda não existe.
+  const initialRoomState = await rpc(host, "resolve_room_state", { p_pin: room.pin });
+  check(initialRoomState?.status === "open", "migration 0021 resolve a sala aberta sem ambiguidade");
 
   const slidePool = Array.from({ length: 10 }, (_, index) => `ready-${index}`);
   await rpc(host, "start_match", { p_room: roomId, p_slide_ids: slidePool });
@@ -182,11 +190,108 @@ try {
   check(drawingFinalizationProbe.skipped === "contribution_missing",
     "RPC de finalização do desenho está ativa no PostgREST");
 
-  console.log("\n  PRODUÇÃO READY: migrations 0015 até 0020 ativas.\n");
+  // Regressão do incidente real: a mesma sessão criava uma sala B enquanto
+  // ainda estava ativa na A. O snapshot de B era `room_forbidden` e a UI
+  // traduzia isso incorretamente como "sala fechada".
+  lifecycleClient = await player("lifecycle");
+  const lifecycleRoomA = await rpc(lifecycleClient, "create_room", {
+    p_pin: String(Math.floor(1000 + Math.random() * 9000)),
+    p_game_id: "quem-erra-paga",
+  });
+  lifecycleRoomIds.push(lifecycleRoomA.id);
+  const lifecycleJoinA = await rpc(lifecycleClient, "join_room", {
+    p_pin: lifecycleRoomA.pin,
+    p_nickname: "Lifecycle",
+    p_color: "#5b8def",
+    p_avatar_seed: "lifecycle",
+  });
+  check(!lifecycleJoinA?.error, "sessão de regressão entrou na sala A");
+
+  const lifecycleRoomB = await rpc(lifecycleClient, "create_room", {
+    p_pin: String(Math.floor(1000 + Math.random() * 9000)),
+    p_game_id: "quem-erra-paga",
+  });
+  lifecycleRoomIds.push(lifecycleRoomB.id);
+  const lifecyclePreviewB = await rpc(lifecycleClient, "room_snapshot", {
+    p_room: lifecycleRoomB.id,
+  });
+  check(!lifecyclePreviewB?.error, "sessão ativa na sala A consegue abrir o lobby da sala B");
+
+  const lifecycleJoinB = await rpc(lifecycleClient, "join_room", {
+    p_pin: lifecycleRoomB.pin,
+    p_nickname: "Lifecycle",
+    p_color: "#5b8def",
+    p_avatar_seed: "lifecycle",
+  });
+  check(!lifecycleJoinB?.error, "troca A → B concluiu sem prender a sessão");
+  const oldRoomState = await rpc(lifecycleClient, "resolve_room_state", {
+    p_pin: lifecycleRoomA.pin,
+  });
+  check(oldRoomState?.status === "room_closed", "sala A vazia foi encerrada automaticamente");
+  await rpc(lifecycleClient, "close_room", { p_room: lifecycleRoomB.id });
+
+  // Gate da 0022: uma sala ainda sem primeiro jogador não pode ser fechada
+  // quando outra identidade entra, ao mesmo tempo, em outro lobby.
+  const waitingClient = await player("parallel-waiting");
+  const joiningClient = await player("parallel-joining");
+  const waitingRoom = await rpc(waitingClient, "create_room", {
+    p_pin: String(Math.floor(1000 + Math.random() * 9000)),
+    p_game_id: "drawing-telephone",
+  });
+  concurrencyRooms.push({ client: waitingClient, room: waitingRoom });
+  const joiningRoom = await rpc(joiningClient, "create_room", {
+    p_pin: String(Math.floor(1000 + Math.random() * 9000)),
+    p_game_id: "quem-erra-paga",
+  });
+  concurrencyRooms.push({ client: joiningClient, room: joiningRoom });
+
+  const joiningResult = await rpc(joiningClient, "join_room", {
+    p_pin: joiningRoom.pin,
+    p_nickname: "ParallelJoining",
+    p_color: "#44d19d",
+    p_avatar_seed: "parallel-joining",
+  });
+  check(!joiningResult?.error, "identidade concorrente entrou na própria sala");
+  joiningClient.playerId = joiningResult.player_id;
+
+  const waitingState = await rpc(waitingClient, "resolve_room_state", {
+    p_pin: waitingRoom.pin,
+  });
+  check(waitingState?.status === "open", "migration 0022 preserva outro lobby entre create e join");
+
+  const waitingResult = await rpc(waitingClient, "join_room", {
+    p_pin: waitingRoom.pin,
+    p_nickname: "ParallelWaiting",
+    p_color: "#ffd166",
+    p_avatar_seed: "parallel-waiting",
+  });
+  check(!waitingResult?.error, "host atrasado ainda consegue entrar no próprio lobby");
+  waitingClient.playerId = waitingResult.player_id;
+  await rpc(waitingClient, "close_room", { p_room: waitingRoom.id });
+  await rpc(joiningClient, "close_room", { p_room: joiningRoom.id });
+
+  console.log("\n  PRODUÇÃO READY: migrations 0015 até 0022 ativas.\n");
 } finally {
   if (host && roomId) {
     const { error } = await host.sb.rpc("close_room", { p_room: roomId });
     console.log(error ? `  ! limpeza da sala falhou: ${error.message}` : "  ✓ sala temporária encerrada");
+  }
+  if (lifecycleClient) {
+    for (const lifecycleRoomId of lifecycleRoomIds) {
+      await lifecycleClient.sb.rpc("close_room", { p_room: lifecycleRoomId });
+    }
+  }
+  for (const { client, room } of concurrencyRooms) {
+    if (!client.playerId) {
+      const { data } = await client.sb.rpc("join_room", {
+        p_pin: room.pin,
+        p_nickname: "GateCleanup",
+        p_color: "#5b8def",
+        p_avatar_seed: "gate-cleanup",
+      });
+      if (!data?.error) client.playerId = data?.player_id;
+    }
+    if (client.playerId) await client.sb.rpc("close_room", { p_room: room.id });
   }
   await Promise.all(clients.map((current) => current.sb.auth.signOut()));
 }

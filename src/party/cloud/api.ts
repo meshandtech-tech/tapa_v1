@@ -48,18 +48,63 @@ export function onRpcFailure(ouvinte: (falha: RpcFailure) => void): () => void {
 function reportRpcFailure(fn: string, error: PostgrestFailure): void {
     console.error(`[tapa] rpc ${fn} falhou`, error);
     ultimaFalha = { fn, message: error.message, at: Date.now() };
-    logGameEvent("RPC_FAILED", { fn, code: error.code, message: error.message });
+    logGameEvent("RPC_ERROR", { fn, code: error.code, message: error.message });
     for (const ouvinte of ouvintes) ouvinte(ultimaFalha);
 }
 
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data, error } = await supabase.rpc(fn, args);
+  let data: unknown;
+  let error: PostgrestFailure | null;
+  try {
+    ({ data, error } = await supabase.rpc(fn, args));
+  } catch (cause) {
+    reportRpcFailure(fn, {
+      message: cause instanceof Error ? cause.message : "falha de rede",
+    });
+    return null;
+  }
   if (error) {
     reportRpcFailure(fn, error);
     return null;
   }
+  ultimaFalha = null;
+  return data as T;
+}
+
+export class RpcRequestError extends Error {
+  constructor(
+    public readonly fn: string,
+    public readonly code: string | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "RpcRequestError";
+  }
+}
+
+async function rpcRequired<T>(
+  fn: string,
+  args: Record<string, unknown> = {},
+): Promise<T> {
+  const supabase = getSupabase();
+  if (!supabase) throw new RpcRequestError(fn, undefined, "Supabase não configurado");
+
+  let data: unknown;
+  let error: PostgrestFailure | null;
+  try {
+    ({ data, error } = await supabase.rpc(fn, args));
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : "falha de rede";
+    reportRpcFailure(fn, { message });
+    throw new RpcRequestError(fn, undefined, message);
+  }
+  if (error) {
+    reportRpcFailure(fn, error);
+    throw new RpcRequestError(fn, error.code, error.message);
+  }
+  ultimaFalha = null;
   return data as T;
 }
 
@@ -108,9 +153,59 @@ function noteServerTime(iso: string | undefined): void {
 }
 
 export async function createRoom(pin: string, gameId: string) {
-  return rpc<{ id: string; pin: string }>("create_room", {
+  logGameEvent("ROOM_CREATE_ATTEMPT", { pin, gameId });
+  const room = await rpc<{ id: string; pin: string }>("create_room", {
     p_pin: pin, p_game_id: gameId,
   });
+  if (room) logGameEvent("ROOM_CREATED", { roomId: room.id, pin: room.pin });
+  return room;
+}
+
+export type RoomResolutionStatus =
+  | "open"
+  | "room_not_found"
+  | "room_closed"
+  | "room_expired"
+  | "invalid_pin"
+  | "auth_error";
+
+export interface RoomResolution {
+  status: RoomResolutionStatus;
+  roomId: string | null;
+}
+
+/**
+ * Resolve a sala sem confundir PIN inexistente, encerrado e expirado.
+ * Durante o deploy, cai na RPC antiga até a migration nova entrar.
+ */
+export async function resolveRoomState(pin: string): Promise<RoomResolution> {
+  const supabase = getSupabase();
+  if (!supabase) throw new RpcRequestError("resolve_room_state", undefined, "Supabase não configurado");
+
+  let data: { status?: RoomResolutionStatus; room_id?: string } | null;
+  let error: PostgrestFailure | null;
+  try {
+    ({ data, error } = await supabase.rpc("resolve_room_state", { p_pin: pin }));
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : "falha de rede";
+    reportRpcFailure("resolve_room_state", { message });
+    throw new RpcRequestError("resolve_room_state", undefined, message);
+  }
+
+  const missing = error?.code === "PGRST202"
+    || error?.message.toLowerCase().includes("schema cache");
+  if (missing) {
+    const roomId = await resolveRoom(pin);
+    return { status: roomId ? "open" : "room_not_found", roomId };
+  }
+  if (error) {
+    reportRpcFailure("resolve_room_state", error);
+    throw new RpcRequestError("resolve_room_state", error.code, error.message);
+  }
+
+  ultimaFalha = null;
+  const status = data?.status ?? "room_not_found";
+  return { status, roomId: data?.room_id ?? null };
 }
 
 /**
@@ -135,7 +230,10 @@ export async function resolveRoom(pin: string): Promise<string | null> {
     });
     throw cause;
   }
-  if (!error) return data as string | null;
+  if (!error) {
+    ultimaFalha = null;
+    return data as string | null;
+  }
 
   const rpcAindaNaoExiste = error.code === "PGRST202"
     || error.message.toLowerCase().includes("schema cache");
@@ -173,14 +271,20 @@ export async function resolveRoom(pin: string): Promise<string | null> {
 export async function joinRoom(
   pin: string, nickname: string, color: string, avatarSeed: string,
 ): Promise<{ room_id?: string; player_id?: string; error?: string } | null> {
-  return rpc("join_room", {
+  const result = await rpc<{ room_id?: string; player_id?: string; error?: string }>("join_room", {
     p_pin: pin, p_nickname: nickname, p_color: color, p_avatar_seed: avatarSeed,
   });
+  if (result?.room_id && result.player_id) {
+    logGameEvent("ROOM_JOIN", { roomId: result.room_id, playerId: result.player_id });
+  } else {
+    logGameEvent("ROOM_JOIN_FAILED", { reason: result?.error ?? "rpc_error" });
+  }
+  return result;
 }
 
-export async function fetchSnapshot(roomId: string): Promise<RoomSnapshot | null> {
-  const snap = await rpc<RoomSnapshot>("room_snapshot", { p_room: roomId });
-  if (snap) noteServerTime(snap.serverTime);
+export async function fetchSnapshot(roomId: string): Promise<RoomSnapshot> {
+  const snap = await rpcRequired<RoomSnapshot>("room_snapshot", { p_room: roomId });
+  noteServerTime(snap.serverTime);
   return snap;
 }
 
@@ -246,6 +350,7 @@ export async function startMatch(roomId: string, payload: {
     sala ? "MATCH_INITIALIZATION_COMPLETE" : "MATCH_INITIALIZATION_FAILED",
     sala ? { phase: sala.phase } : { motivo: lastRpcFailure()?.message ?? "sem resposta" },
   );
+  if (sala) logGameEvent("MATCH_STARTED", { phase: sala.phase });
   return sala;
 }
 
@@ -469,5 +574,11 @@ export async function resetToLobby(roomId: string) {
 }
 
 export async function closeRoom(roomId: string) {
-  return rpc<void>("close_room", { p_room: roomId });
+  try {
+    const result = await rpcRequired<void>("close_room", { p_room: roomId });
+    logGameEvent("ROOM_CLOSED", { roomId });
+    return result;
+  } catch {
+    return null;
+  }
 }

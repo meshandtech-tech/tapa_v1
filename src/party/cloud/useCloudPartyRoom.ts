@@ -43,7 +43,7 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
    */
   const ativo = isSupabaseConfigured;
   const spectator = options.spectator ?? false;
-  const { roomId, snapshot, state, connection, authError, refresh } =
+  const { roomId, snapshot, state, connection, roomIssue, authError, refresh } =
     useCloudRoom(ativo ? pin : "", { spectator });
 
   const meId = snapshot?.me.playerId ?? null;
@@ -392,7 +392,8 @@ export function useCloudPartyRoom(pin: string, options: { spectator?: boolean } 
     // Não existe mais "o aparelho que manda". Mantido só para as telas que
     // ainda perguntam; sempre falso na nuvem, e é essa a mudança.
     isAuthority: false,
-    connection: connection === "offline" ? "connecting" : connection,
+    connection,
+    roomIssue,
     authError,
     snapshot,
     /** `starting` enquanto o banco monta a partida; `failed` quando não deu. */

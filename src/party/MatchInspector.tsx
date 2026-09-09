@@ -149,7 +149,7 @@ export function MatchInspector({
           {eventos.map((e, i) => (
             <li key={`${e.timestamp}-${i}`} className="flex gap-2">
               <span className="shrink-0 opacity-50 tabular-nums">+{e.sinceLastMs}ms</span>
-              <span className={cn(e.event.includes("FAILED") || e.event.includes("MISSING")
+              <span className={cn(e.event.includes("FAILED") || e.event.includes("MISSING") || e.event.includes("ERROR")
                 ? "font-bold text-[#c1121f]" : "")}>
                 {e.event}
               </span>

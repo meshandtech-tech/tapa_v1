@@ -26,7 +26,7 @@ import { useWakeLock } from "./useWakeLock";
 import { useCloudPartyRoom } from "./cloud/useCloudPartyRoom";
 import type { PartyState } from "./types";
 
-export type PartyConnection = "connecting" | "connected" | "closed";
+export type PartyConnection = "connecting" | "connected" | "offline" | "closed";
 
 /** De quanto em quanto a autoridade reemite o estado, mesmo parada. */
 const HEARTBEAT_MS = 3000;
@@ -500,6 +500,7 @@ export function usePartyRoom(pin: string, options: { spectator?: boolean } = {})
       ...local,
       attachDrawing: undefined,
       authError: null,
+      roomIssue: null,
       leaveParty: undefined,
       refresh: undefined,
       // Não existe foto do servidor no caminho local: o estado É a aba. O

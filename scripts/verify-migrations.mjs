@@ -136,6 +136,19 @@ try {
           'authenticated', 'public.advance_phase_internal(uuid,text,timestamptz,boolean)', 'EXECUTE')`) === "f",
     "avanço interno não é chamável por outra sala");
 
+  const lifecycleSnapshotBody = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                    where n.nspname='public' and p.proname='room_snapshot'`);
+  ok(lifecycleSnapshotBody.includes("r.phase <> 'LOBBY'")
+     && lifecycleSnapshotBody.includes("room_expired"),
+    "pré-entrada no lobby não é bloqueada por associação antiga");
+
+  const resolutionBody = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                    where n.nspname='public' and p.proname='resolve_room_state'`);
+  ok(resolutionBody.includes("room_not_found")
+     && resolutionBody.includes("room_closed")
+     && resolutionBody.includes("room_expired"),
+    "resolução distingue sala inexistente, encerrada e expirada");
+
   const replaceSlidesBody = q(`select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                                 where n.nspname='public' and p.proname='replace_slides'`);
   ok(replaceSlidesBody.includes("not is_host_of"), "replace_slides exige host");
@@ -292,6 +305,140 @@ try {
        end if;
      end $verify$;`);
   ok(true, "Refresh/reconexão reutiliza player_id e assento da sessão anônima");
+
+  // Regressão do bloqueio observado no celular: a mesma sessão ainda estava
+  // ativa na sala A, criava a sala B, mas o snapshot de B devolvia
+  // `room_forbidden` e a UI dizia "sala fechada". O lobby novo precisa abrir;
+  // só depois do join confirmado a troca remove a associação antiga.
+  q(`do $verify$
+     declare
+       v_old uuid; v_new uuid; v_third uuid;
+       v_user uuid := gen_random_uuid(); v_guest_user uuid := gen_random_uuid();
+       v_old_host uuid; v_old_guest uuid; v_result jsonb;
+     begin
+       insert into rooms(pin,game_id) values ('7640','quem-erra-paga') returning id into v_old;
+       insert into players(room_id,user_id,nickname,color,avatar_seed)
+       values (v_old,v_user,'Host antigo','#111','old-host') returning id into v_old_host;
+       insert into players(room_id,user_id,nickname,color,avatar_seed)
+       values (v_old,v_guest_user,'Convidado antigo','#222','old-guest') returning id into v_old_guest;
+       update rooms set host_player_id=v_old_host where id=v_old;
+
+       insert into rooms(pin,game_id) values ('7641','quem-erra-paga') returning id into v_new;
+       perform set_config('request.jwt.claim.sub', v_user::text, true);
+
+       select room_snapshot(v_new) into v_result;
+       if v_result->>'error' is not null then
+         raise exception 'lobby novo foi bloqueado: %', v_result->>'error';
+       end if;
+
+       select join_room('7641','Host novo','#333','new-host') into v_result;
+       if v_result->>'error' is not null then
+         raise exception 'entrada na sala nova falhou: %', v_result->>'error';
+       end if;
+       if (select left_at from players where id=v_old_host) is null then
+         raise exception 'associacao antiga continuou ativa';
+       end if;
+       if (select host_player_id from rooms where id=v_old) is distinct from v_old_guest then
+         raise exception 'host da sala antiga nao foi transferido';
+       end if;
+       if (select closed_at from rooms where id=v_old) is not null then
+         raise exception 'sala antiga com convidado foi encerrada';
+       end if;
+
+       insert into rooms(pin,game_id) values ('7642','quem-erra-paga') returning id into v_third;
+       select room_snapshot(v_third) into v_result;
+       if v_result->>'error' is not null then
+         raise exception 'terceiro lobby foi bloqueado';
+       end if;
+       select join_room('7642','Host terceiro','#444','third-host') into v_result;
+       if v_result->>'error' is not null then
+         raise exception 'segunda troca de sala falhou';
+       end if;
+       if (select close_reason from rooms where id=v_new) is distinct from 'empty' then
+         raise exception 'sala vazia nao foi encerrada';
+       end if;
+     end $verify$;`);
+  ok(true, "sessão antiga não bloqueia sala nova e troca de sala limpa lifecycle");
+
+  // Regressão de concorrência encontrada no stress 2×10: uma sala fica
+  // legitimamente vazia entre create_room e o primeiro join. A entrada de uma
+  // identidade em OUTRA sala nunca pode encerrar esse lobby recém-criado.
+  q(`do $verify$
+     declare
+       v_waiting uuid; v_joining uuid;
+       v_user uuid := gen_random_uuid(); v_result jsonb;
+     begin
+       insert into rooms(pin,game_id) values ('7638','drawing-telephone')
+       returning id into v_waiting;
+       insert into rooms(pin,game_id) values ('7639','quem-erra-paga')
+       returning id into v_joining;
+
+       perform set_config('request.jwt.claim.sub', v_user::text, true);
+       select join_room('7639','Concorrente','#666','parallel') into v_result;
+       if v_result->>'error' is not null then
+         raise exception 'join de controle falhou: %', v_result->>'error';
+       end if;
+       if (select closed_at from rooms where id=v_waiting) is not null then
+         raise exception 'uma sala vazia de outra identidade foi encerrada';
+       end if;
+       if (select closed_at from rooms where id=v_joining) is not null then
+         raise exception 'sala de controle foi encerrada';
+       end if;
+     end $verify$;`);
+  ok(true, "join concorrente não encerra lobby recém-criado de outra sala");
+
+  q(`do $verify$
+     declare v_room uuid; v_user uuid := gen_random_uuid(); v_result jsonb;
+     begin
+       insert into rooms(pin,game_id,expires_at)
+       values ('7643','quem-erra-paga',now() - interval '1 second')
+       returning id into v_room;
+       perform set_config('request.jwt.claim.sub', v_user::text, true);
+       select resolve_room_state('7643') into v_result;
+       if v_result->>'status' is distinct from 'room_expired' then
+         raise exception 'status inesperado: %', v_result->>'status';
+       end if;
+       if (select close_reason from rooms where id=v_room) is distinct from 'expired' then
+         raise exception 'expiracao nao foi persistida';
+       end if;
+     end $verify$;`);
+  ok(true, "sala expirada é fechada e identificada sem depender de cache/cron");
+
+  q(`do $verify$
+     declare
+       v_user uuid := gen_random_uuid(); v_room uuid; v_previous uuid;
+       v_result jsonb; v_pin text; i int;
+     begin
+       perform set_config('request.jwt.claim.sub', v_user::text, true);
+       for i in 1..30 loop
+         v_pin := lpad((8000 + i)::text, 4, '0');
+         insert into rooms(pin,game_id) values (v_pin,'quem-erra-paga') returning id into v_room;
+
+         select room_snapshot(v_room) into v_result;
+         if v_result->>'error' is not null then
+           raise exception 'ciclo % bloqueado antes do join: %', i, v_result->>'error';
+         end if;
+         select join_room(v_pin,'Ciclico','#555','cycle') into v_result;
+         if v_result->>'error' is not null then
+           raise exception 'ciclo % falhou no join: %', i, v_result->>'error';
+         end if;
+
+         if v_previous is not null
+            and (select close_reason from rooms where id=v_previous) is distinct from 'empty' then
+           raise exception 'ciclo % deixou sala anterior aberta', i;
+         end if;
+         if (select count(*) from players p join rooms r on r.id=p.room_id
+              where p.user_id=v_user and p.left_at is null and r.closed_at is null) <> 1 then
+           raise exception 'ciclo % deixou associacao ativa ambigua', i;
+         end if;
+         v_previous := v_room;
+       end loop;
+       perform leave_room(v_previous);
+       if (select close_reason from rooms where id=v_previous) is distinct from 'empty' then
+         raise exception 'ultimo ciclo nao limpou a sala';
+       end if;
+     end $verify$;`);
+  ok(true, "30 ciclos criar → entrar → trocar/encerrar não prendem a identidade");
 
   q(`do $verify$
      declare v_room uuid; v_match uuid; v_present uuid; v_voter uuid;

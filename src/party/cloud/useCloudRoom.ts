@@ -10,6 +10,37 @@ import type { RoomSnapshot } from "./snapshot";
 import type { PartyState } from "../types";
 
 export type CloudConnection = "connecting" | "connected" | "offline" | "closed";
+export type RoomIssue =
+  | "not_found"
+  | "closed"
+  | "expired"
+  | "network"
+  | "auth"
+  | "rate_limited"
+  | "invalid_pin"
+  | "stale_session"
+  | "server";
+
+export function classifyRoomError(error: string): RoomIssue {
+  switch (error) {
+    case "room_not_found": return "not_found";
+    case "room_closed": return "closed";
+    case "room_expired": return "expired";
+    case "invalid_pin": return "invalid_pin";
+    case "sem_sessao": return "auth";
+    case "auth_error": return "auth";
+    case "room_forbidden": return "stale_session";
+    default: return "server";
+  }
+}
+
+function classifyRequestFailure(cause: unknown): RoomIssue {
+  const message = cause instanceof Error ? cause.message.toLowerCase() : "";
+  if (/rate limit|too many/.test(message)) return "rate_limited";
+  if (/jwt|auth|session|sess[aã]o|unauthor/.test(message)) return "auth";
+  if (/fetch|network|load failed|offline|timeout|timed out/.test(message)) return "network";
+  return "server";
+}
 
 /** De quanto em quanto este aparelho diz "continuo aqui". */
 const PRESENCE_MS = 15000;
@@ -36,6 +67,7 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
   const [roomId, setRoomId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [connection, setConnection] = useState<CloudConnection>("connecting");
+  const [roomIssue, setRoomIssue] = useState<RoomIssue | null>(null);
   /**
    * Por que não deu para entrar. Sem isto o jogador ficava preso para sempre
    * em "procurando a sala" — sem erro na tela e sem nada a fazer.
@@ -47,22 +79,73 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
   const channelRef = useRef<RealtimeChannel | null>(null);
   const snapshotRef = useRef<RoomSnapshot | null>(null);
   snapshotRef.current = snapshot;
+  const connectionRef = useRef<CloudConnection>(connection);
+  connectionRef.current = connection;
   /** Evita rajada: dez mudanças em sequência viram uma releitura. */
   const pendingFetch = useRef<number | null>(null);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const refreshAgain = useRef(false);
+  const refreshRetry = useRef<number | null>(null);
+  const refreshAttempt = useRef(0);
+  const refreshRef = useRef<() => Promise<void>>(async () => undefined);
   const mounted = useRef(true);
 
-  const refresh = useCallback(async () => {
+  const fetchCurrentSnapshot = useCallback(async () => {
     const id = roomIdRef.current;
     if (!id) return;
-    const snap = await api.fetchSnapshot(id);
-    if (!mounted.current || !snap) return;
-    if (snap.error) {
-      setConnection("closed");
+    let snap: RoomSnapshot;
+    try {
+      snap = await api.fetchSnapshot(id);
+    } catch (cause) {
+      if (!mounted.current) return;
+      const issue = classifyRequestFailure(cause);
+      setRoomIssue(issue);
+      setConnection("offline");
+      logGameEvent("RECONNECT_STARTED", { reason: issue });
+      if (issue === "auth") {
+        void ensureAnonSession().then((uid) => {
+          if (uid && mounted.current) void refreshRef.current();
+          else if (mounted.current) setAuthError(lastAuthFailure() ?? "unknown");
+        });
+      }
+      if (refreshRetry.current === null) {
+        const delay = Math.min(BACKOFF_MAX_MS, 500 * 2 ** refreshAttempt.current);
+        refreshAttempt.current += 1;
+        refreshRetry.current = window.setTimeout(() => {
+          refreshRetry.current = null;
+          void refreshRef.current();
+        }, delay);
+      }
       return;
     }
+    if (!mounted.current) return;
+    if (snap.error) {
+      const issue = classifyRoomError(snap.error);
+      setRoomIssue(issue);
+      setConnection(issue === "network" || issue === "auth" ? "offline" : "closed");
+      if (issue === "auth") {
+        logGameEvent("RECONNECT_STARTED", { reason: "auth" });
+        void ensureAnonSession().then((uid) => {
+          if (uid && mounted.current) void refreshRef.current();
+          else if (mounted.current) setAuthError(lastAuthFailure() ?? "unknown");
+        });
+      }
+      if (issue === "closed" || issue === "expired") {
+        logGameEvent("ROOM_CLOSED", { reason: issue });
+      }
+      return;
+    }
+    if (refreshRetry.current !== null) {
+      window.clearTimeout(refreshRetry.current);
+      refreshRetry.current = null;
+    }
+    refreshAttempt.current = 0;
+    const recovering = connectionRef.current === "offline";
+    setRoomIssue(null);
     // Todo evento seguinte carrega partida, jogador, passo e fase. É o que
     // torna uma partida falhada legível de ponta a ponta depois.
     setLogContext({
+      roomId: snap.room.id,
       matchId: snap.match?.id ?? null,
       playerId: snap.me.playerId,
       stepIndex: snap.match?.stepIndex ?? null,
@@ -80,6 +163,11 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
       esperados: snap.match?.seatOrder?.length ?? 0,
       temTarefa: !!snap.assignment,
     });
+    if (recovering) {
+      logGameEvent("RECONNECT_SUCCESS");
+      logGameEvent("ROOM_RECOVERY");
+      if (snap.me.playerId) logGameEvent("PLAYER_RECOVERY");
+    }
     // A pergunta que a festa não conseguiu responder: esta pessoa recebeu, ou
     // não recebeu, a tarefa do passo?
     if (snap.room.phase === "DRAW_STEP" || snap.room.phase === "GUESS_STEP") {
@@ -91,6 +179,28 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
     setSnapshot(snap);
     setConnection(snap.room.closedAt ? "closed" : "connected");
   }, []);
+
+  /** Uma foto por vez; se algo mudar durante a leitura, faz só mais uma. */
+  const refresh = useCallback(async () => {
+    if (refreshInFlight.current) {
+      refreshAgain.current = true;
+      return refreshInFlight.current;
+    }
+
+    const run = (async () => {
+      do {
+        refreshAgain.current = false;
+        await fetchCurrentSnapshot();
+      } while (mounted.current && refreshAgain.current);
+    })();
+    refreshInFlight.current = run;
+    try {
+      await run;
+    } finally {
+      if (refreshInFlight.current === run) refreshInFlight.current = null;
+    }
+  }, [fetchCurrentSnapshot]);
+  refreshRef.current = refresh;
 
   /** Agrupa releituras próximas — dez entregas simultâneas não viram dez GETs. */
   const scheduleRefresh = useCallback(() => {
@@ -122,22 +232,27 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
 
       const resolve = async (): Promise<void> => {
         try {
-          const id = await api.resolveRoom(pin);
+          const resolution = await api.resolveRoomState(pin);
           if (cancelled) return;
-          if (!id) {
-            // Só uma resposta bem-sucedida sem sala prova que ela acabou ou o
-            // PIN não existe. Erros chegam pelo `catch` e são recuperáveis.
+          if (resolution.status !== "open" || !resolution.roomId) {
+            setRoomIssue(classifyRoomError(resolution.status));
             setConnection("closed");
             return;
           }
+          const id = resolution.roomId;
           setAuthError(null);
+          setRoomIssue(null);
           setRoomId(id);
           roomIdRef.current = id;
+          setLogContext({ roomId: id });
           void refresh();
-        } catch {
+        } catch (cause) {
           if (cancelled) return;
+          const issue = classifyRequestFailure(cause);
           setConnection("offline");
-          setAuthError("network");
+          setRoomIssue(issue);
+          setAuthError(issue === "rate_limited" ? "rate_limit" : issue === "network" ? "network" : "unknown");
+          logGameEvent("RECONNECT_STARTED", { reason: issue, stage: "resolve" });
           const delay = Math.min(BACKOFF_MAX_MS, 500 * 2 ** resolveAttempt);
           resolveAttempt += 1;
           resolveRetry = window.setTimeout(() => void resolve(), delay);
@@ -152,6 +267,7 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
       mounted.current = false;
       if (resolveRetry) window.clearTimeout(resolveRetry);
       if (pendingFetch.current !== null) window.clearTimeout(pendingFetch.current);
+      if (refreshRetry.current !== null) window.clearTimeout(refreshRetry.current);
     };
   }, [pin, refresh]);
 
@@ -201,6 +317,7 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
             if (reconectando) return;
             reconectando = true;
             logGameEvent("REALTIME_DISCONNECTED", { status });
+            logGameEvent("RECONNECT_STARTED", { reason: status });
             setConnection("offline");
             // A versão anterior parava AQUI: marcava o canal como morto e
             // nunca mais tentava. Era o que deixava a sala congelada para
@@ -231,12 +348,25 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
   // -------------------------------------------------------------------------
   useEffect(() => {
     const voltou = () => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") {
+        logGameEvent("RECONNECT_STARTED", { reason: "browser_resume" });
+        void refresh();
+      }
+    };
+    const ficouOffline = () => {
+      if (!roomIdRef.current) return;
+      setRoomIssue("network");
+      setConnection("offline");
+      logGameEvent("REALTIME_DISCONNECTED", { status: "BROWSER_OFFLINE" });
     };
     window.addEventListener("online", voltou);
+    window.addEventListener("offline", ficouOffline);
+    window.addEventListener("pageshow", voltou);
     document.addEventListener("visibilitychange", voltou);
     return () => {
       window.removeEventListener("online", voltou);
+      window.removeEventListener("offline", ficouOffline);
+      window.removeEventListener("pageshow", voltou);
       document.removeEventListener("visibilitychange", voltou);
     };
   }, [refresh]);
@@ -332,5 +462,5 @@ export function useCloudRoom(pin: string, options: { spectator?: boolean } = {})
     [snapshot],
   );
 
-  return { roomId, snapshot, state, connection, authError, refresh };
+  return { roomId, snapshot, state, connection, roomIssue, authError, refresh };
 }
