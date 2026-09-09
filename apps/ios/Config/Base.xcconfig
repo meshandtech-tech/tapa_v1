@@ -1,0 +1,5 @@
+// Safe defaults. Put real values in Secrets.xcconfig, which is gitignored.
+SUPABASE_URL =
+SUPABASE_ANON_KEY =
+
+#include? "Secrets.xcconfig"

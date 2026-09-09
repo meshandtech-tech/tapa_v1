@@ -14,7 +14,7 @@ Beacon was already initialized in this repo (`/beacon-init` ran at some point). 
 
 ## What gets preserved vs replaced
 
-The `beacon_init_persist` tool **replaces only init-derived nodes** (`source=INIT`). A curated architecture node (created by `beacon_describe_feature` or by hand) whose title matches a component in your refreshed analysis is **merged in place** — your fresh `domain`/`role`/`plain`/`layer`/`files` land on it, but it keeps its source, position, status, and bug flags, and no duplicate INIT node is created. Curated nodes your analysis does NOT mention survive untouched, as do hand-edited tables, custom positions, notes, and draft feature plans. So you can re-run this freely.
+The `beacon_init_persist` tool **replaces only init-derived nodes** (`source=INIT`). A curated architecture node (created by `beacon_feature` action:done or by hand) whose title matches a component in your refreshed analysis is **merged in place** — your fresh `domain`/`role`/`plain`/`layer`/`files` land on it, but it keeps its source, position, status, and bug flags, and no duplicate INIT node is created. Curated nodes your analysis does NOT mention survive untouched, as do hand-edited tables, custom positions, notes, and draft feature plans. So you can re-run this freely.
 
 The one caveat: if the user manually edited an INIT-source node on the canvas (e.g., renamed it, rewrote its role), that edit IS overwritten when you re-persist — and a renamed node no longer title-matches, so it survives as its own card. If the user mentions hand-curated INIT nodes, ask whether they want those carried into the new analysis verbatim.
 
@@ -33,7 +33,7 @@ The one caveat: if the user manually edited an INIT-source node on the canvas (e
    - **~ changed**: COMPONENT_X (role expanded to cover Y)
    - **schema**: + 2 new tables (TableA, TableB); + 3 new endpoints; − 1 deprecated endpoint
    No need to wait for confirmation — just show the diff so the user sees what's about to land.
-5. **Call `beacon_init_persist`** ONCE with the refreshed full analysis (same shape as init: `components`, `roadmap`, `overview`, `conventions`, `snapshot`, `hasFrontend` — re-assert it, the stack may have changed). It replaces all init-source nodes and regenerates `AGENTS.md`. Bug flags already on a component survive the refresh (they're carried over by title); add `bugs: [{ note }]` for anything NEW you found worth investigating — identical open flags are not duplicated.
+5. **Call `beacon_init_persist`** ONCE with the refreshed full analysis (same shape as init: `components`, `roadmap`, `overview`, `conventions`, `snapshot`, `hasFrontend` — re-assert it, the stack may have changed; and `classificationRoots` if the Files-canvas grouping needs to change, e.g. a new top-level dir like `mobile/` — OMIT it to keep the existing roots, don't pass `[]` unless you mean to clear them). It replaces all init-source nodes and regenerates `AGENTS.md`. Bug flags already on a component survive the refresh (they're carried over by title); add `bugs: [{ note }]` for anything NEW you found worth investigating — identical open flags are not duplicated.
 
 ## What you should NOT do
 

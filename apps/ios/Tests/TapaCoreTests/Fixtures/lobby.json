@@ -1,0 +1,38 @@
+{
+  "room": {
+    "id": "b14c6ca7-929b-47aa-a2ab-3281420e6c66",
+    "pin": "0427",
+    "gameId": "quem-erra-paga",
+    "phase": "LOBBY",
+    "phaseEndsAt": null,
+    "pausedAt": null,
+    "round": 0,
+    "settings": { "difficulty": "medium", "maxPlayers": 10 },
+    "hostPlayerId": "5fdd00d5-a26a-4569-a789-71d8bc787f35",
+    "closedAt": null
+  },
+  "me": {
+    "playerId": "5fdd00d5-a26a-4569-a789-71d8bc787f35",
+    "submitted": false
+  },
+  "players": [
+    {
+      "id": "5fdd00d5-a26a-4569-a789-71d8bc787f35",
+      "nickname": "Nick",
+      "color": "#ff5c8a",
+      "avatarSeed": "nick",
+      "score": 0,
+      "joinedAt": "2026-09-09T12:00:00.000Z",
+      "lastSeenAt": "2026-09-09T12:00:05.000Z"
+    }
+  ],
+  "match": null,
+  "assignment": null,
+  "votes": {},
+  "scores": {},
+  "answers": {},
+  "topics": [],
+  "chains": [],
+  "serverTime": "2026-09-09T12:00:05.000Z",
+  "error": null
+}

@@ -1,7 +1,15 @@
 # Tapa — iOS nativo + backend compartilhado
 
-> **Status:** plano aprovado em 2026-08-20. Nada implementado ainda.
-> A web continua no ar e funcionando: 4 jogos, 323 testes, `main` publicada.
+> **Status:** plano aprovado em 2026-08-20. Atualizado em 2026-09-09.
+> A autoridade do servidor, migrations, RLS e o cliente web em nuvem já estão
+> implementados. A Fase 6 (casca nativa em SwiftUI) começou em `apps/ios`.
+> Baseline atual da web: **407 testes**.
+>
+> **Desvio registrado:** as Fases 2–3 foram implementadas com regras em RPCs
+> Postgres, não com `packages/protocol` + Edge Function como este plano previa.
+> O app iOS consome o contrato autoritativo de `room_snapshot`; extrair/gerar o
+> protocolo compartilhado continua sendo trabalho pendente antes de expandir
+> todos os quatro jogos nativos.
 
 ---
 

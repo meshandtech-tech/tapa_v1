@@ -1,0 +1,44 @@
+name: Tapa
+
+options:
+  bundleIdPrefix: app.tapa
+  deploymentTarget:
+    iOS: "17.0"
+  generateEmptyDirectories: true
+
+configs:
+  Debug: debug
+  Release: release
+
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+
+packages:
+  TapaKit:
+    path: .
+
+targets:
+  Tapa:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/TapaApp
+    dependencies:
+      - package: TapaKit
+        product: TapaCore
+      - package: TapaKit
+        product: TapaUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.tapa.ios
+        PRODUCT_NAME: Tapa
+        SWIFT_VERSION: "5.10"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Tapa
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_TapaSupabaseURL: $(SUPABASE_URL)
+        INFOPLIST_KEY_TapaSupabaseAnonKey: $(SUPABASE_ANON_KEY)
+        CODE_SIGN_STYLE: Automatic

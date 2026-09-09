@@ -232,9 +232,8 @@ describe.skipIf(!URL || !KEY)(`partida ao vivo com ${N} jogadores`, () => {
     host.sb = novoSb;
 
     // O fluxo de montagem do app: achar a sala PELO PIN, sem guardar nada.
-    const { data: sala } = await novoSb
-      .from("rooms").select("id").eq("pin", PIN).is("closed_at", null).maybeSingle();
-    expect(sala?.id).toBe(roomId);
+    const sala = await rpc<string>(host, "resolve_room", { p_pin: PIN });
+    expect(sala).toBe(roomId);
 
     await assinar(host, roomId);
     const depois = await tarefaDe(host);
