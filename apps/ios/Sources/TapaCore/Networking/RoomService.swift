@@ -60,11 +60,19 @@ public enum RoomServiceError: LocalizedError, Equatable {
     }
 }
 
+/// Realtime only invalidates the local snapshot. Supabase RPCs remain the
+/// source of truth for every value rendered by the app.
+public enum RoomObservationEvent: Equatable, Sendable {
+    case connected
+    case disconnected
+    case changed
+}
+
 public protocol RoomService: Sendable {
     func prepareSession() async throws
     func resolveRoom(pin: String) async throws -> RoomResolution
     func joinRoom(pin: String, nickname: String, color: String, avatarSeed: String) async throws -> JoinRoomResult
     func snapshot(roomID: String) async throws -> RoomSnapshot
-    func roomChanges(roomID: String) async throws -> AsyncStream<Void>
+    func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent>
     func stopObserving() async
 }

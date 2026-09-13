@@ -13,7 +13,20 @@ public actor SupabaseRoomService: RoomService {
     }
 
     public func prepareSession() async throws {
-        if client.auth.currentSession == nil {
+        guard let currentSession = client.auth.currentSession else {
+            _ = try await client.auth.signInAnonymously()
+            return
+        }
+
+        do {
+            let validSession = try await client.auth.session
+            _ = try await client.auth.user(jwt: validSession.accessToken)
+        } catch let AuthError.api(_, _, _, response)
+            where currentSession.user.isAnonymous && [401, 403, 404].contains(response.statusCode)
+        {
+            // Only replace terminal anonymous sessions. A transport failure is
+            // propagated and a future permanent account is never discarded.
+            try await client.auth.signOut(scope: .local)
             _ = try await client.auth.signInAnonymously()
         }
     }
@@ -85,11 +98,12 @@ public actor SupabaseRoomService: RoomService {
         return value
     }
 
-    public func roomChanges(roomID: String) async throws -> AsyncStream<Void> {
+    public func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent> {
         await stopObserving()
 
         let nextChannel = client.channel("ios-room-\(roomID)")
         channel = nextChannel
+        let statusChanges = nextChannel.statusChange
         let playerChanges = nextChannel.postgresChange(
             AnyAction.self,
             schema: "public",
@@ -110,18 +124,35 @@ public actor SupabaseRoomService: RoomService {
         )
         try await nextChannel.subscribeWithError()
 
-        return AsyncStream { continuation in
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let tasks = [playerChanges, roomChanges, matchChanges].map { changes in
                 Task {
                     for await _ in changes {
                         guard !Task.isCancelled else { break }
-                        continuation.yield()
+                        continuation.yield(.changed)
+                    }
+                }
+            }
+
+            let statusTask = Task {
+                var wasConnected = false
+                for await status in statusChanges {
+                    guard !Task.isCancelled else { break }
+                    switch status {
+                    case .subscribed:
+                        wasConnected = true
+                        continuation.yield(.connected)
+                    case .unsubscribed where wasConnected:
+                        continuation.yield(.disconnected)
+                    case .unsubscribed, .subscribing, .unsubscribing:
+                        break
                     }
                 }
             }
 
             continuation.onTermination = { _ in
                 tasks.forEach { $0.cancel() }
+                statusTask.cancel()
             }
         }
     }

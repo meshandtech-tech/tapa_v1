@@ -2,6 +2,7 @@ import SwiftUI
 import TapaCore
 
 public struct TapaRootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var model: LobbyViewModel
 
     public init(service: any RoomService) {
@@ -23,6 +24,10 @@ public struct TapaRootView: View {
             .navigationTitle("Tapa")
         }
         .tint(.black)
+        .onChange(of: scenePhase) { _, nextPhase in
+            guard nextPhase == .active else { return }
+            Task { await model.resume() }
+        }
     }
 }
 
@@ -90,6 +95,23 @@ private struct LobbyView: View {
     var body: some View {
         List {
             if let snapshot = model.snapshot {
+                if model.connectionState == .reconnecting {
+                    Section {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Reconectando…")
+                                    .fontWeight(.semibold)
+                                Text("Mantendo o último estado seguro da sala.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("lobby-reconnecting")
+                    }
+                }
+
                 Section {
                     LabeledContent("Sala", value: snapshot.room.pin)
                     LabeledContent("Jogo", value: gameName(snapshot.room.gameId))

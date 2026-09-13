@@ -1,0 +1,22 @@
+{
+  "room": {
+    "id": "room-over", "pin": "0427", "gameId": "quem-erra-paga", "phase": "GAME_OVER",
+    "phaseEndsAt": null, "pausedAt": null, "round": 5, "settings": {},
+    "hostPlayerId": "player-1", "closedAt": null
+  },
+  "me": { "playerId": "player-2", "submitted": true },
+  "players": [
+    { "id": "player-1", "nickname": "Nick", "color": "#ff5c8a", "avatarSeed": "nick", "score": 30, "joinedAt": "2026-09-09T12:00:00.000Z", "lastSeenAt": "2026-09-09T12:10:00.000Z" },
+    { "id": "player-2", "nickname": "Bia", "color": "#4cc9f0", "avatarSeed": "bia", "score": 20, "joinedAt": "2026-09-09T12:00:01.000Z", "lastSeenAt": "2026-09-09T12:10:00.000Z" }
+  ],
+  "match": {
+    "id": "match-over", "gameId": "quem-erra-paga", "seatOrder": ["player-1", "player-2"],
+    "stepIndex": 5, "stepCount": 5, "submittedPlayerIds": ["player-1", "player-2"], "presenterIndex": 0,
+    "revealChainIndex": 0, "revealPageIndex": 0, "revealAutoplay": false,
+    "questionOrder": [7, 2, 11, 4, 9], "slideIds": [], "usedSlideIds": [],
+    "punishmentIndex": 3, "topicCandidates": [], "topicWinner": 0
+  },
+  "assignment": null, "votes": {}, "scores": { "player-1": 30.0, "player-2": 20.0 },
+  "answers": { "player-1": 1, "player-2": 2 }, "topics": [], "chains": [],
+  "serverTime": "2026-09-09T12:10:00.000Z", "error": null
+}

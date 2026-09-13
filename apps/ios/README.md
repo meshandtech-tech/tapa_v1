@@ -5,8 +5,9 @@ Supabase room used by the web app.
 
 ## What is here
 
-- `TapaCore`: shared `Codable` models, anonymous auth, room RPCs and lobby state
-- `TapaUI`: the SwiftUI join flow and live lobby
+- `TapaCore`: shared `Codable` models, recoverable anonymous auth, room RPCs,
+  snapshot reconciliation and reconnecting lobby state
+- `TapaUI`: the SwiftUI join flow, live lobby and visible reconnect state
 - `TapaApp`: the thin iOS application entry point
 - `project.yml`: reproducible Xcode project definition
 
@@ -29,3 +30,8 @@ swift test
 
 The first vertical checkpoint is: create a room on the web, enter the same PIN
 in the simulator, and see the lobby update as players join or leave.
+
+The lobby treats Realtime as an invalidation signal only. After subscribing,
+reconnecting, or returning from the background, it fetches a fresh
+`room_snapshot` from the authoritative backend. Transient failures preserve
+the last known lobby instead of ejecting the player to the join screen.

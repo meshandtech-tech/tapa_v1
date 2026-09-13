@@ -28,4 +28,22 @@ final class RoomSnapshotTests: XCTestCase {
         XCTAssertEqual(open, RoomResolution(status: .open, roomID: "room-123"))
         XCTAssertEqual(expired, RoomResolution(status: .roomExpired, roomID: nil))
     }
+
+    func testDecodesGoldenPhaseFixtures() throws {
+        let expectedPhases: [(String, PartyPhase)] = [
+            ("game_question", .roundActive),
+            ("game_voting", .voting),
+            ("game_results", .scoreReveal),
+            ("game_over", .gameOver),
+        ]
+
+        for (name, phase) in expectedPhases {
+            let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "json"))
+            let snapshot = try JSONDecoder().decode(RoomSnapshot.self, from: Data(contentsOf: url))
+
+            XCTAssertEqual(snapshot.room.phase, phase, "Fixture: \(name)")
+            XCTAssertNotNil(snapshot.match, "Fixture: \(name)")
+            XCTAssertNil(snapshot.error, "Fixture: \(name)")
+        }
+    }
 }

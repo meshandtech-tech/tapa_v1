@@ -1,0 +1,21 @@
+{
+  "room": {
+    "id": "room-vote", "pin": "7319", "gameId": "advogado-do-diabo",
+    "phase": "VOTING", "phaseEndsAt": "2026-09-09T12:04:00.000Z",
+    "pausedAt": null, "round": 1, "settings": {}, "hostPlayerId": "player-1", "closedAt": null
+  },
+  "me": { "playerId": "player-2", "submitted": true },
+  "players": [
+    { "id": "player-1", "nickname": "Nick", "color": "#ff5c8a", "avatarSeed": "nick", "score": 0, "joinedAt": "2026-09-09T12:00:00.000Z", "lastSeenAt": "2026-09-09T12:03:50.000Z" },
+    { "id": "player-2", "nickname": "Bia", "color": "#4cc9f0", "avatarSeed": "bia", "score": 0, "joinedAt": "2026-09-09T12:00:01.000Z", "lastSeenAt": "2026-09-09T12:03:50.000Z" }
+  ],
+  "match": {
+    "id": "match-vote", "gameId": "advogado-do-diabo", "seatOrder": ["player-1", "player-2"],
+    "stepIndex": 0, "stepCount": 2, "submittedPlayerIds": ["player-2"], "presenterIndex": 0,
+    "revealChainIndex": 0, "revealPageIndex": 0, "revealAutoplay": false,
+    "questionOrder": [], "slideIds": [], "usedSlideIds": [], "punishmentIndex": null,
+    "topicCandidates": ["Tema A", "Tema B"], "topicWinner": 1
+  },
+  "assignment": null, "votes": { "player-2": 4.0 }, "scores": {}, "answers": {},
+  "topics": [], "chains": [], "serverTime": "2026-09-09T12:03:55.000Z", "error": null
+}

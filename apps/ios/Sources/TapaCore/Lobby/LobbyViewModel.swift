@@ -11,17 +11,38 @@ public final class LobbyViewModel {
         case failed(String)
     }
 
+    public enum ConnectionState: Equatable, Sendable {
+        case idle
+        case connected
+        case reconnecting
+    }
+
     public var pin = ""
     public var nickname = ""
     public private(set) var state: ViewState = .idle
+    public private(set) var connectionState: ConnectionState = .idle
+    public private(set) var lastConnectionError: String?
     public private(set) var snapshot: RoomSnapshot?
 
     @ObservationIgnored private let service: any RoomService
+    @ObservationIgnored private let reconnectDelay: @Sendable (Int) async -> Void
     @ObservationIgnored private var observationTask: Task<Void, Never>?
     @ObservationIgnored private var roomID: String?
 
     public init(service: any RoomService) {
         self.service = service
+        reconnectDelay = { attempt in
+            let seconds = min(1 << min(max(attempt - 1, 0), 3), 5)
+            try? await Task.sleep(for: .seconds(seconds))
+        }
+    }
+
+    init(
+        service: any RoomService,
+        reconnectDelay: @escaping @Sendable (Int) async -> Void
+    ) {
+        self.service = service
+        self.reconnectDelay = reconnectDelay
     }
 
     public var canJoin: Bool {
@@ -38,6 +59,8 @@ public final class LobbyViewModel {
     public func join() async {
         guard canJoin else { return }
         state = .connecting
+        connectionState = .reconnecting
+        lastConnectionError = nil
 
         do {
             try await service.prepareSession()
@@ -68,6 +91,7 @@ public final class LobbyViewModel {
             state = .joined
             observeRoom()
         } catch {
+            connectionState = .idle
             state = .failed(error.localizedDescription)
         }
     }
@@ -79,7 +103,30 @@ public final class LobbyViewModel {
     public func stop() {
         observationTask?.cancel()
         observationTask = nil
+        connectionState = .idle
         Task { await service.stopObserving() }
+    }
+
+    /// Called when the app becomes active. The snapshot is refreshed before
+    /// Realtime is subscribed again so background gaps never become game state.
+    public func resume() async {
+        guard state == .joined, roomID != nil else { return }
+
+        let previousTask = observationTask
+        observationTask = nil
+        previousTask?.cancel()
+        await previousTask?.value
+        await service.stopObserving()
+
+        connectionState = .reconnecting
+        do {
+            try await service.prepareSession()
+            try await refresh()
+            lastConnectionError = nil
+        } catch {
+            lastConnectionError = error.localizedDescription
+        }
+        observeRoom()
     }
 
     private var normalizedPIN: String {
@@ -94,17 +141,47 @@ public final class LobbyViewModel {
     private func observeRoom() {
         observationTask?.cancel()
         guard let roomID else { return }
+        connectionState = .reconnecting
+        let reconnectDelay = reconnectDelay
 
         observationTask = Task { [weak self, service] in
-            do {
-                let changes = try await service.roomChanges(roomID: roomID)
-                for await _ in changes {
+            var attempt = 0
+
+            while !Task.isCancelled {
+                do {
+                    let events = try await service.roomChanges(roomID: roomID)
+
+                    eventLoop: for await event in events {
+                        guard !Task.isCancelled, let self else { break eventLoop }
+
+                        switch event {
+                        case .connected, .changed:
+                            do {
+                                try await self.refresh()
+                                self.connectionState = .connected
+                                self.lastConnectionError = nil
+                                attempt = 0
+                            } catch {
+                                self.connectionState = .reconnecting
+                                self.lastConnectionError = error.localizedDescription
+                                break eventLoop
+                            }
+                        case .disconnected:
+                            self.connectionState = .reconnecting
+                            break eventLoop
+                        }
+                    }
+                } catch {
                     guard !Task.isCancelled, let self else { break }
-                    try await self.refresh()
+                    self.connectionState = .reconnecting
+                    self.lastConnectionError = error.localizedDescription
                 }
-            } catch {
-                guard !Task.isCancelled, let self else { return }
-                self.state = .failed(error.localizedDescription)
+
+                await service.stopObserving()
+                guard !Task.isCancelled else { break }
+
+                attempt += 1
+                await reconnectDelay(attempt)
             }
         }
     }
