@@ -92,7 +92,7 @@ public final class LobbyViewModel {
             observeRoom()
         } catch {
             connectionState = .idle
-            state = .failed(error.localizedDescription)
+            state = .failed(Self.message(for: error))
         }
     }
 
@@ -124,7 +124,7 @@ public final class LobbyViewModel {
             try await refresh()
             lastConnectionError = nil
         } catch {
-            lastConnectionError = error.localizedDescription
+            lastConnectionError = Self.message(for: error)
         }
         observeRoom()
     }
@@ -163,7 +163,7 @@ public final class LobbyViewModel {
                                 attempt = 0
                             } catch {
                                 self.connectionState = .reconnecting
-                                self.lastConnectionError = error.localizedDescription
+                                self.lastConnectionError = Self.message(for: error)
                                 break eventLoop
                             }
                         case .disconnected:
@@ -174,7 +174,7 @@ public final class LobbyViewModel {
                 } catch {
                     guard !Task.isCancelled, let self else { break }
                     self.connectionState = .reconnecting
-                    self.lastConnectionError = error.localizedDescription
+                    self.lastConnectionError = Self.message(for: error)
                 }
 
                 await service.stopObserving()
@@ -190,4 +190,27 @@ public final class LobbyViewModel {
         "#ff5c8a", "#ffb703", "#3ddc97", "#4cc9f0", "#b892ff",
         "#ff8c42", "#06d6a0", "#ef476f", "#8ecae6", "#c9ff4c",
     ]
+
+    private static func message(for error: Error) -> String {
+        if isNetworkError(error) {
+            return "Falha temporária de rede. Verifique sua conexão e tente novamente."
+        }
+
+        return error.localizedDescription
+    }
+
+    private static func isNetworkError(_ error: Error) -> Bool {
+        if error is URLError { return true }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain { return true }
+
+        let message = nsError.localizedDescription.lowercased()
+        return message.contains("network")
+            || message.contains("offline")
+            || message.contains("timed out")
+            || message.contains("timeout")
+            || message.contains("internet connection")
+            || message.contains("fetch")
+    }
 }

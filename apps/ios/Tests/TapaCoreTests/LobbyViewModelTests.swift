@@ -27,6 +27,25 @@ final class LobbyViewModelTests: XCTestCase {
         XCTAssertEqual(model.state, .joined)
     }
 
+    func testJoinNetworkFailureShowsFriendlyMessage() async throws {
+        let lobby = try fixture("lobby")
+        let service = RoomServiceMock(snapshot: lobby)
+        let model = makeModel(service: service)
+
+        await service.failPrepareSession(with: URLError(.notConnectedToInternet))
+        model.pin = "0427"
+        model.nickname = "Nick"
+
+        await model.join()
+
+        XCTAssertEqual(
+            model.state,
+            .failed("Falha temporária de rede. Verifique sua conexão e tente novamente.")
+        )
+        XCTAssertEqual(model.connectionState, .idle)
+        XCTAssertNil(model.snapshot)
+    }
+
     func testDisconnectKeepsSnapshotAndSubscribesAgain() async throws {
         let lobby = try fixture("lobby")
         let service = RoomServiceMock(snapshot: lobby)
@@ -40,6 +59,25 @@ final class LobbyViewModelTests: XCTestCase {
         await service.send(.disconnected)
 
         await eventually { await service.observationCount() >= 2 }
+        await eventually { model.connectionState == .connected }
+        XCTAssertEqual(model.state, .joined)
+        XCTAssertEqual(model.snapshot, lobby)
+    }
+
+    func testTransientRealtimeFailureKeepsSnapshotAndRetries() async throws {
+        let lobby = try fixture("lobby")
+        let service = RoomServiceMock(snapshot: lobby)
+        let model = makeModel(service: service)
+
+        model.pin = "0427"
+        model.nickname = "Nick"
+        await model.join()
+        await eventually { model.connectionState == .connected }
+
+        await service.failNextObservation()
+        await service.send(.disconnected)
+
+        await eventually { await service.observationCount() >= 3 }
         await eventually { model.connectionState == .connected }
         XCTAssertEqual(model.state, .joined)
         XCTAssertEqual(model.snapshot, lobby)
@@ -94,12 +132,19 @@ private actor RoomServiceMock: RoomService {
     private var currentSnapshot: RoomSnapshot
     private var activeContinuation: AsyncStream<RoomObservationEvent>.Continuation?
     private var observations = 0
+    private var observationFailuresRemaining = 0
+    private var prepareSessionError: Error?
 
     init(snapshot: RoomSnapshot) {
         currentSnapshot = snapshot
     }
 
-    func prepareSession() async throws {}
+    func prepareSession() async throws {
+        if let prepareSessionError {
+            self.prepareSessionError = nil
+            throw prepareSessionError
+        }
+    }
 
     func resolveRoom(pin: String) async throws -> RoomResolution {
         RoomResolution(status: .open, roomID: currentSnapshot.room.id)
@@ -124,6 +169,11 @@ private actor RoomServiceMock: RoomService {
 
     func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent> {
         observations += 1
+        if observationFailuresRemaining > 0 {
+            observationFailuresRemaining -= 1
+            throw RoomServiceError.rejected("Realtime temporarily unavailable")
+        }
+
         return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             activeContinuation = continuation
             continuation.yield(.connected)
@@ -141,6 +191,14 @@ private actor RoomServiceMock: RoomService {
 
     func send(_ event: RoomObservationEvent) {
         activeContinuation?.yield(event)
+    }
+
+    func failNextObservation() {
+        observationFailuresRemaining += 1
+    }
+
+    func failPrepareSession(with error: Error) {
+        prepareSessionError = error
     }
 
     func observationCount() -> Int {

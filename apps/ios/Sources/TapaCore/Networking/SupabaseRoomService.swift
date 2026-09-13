@@ -4,6 +4,7 @@ import Supabase
 public actor SupabaseRoomService: RoomService {
     private let client: SupabaseClient
     private var channel: RealtimeChannelV2?
+    private var rpcAccessToken: String?
 
     public init(configuration: TapaConfiguration) {
         client = SupabaseClient(
@@ -14,20 +15,23 @@ public actor SupabaseRoomService: RoomService {
 
     public func prepareSession() async throws {
         guard let currentSession = client.auth.currentSession else {
-            _ = try await client.auth.signInAnonymously()
+            let session = try await client.auth.signInAnonymously()
+            rpcAccessToken = session.accessToken
             return
         }
 
         do {
             let validSession = try await client.auth.session
             _ = try await client.auth.user(jwt: validSession.accessToken)
+            rpcAccessToken = validSession.accessToken
+        } catch AuthError.sessionMissing where currentSession.user.isAnonymous {
+            try await replaceAnonymousSession()
         } catch let AuthError.api(_, _, _, response)
             where currentSession.user.isAnonymous && [401, 403, 404].contains(response.statusCode)
         {
             // Only replace terminal anonymous sessions. A transport failure is
             // propagated and a future permanent account is never discarded.
-            try await client.auth.signOut(scope: .local)
-            _ = try await client.auth.signInAnonymously()
+            try await replaceAnonymousSession()
         }
     }
 
@@ -39,8 +43,10 @@ public actor SupabaseRoomService: RoomService {
                 case pin = "p_pin"
             }
         }
-        return try await client
-            .rpc("resolve_room_state", params: Parameters(pin: pin))
+        return try await authenticatedRPC(
+            "resolve_room_state",
+            params: Parameters(pin: pin)
+        )
             .execute()
             .value
     }
@@ -65,16 +71,15 @@ public actor SupabaseRoomService: RoomService {
             }
         }
 
-        return try await client
-            .rpc(
-                "join_room",
-                params: Parameters(
-                    pin: pin,
-                    nickname: nickname,
-                    color: color,
-                    avatarSeed: avatarSeed
-                )
+        return try await authenticatedRPC(
+            "join_room",
+            params: Parameters(
+                pin: pin,
+                nickname: nickname,
+                color: color,
+                avatarSeed: avatarSeed
             )
+        )
             .execute()
             .value
     }
@@ -87,8 +92,10 @@ public actor SupabaseRoomService: RoomService {
                 case room = "p_room"
             }
         }
-        let value: RoomSnapshot = try await client
-            .rpc("room_snapshot", params: Parameters(room: roomID))
+        let value: RoomSnapshot = try await authenticatedRPC(
+            "room_snapshot",
+            params: Parameters(room: roomID)
+        )
             .execute()
             .value
 
@@ -161,5 +168,43 @@ public actor SupabaseRoomService: RoomService {
         guard let channel else { return }
         await client.removeChannel(channel)
         self.channel = nil
+    }
+
+    /// Supabase normally injects the current access token through its request
+    /// adapter. Supplying it on each authoritative RPC also removes the brief
+    /// cold-start window where a newly restored/created anonymous session can
+    /// otherwise be sent with the publishable key's `anon` role.
+    private func authenticatedRPC<Parameters: Encodable>(
+        _ function: String,
+        params: Parameters
+    ) async throws -> PostgrestFilterBuilder {
+        let token: String
+        do {
+            let session = try await client.auth.session
+            token = session.accessToken
+            rpcAccessToken = token
+        } catch AuthError.sessionMissing {
+            // `signInAnonymously()` already returned a valid JWT. On a fresh
+            // simulator install the SDK's Keychain-backed lookup can lag or be
+            // unavailable, so the first RPC uses that in-memory token directly.
+            guard let rpcAccessToken else {
+                throw RoomServiceError.authentication
+            }
+            token = rpcAccessToken
+        }
+
+        return try client
+            .rpc(function, params: params)
+            .setHeader(
+                name: "Authorization",
+                value: "Bearer \(token)"
+            )
+    }
+
+    private func replaceAnonymousSession() async throws {
+        rpcAccessToken = nil
+        try? await client.auth.signOut(scope: .local)
+        let session = try await client.auth.signInAnonymously()
+        rpcAccessToken = session.accessToken
     }
 }
