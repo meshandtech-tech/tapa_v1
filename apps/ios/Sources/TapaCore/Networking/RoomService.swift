@@ -73,6 +73,7 @@ public protocol RoomService: Sendable {
     func resolveRoom(pin: String) async throws -> RoomResolution
     func joinRoom(pin: String, nickname: String, color: String, avatarSeed: String) async throws -> JoinRoomResult
     func snapshot(roomID: String) async throws -> RoomSnapshot
+    func submitAnswer(roomID: String, option: Int) async throws
     func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent>
     func stopObserving() async
 }

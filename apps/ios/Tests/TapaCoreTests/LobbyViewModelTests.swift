@@ -167,6 +167,8 @@ private actor RoomServiceMock: RoomService {
         currentSnapshot
     }
 
+    func submitAnswer(roomID: String, option: Int) async throws {}
+
     func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent> {
         observations += 1
         if observationFailuresRemaining > 0 {

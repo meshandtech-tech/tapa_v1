@@ -105,6 +105,16 @@ public actor SupabaseRoomService: RoomService {
         return value
     }
 
+    public func submitAnswer(roomID: String, option: Int) async throws {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_option: Int
+        }
+        _ = try await authenticatedRPC(
+            "submit_answer", params: Parameters(p_room: roomID, p_option: option)
+        ).execute()
+    }
+
     public func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent> {
         await stopObserving()
 

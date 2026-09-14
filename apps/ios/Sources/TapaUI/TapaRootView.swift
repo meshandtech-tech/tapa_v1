@@ -4,163 +4,139 @@ import TapaCore
 public struct TapaRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var model: LobbyViewModel
-
     public init(service: any RoomService) {
         _model = State(initialValue: LobbyViewModel(service: service))
     }
-
     public var body: some View {
-        @Bindable var model = model
-
-        NavigationStack {
-            Group {
-                switch model.state {
-                case .joined:
-                    LobbyView(model: model)
-                case .idle, .connecting, .failed:
-                    JoinView(model: model)
-                }
+        ZStack {
+            TapaBackground()
+            ScrollView {
+                VStack(spacing: 26) {
+                    HStack {
+                        TapaLogo()
+                        Spacer()
+                        if let s = model.snapshot, model.state == .joined {
+                            Text("SALA \(s.room.pin)").font(.caption.weight(.black)).padding(10).paper()
+                        }
+                    }.padding(.top, 12)
+                    if model.state == .joined, let s = model.snapshot {
+                        if model.connectionState == .reconnecting || model.lastConnectionError != nil {
+                            Label("Reconectando… mantendo sua partida.", systemImage: "wifi.exclamationmark")
+                                .font(.callout.weight(.bold)).padding().paper()
+                        }
+                        if s.room.closedAt != nil {
+                            TapaMessage(icon: "flag.checkered", title: "PARTY ENCERRADA", detail: "Esta sala foi encerrada pelo host.")
+                        } else if s.room.phase == .lobby {
+                            NativeLobby(snapshot: s)
+                        } else if s.room.gameId == .quemErraPaga {
+                            QuizGameView(model: model, snapshot: s)
+                        } else {
+                            TapaMessage(icon: "hammer.fill", title: "ESSE AINDA É NO WEB",
+                                        detail: "\(s.room.gameId.displayName) ainda não tem telas nativas. Entre pelo navegador para jogar. Quem Erra, Paga já está disponível aqui.")
+                        }
+                    } else {
+                        NativeJoin(model: model)
+                    }
+                    Text("JUNTO É MUITO MAIS CAÓTICO.")
+                        .font(.system(.caption2, design: .monospaced, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.85)).padding(.top, 12)
+                }.frame(maxWidth: 560).padding(.horizontal, 24).padding(.bottom, 32)
+                    .frame(maxWidth: .infinity)
+            }.scrollDismissesKeyboard(.interactively)
+        }
+        .foregroundStyle(.black).tint(.black).preferredColorScheme(.light)
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await model.resume()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                await model.synchronize()
             }
-            .navigationTitle("Tapa")
         }
-        .tint(.black)
-        .onChange(of: scenePhase) { _, nextPhase in
-            guard nextPhase == .active else { return }
-            Task { await model.resume() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { model.stop() }
         }
+        .onDisappear { model.stop() }
     }
 }
 
-private struct JoinView: View {
+private struct NativeJoin: View {
     @Bindable var model: LobbyViewModel
-
     var body: some View {
-        Form {
-            Section("Entrar numa sala") {
-                pinField
-                nicknameField
-            }
-
-            if case let .failed(message) = model.state {
-                Text(message)
-                    .foregroundStyle(.red)
-                    .accessibilityIdentifier("join-error")
-            }
-
-            Button {
-                Task { await model.join() }
-            } label: {
-                HStack {
-                    Spacer()
-                    if model.state == .connecting {
-                        ProgressView()
-                    } else {
-                        Text("ENTRAR")
-                            .fontWeight(.black)
-                    }
-                    Spacer()
+        VStack(alignment: .leading, spacing: 24) {
+            Text("A PARTY\nTÁ ON.")
+                .font(.system(size: 54, weight: .black, design: .rounded))
+                .tracking(-2).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+            Text("Um PIN. Seus amigos.\nZero chance de ficar sério.")
+                .font(.title3.weight(.semibold)).foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 20) {
+                Text("CHEGA MAIS ↗").font(.title2.weight(.black))
+                Text("PIN DA SALA").font(.caption.weight(.black))
+                pinField.font(.system(size: 34, weight: .black, design: .monospaced))
+                    .padding(14).background(Color.black.opacity(0.05))
+                    .overlay(Rectangle().stroke(.black, lineWidth: 2)).accessibilityIdentifier("join-pin")
+                Text("COMO VÃO TE CHAMAR?").font(.caption.weight(.black))
+                TextField("Seu nome", text: $model.nickname)
+                    .font(.title3.weight(.bold)).padding(14).background(Color.black.opacity(0.05))
+                    .overlay(Rectangle().stroke(.black, lineWidth: 2)).accessibilityIdentifier("join-name")
+                if case let .failed(message) = model.state {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout.weight(.semibold)).foregroundStyle(.red).accessibilityIdentifier("join-error")
                 }
-            }
-            .disabled(!model.canJoin)
-            .accessibilityIdentifier("join-button")
+                Button { Task { await model.join() } } label: {
+                    Label(model.state == .connecting ? "ENTRANDO…" : "BORA PRA PARTY",
+                          systemImage: model.state == .connecting ? "hourglass" : "arrow.right")
+                }.buttonStyle(TapaButtonStyle(dark: true)).disabled(!model.canJoin).accessibilityIdentifier("join-button")
+            }.padding(22).paper()
+            Label("Crie a sala no web e coloque o PIN aqui.", systemImage: "link")
+                .font(.callout.weight(.semibold)).foregroundStyle(.white)
         }
     }
-
-    @ViewBuilder
     private var pinField: some View {
         #if os(iOS)
-        TextField("PIN de 4 números", text: $model.pin)
-            .keyboardType(.numberPad)
-            .textContentType(.oneTimeCode)
+        TextField("0000", text: $model.pin).keyboardType(.numberPad).textContentType(.oneTimeCode)
         #else
-        TextField("PIN de 4 números", text: $model.pin)
-        #endif
-    }
-
-    @ViewBuilder
-    private var nicknameField: some View {
-        #if os(iOS)
-        TextField("Seu nome", text: $model.nickname)
-            .textInputAutocapitalization(.words)
-            .textContentType(.nickname)
-        #else
-        TextField("Seu nome", text: $model.nickname)
+        TextField("0000", text: $model.pin)
         #endif
     }
 }
 
-private struct LobbyView: View {
-    @Bindable var model: LobbyViewModel
-
+private struct NativeLobby: View {
+    let snapshot: RoomSnapshot
     var body: some View {
-        List {
-            if let snapshot = model.snapshot {
-                if model.connectionState == .reconnecting {
-                    Section {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Reconectando…")
-                                    .fontWeight(.semibold)
-                                Text("Mantendo o último estado seguro da sala.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("lobby-reconnecting")
-                    }
+        VStack(alignment: .leading, spacing: 24) {
+            Text("TODO MUNDO\nPRA DENTRO.").font(.system(size: 40, weight: .black, design: .rounded)).foregroundStyle(.white)
+            VStack(spacing: 12) {
+                Text("O CÓDIGO DA BAGUNÇA").font(.caption.weight(.black)).tracking(2)
+                Text(snapshot.room.pin).font(.system(size: 64, weight: .black, design: .monospaced))
+                    .tracking(8).minimumScaleFactor(0.6).lineLimit(1)
+                Label("Esperando o host começar no web", systemImage: "hourglass").font(.callout.weight(.semibold))
+            }.frame(maxWidth: .infinity).padding(24).paper()
+            HStack {
+                Image(systemName: "bolt.fill").font(.title)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("PRÓXIMO JOGO").font(.caption.weight(.black))
+                    Text(snapshot.room.gameId.displayName).font(.title2.weight(.black))
                 }
-
-                Section {
-                    LabeledContent("Sala", value: snapshot.room.pin)
-                    LabeledContent("Jogo", value: gameName(snapshot.room.gameId))
-                    if model.isHost {
-                        Label("Você é o host", systemImage: "crown.fill")
-                    }
+                Spacer()
+            }.padding(20).paper(fill: TapaPalette.lime)
+            VStack(alignment: .leading, spacing: 16) {
+                Text("NA PARTY · \(snapshot.players.count)").font(.headline.weight(.black))
+                ForEach(snapshot.players) { player in
+                    PlayerRow(player: player, suffix: player.id == snapshot.room.hostPlayerId ? "HOST" : player.id == snapshot.me.playerId ? "VOCÊ" : "")
                 }
-
-                Section("Jogadores (\(snapshot.players.count))") {
-                    ForEach(snapshot.players) { player in
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(Color(hex: player.color))
-                                .frame(width: 16, height: 16)
-                            Text(player.nickname)
-                            Spacer()
-                            if player.id == snapshot.room.hostPlayerId {
-                                Image(systemName: "crown.fill")
-                                    .accessibilityLabel("Host")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("Lobby")
-        .onDisappear { model.stop() }
-        .accessibilityIdentifier("live-lobby")
+            }.padding(20).paper()
+        }.accessibilityIdentifier("live-lobby")
     }
+}
 
-    private func gameName(_ gameID: GameID) -> String {
-        switch gameID {
+extension GameID {
+    var displayName: String {
+        switch self {
         case .quemErraPaga: "Quem Erra, Paga"
         case .advogadoDoDiabo: "Advogado do Diabo"
         case .drawingTelephone: "Telefone Sem Fio"
         case .improvSlides: "Pitch no Escuro"
         }
-    }
-}
-
-private extension Color {
-    init(hex: String) {
-        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var value: UInt64 = 0
-        Scanner(string: cleaned).scanHexInt64(&value)
-        self.init(
-            red: Double((value >> 16) & 0xff) / 255,
-            green: Double((value >> 8) & 0xff) / 255,
-            blue: Double(value & 0xff) / 255
-        )
     }
 }

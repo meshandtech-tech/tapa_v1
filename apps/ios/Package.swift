@@ -24,7 +24,8 @@ let package = Package(
             name: "TapaCore",
             dependencies: [
                 .product(name: "Supabase", package: "supabase-swift"),
-            ]
+            ],
+            resources: [.process("Resources")]
         ),
         .target(
             name: "TapaUI",

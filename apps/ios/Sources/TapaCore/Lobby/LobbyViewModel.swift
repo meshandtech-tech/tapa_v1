@@ -23,6 +23,10 @@ public final class LobbyViewModel {
     public private(set) var connectionState: ConnectionState = .idle
     public private(set) var lastConnectionError: String?
     public private(set) var snapshot: RoomSnapshot?
+    public private(set) var serverOffset: TimeInterval = 0
+    public private(set) var isSubmitting = false
+    public private(set) var actionError: String?
+    public private(set) var confirmedAnswerRound: String?
 
     @ObservationIgnored private let service: any RoomService
     @ObservationIgnored private let reconnectDelay: @Sendable (Int) async -> Void
@@ -52,7 +56,7 @@ public final class LobbyViewModel {
     }
 
     public var isHost: Bool {
-        guard let snapshot else { return false }
+        guard let snapshot, snapshot.me.playerId != nil else { return false }
         return snapshot.me.playerId == snapshot.room.hostPlayerId
     }
 
@@ -135,7 +139,60 @@ public final class LobbyViewModel {
 
     private func refresh() async throws {
         guard let roomID else { return }
-        snapshot = try await service.snapshot(roomID: roomID)
+        let received = try await service.snapshot(roomID: roomID)
+        guard self.roomID == roomID else { return }
+        if let current = snapshot,
+           let old = RoomSnapshot.parseDate(current.serverTime),
+           let new = RoomSnapshot.parseDate(received.serverTime), new < old { return }
+        if snapshot?.quizRoundKey != received.quizRoundKey || snapshot?.room.phase != received.room.phase {
+            actionError = nil
+        }
+        snapshot = received
+        if let server = RoomSnapshot.parseDate(received.serverTime) {
+            serverOffset = server.timeIntervalSinceNow
+        }
+    }
+
+    /// Low-frequency recovery when an invalidation is lost; owned by the root
+    /// view task, never by a particular phase's view.
+    public func synchronize() async {
+        guard state == .joined else { return }
+        do {
+            try await refresh()
+            lastConnectionError = nil
+        } catch {
+            lastConnectionError = Self.message(for: error)
+        }
+    }
+
+    public var hasAnswered: Bool {
+        guard let snapshot else { return false }
+        return snapshot.me.submitted || snapshot.myAnswer != nil
+            || confirmedAnswerRound == snapshot.quizRoundKey
+    }
+
+    public func submitAnswer(_ option: Int) async {
+        guard let snapshot, snapshot.room.gameId == .quemErraPaga,
+              snapshot.room.phase == .roundActive, snapshot.isQuizParticipant,
+              snapshot.room.pausedAt == nil, !hasAnswered, !isSubmitting,
+              (0..<4).contains(option),
+              (snapshot.secondsRemaining(at: Date(), serverOffset: serverOffset) ?? 1) > 0
+        else { return }
+        let roundKey = snapshot.quizRoundKey
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.submitAnswer(roomID: snapshot.room.id, option: option)
+            // Acknowledged by the server, not an optimistic local score/update.
+            confirmedAnswerRound = roundKey
+            await synchronize()
+        } catch {
+            await synchronize()
+            if self.snapshot?.quizRoundKey == roundKey, !hasAnswered {
+                actionError = "Não conseguimos confirmar sua resposta. Tente novamente."
+            }
+        }
     }
 
     private func observeRoom() {
