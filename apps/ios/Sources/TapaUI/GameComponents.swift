@@ -148,7 +148,11 @@ struct VotePanel: View {
             Text(title).font(.title2.weight(.black)).multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity).padding(20).paper()
             ForEach(items) { item in
-                Button { Task { await action(item.value) } } label: {
+                Button {
+                    runProtectedGameAction(named: "Enviar voto") {
+                        await action(item.value)
+                    }
+                } label: {
                     HStack {
                         Text(item.emoji).font(.title)
                         Text(item.label)
@@ -178,10 +182,15 @@ struct RankingView: View {
         }
     }
     private var ranking: [(player: SnapshotPlayer, score: Double)] {
-        snapshot.players.map { player in
-            (player, usesDecimalScores ? (snapshot.scores[player.id] ?? 0) : Double(player.score))
-        }.sorted {
-            $0.score == $1.score ? $0.player.joinedAt < $1.player.joinedAt : $0.score > $1.score
+        let rows: [(player: SnapshotPlayer, score: Double)] = snapshot.matchParticipants.map { player in
+            let score = usesDecimalScores ? (snapshot.scores[player.id] ?? 0) : Double(player.score)
+            return (player: player, score: score)
+        }
+        return rows.sorted { lhs, rhs in
+            if lhs.score == rhs.score {
+                return lhs.player.joinedAt < rhs.player.joinedAt
+            }
+            return lhs.score > rhs.score
         }
     }
     private func formatted(_ score: Double) -> String {

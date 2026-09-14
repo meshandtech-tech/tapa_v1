@@ -74,6 +74,35 @@ final class LobbyViewModelTests: XCTestCase {
         model.stop()
     }
 
+    func testHostAddsDebateTopicWithoutErasingOtherSettings() async throws {
+        let debateLobby = try snapshotByChanging(try fixture("lobby_two_players")) { payload in
+            if var room = payload["room"] as? [String: Any] {
+                room["gameId"] = "advogado-do-diabo"
+                payload["room"] = room
+            }
+        }
+        let service = RoomServiceMock(snapshot: debateLobby)
+        await service.configureSettingsEcho()
+        let model = makeModel(service: service)
+        model.pin = "0427"
+        model.nickname = "Nick"
+        await model.join()
+
+        await model.addCustomDebateTopic("Tese do iPhone")
+
+        XCTAssertNil(model.actionError)
+        XCTAssertEqual(model.snapshot?.room.customDebateTopics.map(\.text), ["Tese do iPhone"])
+        let requests = await service.settingsRequests()
+        let settings = try XCTUnwrap(requests.last?.settings)
+        XCTAssertEqual(settings["difficulty"], .string("medium"))
+        XCTAssertEqual(settings["maxPlayers"], .number(10))
+        guard case let .array(topics) = settings["customTopics"] else {
+            return XCTFail("Expected customTopics array")
+        }
+        XCTAssertEqual(topics.count, 1)
+        model.stop()
+    }
+
     func testHostForceAdvanceUsesCompareAndSetAndConfirmsPhase() async throws {
         let voting = try snapshotByChanging(try fixture("game_voting")) { payload in
             if var room = payload["room"] as? [String: Any] {
@@ -544,6 +573,7 @@ private actor RoomServiceMock: RoomService {
     private var startSnapshot: RoomSnapshot?
     private var starts: [StartMatchPayload] = []
     private var settingsSnapshot: RoomSnapshot?
+    private var echoesSettings = false
     private var settingsChanges: [(gameID: GameID?, settings: [String: JSONValue]?)] = []
     private var advanceSnapshot: RoomSnapshot?
     private var resetSnapshot: RoomSnapshot?
@@ -598,7 +628,29 @@ private actor RoomServiceMock: RoomService {
         settings: [String: JSONValue]?
     ) async throws {
         settingsChanges.append((gameID, settings))
-        if let settingsSnapshot { currentSnapshot = settingsSnapshot }
+        if let settingsSnapshot {
+            currentSnapshot = settingsSnapshot
+        } else if echoesSettings, let settings {
+            let old = currentSnapshot
+            let room = SnapshotRoom(
+                id: old.room.id,
+                pin: old.room.pin,
+                gameId: gameID ?? old.room.gameId,
+                phase: old.room.phase,
+                phaseEndsAt: old.room.phaseEndsAt,
+                pausedAt: old.room.pausedAt,
+                round: old.room.round,
+                settings: settings,
+                hostPlayerId: old.room.hostPlayerId,
+                closedAt: old.room.closedAt
+            )
+            currentSnapshot = RoomSnapshot(
+                room: room, me: old.me, players: old.players, match: old.match,
+                assignment: old.assignment, votes: old.votes, scores: old.scores,
+                answers: old.answers, topics: old.topics, chains: old.chains,
+                serverTime: old.serverTime, error: old.error
+            )
+        }
     }
 
     func startMatch(roomID: String, payload: StartMatchPayload) async throws {
@@ -671,6 +723,7 @@ private actor RoomServiceMock: RoomService {
     func configureStartedMatch(_ snapshot: RoomSnapshot) { startSnapshot = snapshot }
     func startPayloads() -> [StartMatchPayload] { starts }
     func configureSettings(snapshot: RoomSnapshot) { settingsSnapshot = snapshot }
+    func configureSettingsEcho() { echoesSettings = true }
     func settingsRequests() -> [(gameID: GameID?, settings: [String: JSONValue]?)] { settingsChanges }
     func configureAdvancedPhase(_ snapshot: RoomSnapshot) { advanceSnapshot = snapshot }
     func configureReset(snapshot: RoomSnapshot) { resetSnapshot = snapshot }

@@ -93,9 +93,15 @@ public extension RoomSnapshot {
         guard let match else { return nil }
         if match.topicCandidates.indices.contains(match.topicWinner) {
             let candidateID = match.topicCandidates[match.topicWinner]
-            return topics.first {
-                "\($0.source):\($0.id)" == candidateID || $0.id == candidateID
-            }?.text ?? candidateID
+            if let exact = topics.first(where: { "\($0.source):\($0.id)" == candidateID }) {
+                return exact.text
+            }
+            // Older snapshots used a bare ID. A namespaced ID must never fall
+            // back to another source that happens to share the same ID.
+            if !candidateID.contains(":"), let legacy = topics.first(where: { $0.id == candidateID }) {
+                return legacy.text
+            }
+            return candidateID
         }
         return topics.first { $0.presenterId == currentPresenter?.id }?.text
     }

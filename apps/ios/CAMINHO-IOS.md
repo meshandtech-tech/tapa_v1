@@ -35,9 +35,15 @@ Não estamos criando outro jogo nem substituindo a versão web.
    desenho compacto compatível com web; rascunho local; pedidos idempotentes
    de avanço; presença; restauração da última sala e limites de tempo para troca
    Wi-Fi/5G. Falta validar concorrência e recuperação em aparelhos reais.
-4. **Advogado do Diabo — estrutura participante implementada, playtest pendente.**
-   Roleta/tema/apresentador, preparação, apresentação, voto confirmado,
-   revelação de nota e ranking.
+4. **Advogado do Diabo — implementação nativa auditada, playtest pendente.**
+   O host pode incluir até dez teses da casa sem apagar as demais configurações.
+   A partida usa o mesmo conjunto de teses e a mesma ordem congelada do Supabase;
+   roleta e caça-níquel apenas animam os vencedores oficiais. Preparação,
+   apresentação, pausa, troca de tese, voto confirmado, avanço quando todos votam,
+   nota e ranking seguem o ciclo web. Apresentador, espectador tardio e voto
+   duplicado são bloqueados pelo servidor; o envio iniciado antes de background
+   ganha uma janela curta para terminar. Identidade de tese usa `source:id` para
+   impedir colisão entre catálogo oficial e tese personalizada.
 5. **Telefone Sem Fio — estrutura participante implementada, playtest pendente.**
    Atribuição secreta, canvas nativo, rascunho, envio repetível de traços,
    palpite, passagem, revelação e ranking. Imagem é otimização; traços protegem a página.
@@ -70,7 +76,7 @@ Confiabilidade: tentativas de ação têm prazo curto e são idempotentes; snaps
 entrada e presença também têm prazo; retorno do background fecha primeiro o socket
 antigo; presença é renovada; a última sala é restaurada após relançar o app.
 
-Verificação atual: **34 testes Swift passaram**, o projeto Xcode compilou para o
+Verificação atual: **39 testes Swift passaram**, o projeto Xcode compilou para o
 iPhone 17 Pro Simulator e abriu sem crash. Como proteção adicional, os **422
 testes web** e o build Vite passaram sem nenhum arquivo web alterado. Ainda falta
 a partida multiplayer completa web + iOS e a troca real Wi-Fi/5G; não declarar

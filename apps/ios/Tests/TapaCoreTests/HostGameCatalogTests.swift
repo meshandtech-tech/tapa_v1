@@ -30,10 +30,15 @@ final class HostGameCatalogTests: XCTestCase {
         XCTAssertEqual(Set(drawing.prompts.map(\.id)).count, 10)
 
         let debate = try XCTUnwrap(catalog.payload(
-            gameID: .advogadoDoDiabo, difficulty: .hard, playerCount: 10
+            gameID: .advogadoDoDiabo,
+            difficulty: .hard,
+            playerCount: 10,
+            customTopics: [
+                .init(id: "c-casa", source: "custom", text: "A tese da casa"),
+            ]
         ))
         XCTAssertEqual(debate.topics.count, 20)
-        XCTAssertTrue(debate.topics.allSatisfy { $0.source == "default" })
+        XCTAssertEqual(debate.topics.filter { $0.source == "custom" }.map(\.id), ["c-casa"])
 
         let slides = try XCTUnwrap(catalog.payload(
             gameID: .improvSlides, difficulty: .medium, playerCount: 4

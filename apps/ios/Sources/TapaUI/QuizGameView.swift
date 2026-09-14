@@ -158,7 +158,7 @@ private struct PunishmentWheel: View {
                 .foregroundStyle(.white)
 
             ZStack(alignment: .top) {
-                WheelSegments(count: items.count)
+                NumberedWheelSegments(count: items.count)
                     .rotationEffect(.degrees(rotation))
                     .frame(maxWidth: 330)
                     .aspectRatio(1, contentMode: .fit)
@@ -206,7 +206,7 @@ private struct PunishmentWheel: View {
     }
 }
 
-private struct WheelSegments: View {
+struct NumberedWheelSegments: View {
     let count: Int
 
     var body: some View {

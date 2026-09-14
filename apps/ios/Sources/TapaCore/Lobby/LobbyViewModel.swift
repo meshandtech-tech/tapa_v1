@@ -371,7 +371,8 @@ public final class LobbyViewModel {
         guard let payload = HostGameCatalog.bundled?.payload(
             gameID: snapshot.room.gameId,
             difficulty: snapshot.room.difficulty,
-            playerCount: snapshot.players.count
+            playerCount: snapshot.players.count,
+            customTopics: snapshot.room.customDebateTopics.map(\.startMatchTopic)
         ) else {
             actionError = "O conteúdo deste jogo não está disponível nesta versão."
             return
@@ -389,6 +390,49 @@ public final class LobbyViewModel {
         await synchronize()
         if self.snapshot?.room.phase == initialPhase {
             actionError = "A partida não começou. Confira os jogadores e tente novamente."
+        }
+    }
+
+    public func addCustomDebateTopic(_ text: String) async {
+        guard let snapshot, isHost, snapshot.room.phase == .lobby,
+              snapshot.room.gameId == .advogadoDoDiabo,
+              snapshot.room.customDebateTopics.count < 10, !isSubmitting
+        else { return }
+        let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(140))
+        guard !clean.isEmpty else { return }
+        let topic = CustomDebateTopic(
+            id: "c-\(UUID().uuidString.lowercased().prefix(8))",
+            text: clean
+        )
+        await saveCustomDebateTopics(snapshot.room.customDebateTopics + [topic])
+    }
+
+    public func removeCustomDebateTopic(id: String) async {
+        guard let snapshot, isHost, snapshot.room.phase == .lobby,
+              snapshot.room.gameId == .advogadoDoDiabo, !isSubmitting
+        else { return }
+        let topics = snapshot.room.customDebateTopics.filter { $0.id != id }
+        guard topics.count != snapshot.room.customDebateTopics.count else { return }
+        await saveCustomDebateTopics(topics)
+    }
+
+    private func saveCustomDebateTopics(_ topics: [CustomDebateTopic]) async {
+        guard let snapshot else { return }
+        var settings = snapshot.room.settings
+        settings["customTopics"] = .array(topics.map(\.jsonValue))
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.setSettings(
+                roomID: snapshot.room.id, gameID: nil, settings: settings
+            )
+        } catch {
+            // The snapshot remains the only success confirmation.
+        }
+        await synchronize()
+        if self.snapshot?.room.customDebateTopics != topics {
+            actionError = "As teses da casa não foram salvas. Tente novamente."
         }
     }
 

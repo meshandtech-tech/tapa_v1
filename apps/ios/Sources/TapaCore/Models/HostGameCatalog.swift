@@ -18,6 +18,18 @@ public struct StartMatchTopic: Codable, Equatable, Sendable {
     public let text: String
 }
 
+public struct CustomDebateTopic: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let text: String
+    public let aboutPlayerID: String?
+
+    public init(id: String, text: String, aboutPlayerID: String? = nil) {
+        self.id = id
+        self.text = text
+        self.aboutPlayerID = aboutPlayerID
+    }
+}
+
 public struct StartMatchPayload: Equatable, Sendable {
     public let prompts: [StartMatchPrompt]
     public let topics: [StartMatchTopic]
@@ -53,7 +65,8 @@ public struct HostGameCatalog: Decodable, Sendable {
     public func payload(
         gameID: GameID,
         difficulty: GameDifficulty,
-        playerCount: Int
+        playerCount: Int,
+        customTopics: [StartMatchTopic] = []
     ) -> StartMatchPayload? {
         switch gameID {
         case .quemErraPaga:
@@ -71,12 +84,16 @@ public struct HostGameCatalog: Decodable, Sendable {
             let deck = debateTopics[difficulty.rawValue]
                 ?? debateTopics[GameDifficulty.medium.rawValue]
                 ?? []
-            let topics = deck.shuffled().prefix(min(20, deck.count)).map {
+            let systemCount = max(0, 20 - customTopics.count)
+            let systemTopics = deck.shuffled().prefix(min(systemCount, deck.count)).map {
                 StartMatchTopic(id: $0.id, source: "default", text: $0.text)
             }
+            // Same rule as the web: every house topic enters the match, then
+            // the selected difficulty fills the finite pool to twenty.
+            let topics = (customTopics + systemTopics).shuffled()
             guard !topics.isEmpty else { return nil }
             return StartMatchPayload(
-                prompts: [], topics: Array(topics), questionOrder: [],
+                prompts: [], topics: topics, questionOrder: [],
                 correctOptions: [], slideIDs: [], punishmentCount: 0
             )
 
@@ -107,6 +124,36 @@ public extension SnapshotRoom {
     var difficulty: GameDifficulty {
         guard case let .string(value) = settings["difficulty"] else { return .medium }
         return GameDifficulty(rawValue: value) ?? .medium
+    }
+
+    var customDebateTopics: [CustomDebateTopic] {
+        guard case let .array(values) = settings["customTopics"] else { return [] }
+        return values.compactMap { value in
+            guard case let .object(fields) = value,
+                  case let .string(id) = fields["id"],
+                  case let .string(text) = fields["text"],
+                  !id.isEmpty, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return nil }
+            let aboutPlayerID: String?
+            if case let .string(value) = fields["aboutPlayerId"] { aboutPlayerID = value }
+            else { aboutPlayerID = nil }
+            return CustomDebateTopic(id: id, text: text, aboutPlayerID: aboutPlayerID)
+        }
+    }
+}
+
+public extension CustomDebateTopic {
+    var jsonValue: JSONValue {
+        var fields: [String: JSONValue] = [
+            "id": .string(id),
+            "text": .string(text),
+        ]
+        if let aboutPlayerID { fields["aboutPlayerId"] = .string(aboutPlayerID) }
+        return .object(fields)
+    }
+
+    var startMatchTopic: StartMatchTopic {
+        StartMatchTopic(id: id, source: "custom", text: text)
     }
 }
 

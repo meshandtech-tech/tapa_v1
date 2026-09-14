@@ -169,6 +169,7 @@ private struct NativeJoin: View {
 private struct NativeLobby: View {
     @Bindable var model: LobbyViewModel
     let snapshot: RoomSnapshot
+    @State private var customTopicText = ""
     private let games: [GameID] = [
         .quemErraPaga, .advogadoDoDiabo, .drawingTelephone, .improvSlides,
     ]
@@ -230,6 +231,10 @@ private struct NativeLobby: View {
                 }
                 .padding(20)
                 .paper()
+
+                if snapshot.room.gameId == .advogadoDoDiabo {
+                    customDebateTopics
+                }
             }
             VStack(alignment: .leading, spacing: 16) {
                 Text("NA PARTY · \(snapshot.players.count)").font(.headline.weight(.black))
@@ -256,6 +261,65 @@ private struct NativeLobby: View {
                 }
             }
         }.accessibilityIdentifier("live-lobby")
+    }
+
+    private var customDebateTopics: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("TESES DA CASA").font(.headline.weight(.black))
+                Spacer()
+                Text("\(snapshot.room.customDebateTopics.count)/10")
+                    .font(.system(.caption, design: .monospaced, weight: .black))
+            }
+            Text("Elas entram junto com as teses oficiais desta partida.")
+                .font(.callout.weight(.semibold))
+
+            ForEach(snapshot.room.customDebateTopics) { topic in
+                HStack(alignment: .top, spacing: 12) {
+                    Text(topic.text).font(.callout.weight(.bold)).frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        Task { await model.removeCustomDebateTopic(id: topic.id) }
+                    } label: {
+                        Image(systemName: "trash.fill").foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.isSubmitting)
+                    .accessibilityLabel("Remover tese \(topic.text)")
+                }
+                .padding(12)
+                .background(Color.black.opacity(0.05))
+                .overlay(Rectangle().stroke(.black, lineWidth: 2))
+            }
+
+            TextField("Ex.: Pizza com ketchup é superior", text: $customTopicText, axis: .vertical)
+                .lineLimit(2...4)
+                .font(.body.weight(.semibold))
+                .padding(12)
+                .background(Color.black.opacity(0.05))
+                .overlay(Rectangle().stroke(.black, lineWidth: 2))
+                .onChange(of: customTopicText) { _, value in
+                    if value.count > 140 { customTopicText = String(value.prefix(140)) }
+                }
+                .accessibilityIdentifier("custom-debate-topic")
+
+            Button {
+                let topic = customTopicText
+                Task {
+                    await model.addCustomDebateTopic(topic)
+                    if model.actionError == nil { customTopicText = "" }
+                }
+            } label: {
+                Label(model.isSubmitting ? "SALVANDO…" : "ADICIONAR TESE", systemImage: "plus")
+            }
+            .buttonStyle(TapaButtonStyle())
+            .disabled(
+                model.isSubmitting
+                    || customTopicText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || snapshot.room.customDebateTopics.count >= 10
+            )
+        }
+        .padding(20)
+        .paper(fill: TapaPalette.lime)
     }
 }
 
@@ -355,7 +419,9 @@ private struct NativeHostControls: View {
         case (.advogadoDoDiabo, .presentation):
             ("ENCERRAR APRESENTAÇÃO", "stop.fill", true)
         case (.advogadoDoDiabo, .voting):
-            ("FECHAR VOTAÇÃO", "checkmark.circle.fill", true)
+            snapshot.debateVotesMissing > 0
+                ? ("FECHAR VOTAÇÃO · FALTAM \(snapshot.debateVotesMissing)", "checkmark.circle.fill", true)
+                : ("VER A NOTA", "checkmark.circle.fill", true)
         case (.advogadoDoDiabo, .scoreReveal):
             ("PRÓXIMO JOGADOR", "forward.fill", true)
 
