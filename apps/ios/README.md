@@ -1,13 +1,13 @@
 # Tapa iOS
 
-Phase 6 of `PLANO-IOS-E-BACKEND.md`: a native SwiftUI shell backed by the same
-Supabase room used by the web app.
+Native SwiftUI participant app backed by the same authoritative Supabase room
+used by the web app. It does not duplicate the server's phase or scoring rules.
 
 ## What is here
 
 - `TapaCore`: shared `Codable` models, recoverable anonymous auth, room RPCs,
   snapshot reconciliation and reconnecting lobby state
-- `TapaUI`: the SwiftUI join flow, live lobby and visible reconnect state
+- `TapaUI`: join/lobby plus native participant flows for all four games
 - `TapaApp`: the thin iOS application entry point
 - `project.yml`: reproducible Xcode project definition
 
@@ -28,8 +28,9 @@ swift test
 4. Run `xcodegen generate`, open `Tapa.xcodeproj`, and choose an iPhone
    simulator.
 
-The first vertical checkpoint is: create a room on the web, enter the same PIN
-in the simulator, and see the lobby update as players join or leave.
+The host still creates and controls the room on the web. The iOS app joins that
+PIN and follows Quem Erra, Paga, Advogado do Diabo, Telefone Sem Fio and Pitch
+no Escuro from the same `room_snapshot` contract.
 
 The lobby treats Realtime as an invalidation signal only. After subscribing,
 reconnecting, or returning from the background, it fetches a fresh

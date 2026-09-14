@@ -43,6 +43,36 @@ public extension RoomSnapshot {
         "\(room.id):\(match?.id ?? ""):\(room.round)"
     }
 
+    var currentPresenter: SnapshotPlayer? {
+        guard let match, match.seatOrder.indices.contains(match.presenterIndex) else { return nil }
+        let id = match.seatOrder[match.presenterIndex]
+        return players.first { $0.id == id }
+    }
+
+    var isCurrentPresenter: Bool {
+        currentPresenter?.id == me.playerId
+    }
+
+    var isMatchParticipant: Bool {
+        guard let id = me.playerId, let match else { return false }
+        return match.seatOrder.contains(id)
+    }
+
+    var currentTopicText: String? {
+        guard let match else { return nil }
+        if match.topicCandidates.indices.contains(match.topicWinner) {
+            let candidateID = match.topicCandidates[match.topicWinner]
+            return topics.first {
+                "\($0.source):\($0.id)" == candidateID || $0.id == candidateID
+            }?.text ?? candidateID
+        }
+        return topics.first { $0.presenterId == currentPresenter?.id }?.text
+    }
+
+    var actionRoundKey: String {
+        "\(room.id):\(match?.id ?? ""):\(room.gameId.rawValue):\(room.round):\(room.phase.rawValue)"
+    }
+
     /// Rendering only: transitions and score changes always come from Supabase.
     func secondsRemaining(at date: Date, serverOffset: TimeInterval) -> Int? {
         guard let end = Self.parseDate(room.phaseEndsAt) else { return nil }

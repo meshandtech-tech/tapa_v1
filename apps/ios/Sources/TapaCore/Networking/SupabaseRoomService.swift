@@ -43,12 +43,13 @@ public actor SupabaseRoomService: RoomService {
                 case pin = "p_pin"
             }
         }
-        return try await authenticatedRPC(
+        let request = try await authenticatedRPC(
             "resolve_room_state",
             params: Parameters(pin: pin)
         )
-            .execute()
-            .value
+        return try await Self.withTimeout(.seconds(8)) {
+            try await request.execute().value
+        }
     }
 
     public func joinRoom(
@@ -71,7 +72,7 @@ public actor SupabaseRoomService: RoomService {
             }
         }
 
-        return try await authenticatedRPC(
+        let request = try await authenticatedRPC(
             "join_room",
             params: Parameters(
                 pin: pin,
@@ -80,8 +81,9 @@ public actor SupabaseRoomService: RoomService {
                 avatarSeed: avatarSeed
             )
         )
-            .execute()
-            .value
+        return try await Self.withTimeout(.seconds(8)) {
+            try await request.execute().value
+        }
     }
 
     public func snapshot(roomID: String) async throws -> RoomSnapshot {
@@ -92,12 +94,13 @@ public actor SupabaseRoomService: RoomService {
                 case room = "p_room"
             }
         }
-        let value: RoomSnapshot = try await authenticatedRPC(
+        let request = try await authenticatedRPC(
             "room_snapshot",
             params: Parameters(room: roomID)
         )
-            .execute()
-            .value
+        let value: RoomSnapshot = try await Self.withTimeout(.seconds(5)) {
+            try await request.execute().value
+        }
 
         if let error = value.error {
             throw RoomServiceError.invalidSnapshot(error)
@@ -110,9 +113,126 @@ public actor SupabaseRoomService: RoomService {
             let p_room: String
             let p_option: Int
         }
-        _ = try await authenticatedRPC(
-            "submit_answer", params: Parameters(p_room: roomID, p_option: option)
-        ).execute()
+        var latestError: Error?
+        for attempt in 0..<3 {
+            do {
+                let request = try await authenticatedRPC(
+                    "submit_answer", params: Parameters(p_room: roomID, p_option: option)
+                )
+                _ = try await Self.withTimeout(.milliseconds(2_500)) {
+                    _ = try await request.execute()
+                    return ()
+                }
+                return
+            } catch {
+                latestError = error
+                if attempt < 2 { try? await Task.sleep(for: .milliseconds(250 * (attempt + 1))) }
+            }
+        }
+        throw latestError ?? RoomServiceError.rejected("falha ao enviar resposta")
+    }
+
+    public func submitVote(roomID: String, rating: Int) async throws -> VoteSubmissionResult {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_rating: Int
+        }
+        var latestError: Error?
+        for attempt in 0..<3 {
+            do {
+                let request = try await authenticatedRPC(
+                    "submit_vote_confirmed",
+                    params: Parameters(p_room: roomID, p_rating: rating)
+                )
+                return try await Self.withTimeout(.milliseconds(2_500)) {
+                    try await request.execute().value
+                }
+            } catch {
+                latestError = error
+                if attempt < 2 { try? await Task.sleep(for: .milliseconds(250 * (attempt + 1))) }
+            }
+        }
+        throw latestError ?? RoomServiceError.rejected("falha ao enviar voto")
+    }
+
+    public func submitContribution(
+        roomID: String,
+        strokes: JSONValue?,
+        text: String,
+        status: SubmissionStatus
+    ) async throws -> ContributionSubmissionResult {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_storage_path: String?
+            let p_strokes: JSONValue?
+            let p_text: String
+            let p_status: String
+        }
+        let parameters = Parameters(
+            p_room: roomID,
+            p_storage_path: nil,
+            p_strokes: strokes,
+            p_text: text,
+            p_status: status.rawValue
+        )
+        var latestError: Error?
+        for attempt in 0..<3 {
+            do {
+                let request = try await authenticatedRPC(
+                    "submit_contribution", params: parameters
+                )
+                return try await Self.withTimeout(.milliseconds(2_500)) {
+                    try await request.execute().value
+                }
+            } catch {
+                latestError = error
+                if attempt < 2 {
+                    try? await Task.sleep(for: .milliseconds(250 * (attempt + 1)))
+                }
+            }
+        }
+        throw latestError ?? RoomServiceError.rejected("falha ao enviar contribuição")
+    }
+
+    public func publicDrawingURL(path: String) async -> URL? {
+        try? client.storage.from("tapa-desenhos").getPublicURL(path: path)
+    }
+
+    public func advancePhase(
+        roomID: String,
+        expectedPhase: PartyPhase,
+        expectedEndsAt: String?
+    ) async throws {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_expected_phase: String
+            let p_expected_ends_at: String?
+            let p_force: Bool
+        }
+        let request = try await authenticatedRPC(
+            "advance_phase",
+            params: Parameters(
+                p_room: roomID,
+                p_expected_phase: expectedPhase.rawValue,
+                p_expected_ends_at: expectedEndsAt,
+                p_force: false
+            )
+        )
+        _ = try await Self.withTimeout(.seconds(5)) {
+            _ = try await request.execute()
+            return ()
+        }
+    }
+
+    public func touchPresence(roomID: String) async throws {
+        struct Parameters: Encodable { let p_room: String }
+        let request = try await authenticatedRPC(
+            "touch_presence", params: Parameters(p_room: roomID)
+        )
+        _ = try await Self.withTimeout(.seconds(5)) {
+            _ = try await request.execute()
+            return ()
+        }
     }
 
     public func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent> {
@@ -216,5 +336,27 @@ public actor SupabaseRoomService: RoomService {
         try? await client.auth.signOut(scope: .local)
         let session = try await client.auth.signInAnonymously()
         rpcAccessToken = session.accessToken
+    }
+
+    /// A mobile request can remain pending while iOS moves from Wi-Fi to 5G.
+    /// Bounding each attempt lets idempotent game actions retry within the
+    /// server grace period instead of disabling the screen indefinitely.
+    private static func withTimeout<Value: Sendable>(
+        _ duration: Duration,
+        operation: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
+        try await withThrowingTaskGroup(of: Value.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: duration)
+                try Task.checkCancellation()
+                throw URLError(.timedOut)
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else {
+                throw URLError(.unknown)
+            }
+            return first
+        }
     }
 }

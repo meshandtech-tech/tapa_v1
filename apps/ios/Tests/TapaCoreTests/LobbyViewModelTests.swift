@@ -4,6 +4,87 @@ import XCTest
 
 @MainActor
 final class LobbyViewModelTests: XCTestCase {
+    func testDuePhaseRequestsCompareAndSetAdvance() async throws {
+        let due = try snapshotByChanging(try fixture("game_question")) { payload in
+            if var room = payload["room"] as? [String: Any] {
+                room["phaseEndsAt"] = "2026-09-09T12:00:40.000Z"
+                payload["room"] = room
+            }
+        }
+        let service = RoomServiceMock(snapshot: due)
+        let model = makeModel(service: service)
+        model.pin = "0427"
+        model.nickname = "Bia"
+        await model.join()
+        let requests = await service.advanceRequests()
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests.first?.phase, .roundActive)
+        XCTAssertEqual(requests.first?.endsAt, "2026-09-09T12:00:40.000Z")
+        model.stop()
+    }
+
+    func testPausedDuePhaseDoesNotAdvance() async throws {
+        let paused = try snapshotByChanging(try fixture("game_question")) { payload in
+            if var room = payload["room"] as? [String: Any] {
+                room["phaseEndsAt"] = "2026-09-09T12:00:40.000Z"
+                room["pausedAt"] = "2026-09-09T12:00:35.000Z"
+                payload["room"] = room
+            }
+        }
+        let service = RoomServiceMock(snapshot: paused)
+        let model = makeModel(service: service)
+        model.pin = "0427"
+        model.nickname = "Bia"
+        await model.join()
+        let requests = await service.advanceRequests()
+        XCTAssertTrue(requests.isEmpty)
+        model.stop()
+    }
+
+    func testVoteUsesConfirmedRPCAndAuthoritativeSnapshot() async throws {
+        let initial = try snapshotByChanging(try fixture("game_voting")) { payload in
+            payload["votes"] = [String: Double]()
+        }
+        let voted = try fixture("game_voting")
+        let service = RoomServiceMock(snapshot: initial)
+        await service.configureVote(snapshot: voted)
+        let model = makeModel(service: service)
+        model.pin = "7319"
+        model.nickname = "Bia"
+        await model.join()
+        await model.submitVote(4)
+        XCTAssertEqual(model.snapshot?.votes["player-2"], 4)
+        XCTAssertNil(model.actionError)
+        await model.submitVote(5)
+        let voteCount = await service.voteCount()
+        XCTAssertEqual(voteCount, 1)
+        model.stop()
+    }
+
+    func testDrawingRequiresSnapshotConfirmationAndBlocksDuplicate() async throws {
+        let initial = try fixture("drawing_step")
+        let submitted = try snapshotByChanging(initial) { payload in
+            payload["me"] = ["playerId": "player-2", "submitted": true]
+            if var match = payload["match"] as? [String: Any] {
+                match["submittedPlayerIds"] = ["player-2"]
+                payload["match"] = match
+            }
+        }
+        let service = RoomServiceMock(snapshot: initial)
+        await service.configureContribution(snapshot: submitted)
+        let model = makeModel(service: service)
+        model.pin = "8642"
+        model.nickname = "Bia"
+        await model.join()
+        await model.submitDrawing(strokes: .object(["v": .number(2), "g": .number(2048), "s": .array([])]))
+        XCTAssertTrue(model.hasCurrentDrawingSubmission)
+        XCTAssertNil(model.actionError)
+        await model.submitDrawing(strokes: .object([:]))
+        let contributionCount = await service.contributionCount()
+        XCTAssertEqual(contributionCount, 1)
+        model.stop()
+    }
+
     func testSuccessfulRPCWithoutPersistedAnswerDoesNotConfirm() async throws {
         let service = RoomServiceMock(snapshot: try fixture("game_question"))
         let model = makeModel(service: service)
@@ -140,8 +221,45 @@ final class LobbyViewModelTests: XCTestCase {
         await model.resume()
 
         XCTAssertEqual(model.snapshot?.players.count, 2)
+        let presenceTouches = await service.presenceTouchCount()
+        XCTAssertEqual(presenceTouches, 1)
         await eventually { await service.observationCount() > observationsBeforeResume }
         await eventually { model.connectionState == .connected }
+    }
+
+    func testActivationRestoresLastJoinedRoomAfterRelaunch() async throws {
+        let service = RoomServiceMock(snapshot: try fixture("lobby"))
+        let saved = LobbyViewModel.SavedRoomSession(pin: "0427", nickname: "Nick")
+        let model = LobbyViewModel(
+            service: service,
+            reconnectDelay: { _ in await Task.yield() },
+            loadSavedSession: { saved }
+        )
+
+        await model.activate()
+
+        XCTAssertEqual(model.state, .joined)
+        XCTAssertEqual(model.pin, "0427")
+        XCTAssertEqual(model.nickname, "Nick")
+        XCTAssertEqual(model.snapshot?.room.id, "b14c6ca7-929b-47aa-a2ab-3281420e6c66")
+        model.stop()
+    }
+
+    func testSuccessfulJoinPersistsNormalizedCredentials() async throws {
+        let service = RoomServiceMock(snapshot: try fixture("lobby"))
+        var persisted: LobbyViewModel.SavedRoomSession?
+        let model = LobbyViewModel(
+            service: service,
+            reconnectDelay: { _ in await Task.yield() },
+            saveSession: { persisted = $0 }
+        )
+        model.pin = "04 27"
+        model.nickname = " Nick "
+
+        await model.join()
+
+        XCTAssertEqual(persisted, .init(pin: "0427", nickname: "Nick"))
+        model.stop()
     }
 
     private func makeModel(service: RoomServiceMock) -> LobbyViewModel {
@@ -151,6 +269,19 @@ final class LobbyViewModelTests: XCTestCase {
     private func fixture(_ name: String) throws -> RoomSnapshot {
         let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "json"))
         return try JSONDecoder().decode(RoomSnapshot.self, from: Data(contentsOf: url))
+    }
+
+    private func snapshotByChanging(
+        _ snapshot: RoomSnapshot,
+        change: (inout [String: Any]) -> Void
+    ) throws -> RoomSnapshot {
+        var payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any]
+        )
+        change(&payload)
+        return try JSONDecoder().decode(
+            RoomSnapshot.self, from: JSONSerialization.data(withJSONObject: payload)
+        )
     }
 
     private func eventually(
@@ -178,6 +309,12 @@ private actor RoomServiceMock: RoomService {
     private var submissionSnapshot: RoomSnapshot?
     private var submissionFails = false
     private var submissions = 0
+    private var voteSnapshot: RoomSnapshot?
+    private var votesSubmitted = 0
+    private var contributionSnapshot: RoomSnapshot?
+    private var contributionsSubmitted = 0
+    private var advances: [(phase: PartyPhase, endsAt: String?)] = []
+    private var presenceTouches = 0
 
     init(snapshot: RoomSnapshot) {
         currentSnapshot = snapshot
@@ -216,6 +353,43 @@ private actor RoomServiceMock: RoomService {
         if let submissionSnapshot { currentSnapshot = submissionSnapshot }
         if submissionFails { throw URLError(.networkConnectionLost) }
     }
+
+    func submitVote(roomID: String, rating: Int) async throws -> VoteSubmissionResult {
+        votesSubmitted += 1
+        if let voteSnapshot { currentSnapshot = voteSnapshot }
+        return VoteSubmissionResult(accepted: true, duplicate: false, skipped: nil)
+    }
+
+    func submitContribution(
+        roomID: String,
+        strokes: JSONValue?,
+        text: String,
+        status: SubmissionStatus
+    ) async throws -> ContributionSubmissionResult {
+        contributionsSubmitted += 1
+        if let contributionSnapshot { currentSnapshot = contributionSnapshot }
+        return ContributionSubmissionResult(contributionID: "contribution-1", skipped: nil, status: status)
+    }
+
+    func publicDrawingURL(path: String) async -> URL? { nil }
+
+    func advancePhase(
+        roomID: String,
+        expectedPhase: PartyPhase,
+        expectedEndsAt: String?
+    ) async throws {
+        advances.append((expectedPhase, expectedEndsAt))
+    }
+
+    func advanceRequests() -> [(phase: PartyPhase, endsAt: String?)] { advances }
+
+    func touchPresence(roomID: String) async throws { presenceTouches += 1 }
+    func presenceTouchCount() -> Int { presenceTouches }
+
+    func configureVote(snapshot: RoomSnapshot) { voteSnapshot = snapshot }
+    func voteCount() -> Int { votesSubmitted }
+    func configureContribution(snapshot: RoomSnapshot) { contributionSnapshot = snapshot }
+    func contributionCount() -> Int { contributionsSubmitted }
 
     func configureSubmission(snapshot: RoomSnapshot, fail: Bool) {
         submissionSnapshot = snapshot

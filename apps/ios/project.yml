@@ -24,6 +24,9 @@ targets:
     platform: iOS
     sources:
       - Sources/TapaApp
+      - path: ../../src/assets/slides
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: TapaKit
         product: TapaCore

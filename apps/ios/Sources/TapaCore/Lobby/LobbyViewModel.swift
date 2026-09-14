@@ -4,6 +4,11 @@ import Observation
 @MainActor
 @Observable
 public final class LobbyViewModel {
+    struct SavedRoomSession: Codable, Equatable, Sendable {
+        let pin: String
+        let nickname: String
+    }
+
     public enum ViewState: Equatable, Sendable {
         case idle
         case connecting
@@ -29,11 +34,16 @@ public final class LobbyViewModel {
 
     @ObservationIgnored private let service: any RoomService
     @ObservationIgnored private let reconnectDelay: @Sendable (Int) async -> Void
+    @ObservationIgnored private let loadSavedSession: () -> SavedRoomSession?
+    @ObservationIgnored private let saveSession: (SavedRoomSession) -> Void
     @ObservationIgnored private var observationTask: Task<Void, Never>?
     @ObservationIgnored private var roomID: String?
+    @ObservationIgnored private var latestAdvanceAttempt: (key: String, at: Date)?
 
     public init(service: any RoomService) {
         self.service = service
+        loadSavedSession = Self.loadPersistedSession
+        saveSession = Self.persistSession
         reconnectDelay = { attempt in
             let seconds = min(1 << min(max(attempt - 1, 0), 3), 5)
             try? await Task.sleep(for: .seconds(seconds))
@@ -42,10 +52,14 @@ public final class LobbyViewModel {
 
     init(
         service: any RoomService,
-        reconnectDelay: @escaping @Sendable (Int) async -> Void
+        reconnectDelay: @escaping @Sendable (Int) async -> Void,
+        loadSavedSession: @escaping () -> SavedRoomSession? = { nil },
+        saveSession: @escaping (SavedRoomSession) -> Void = { _ in }
     ) {
         self.service = service
         self.reconnectDelay = reconnectDelay
+        self.loadSavedSession = loadSavedSession
+        self.saveSession = saveSession
     }
 
     public var canJoin: Bool {
@@ -92,6 +106,7 @@ public final class LobbyViewModel {
             self.roomID = result.roomID ?? roomID
             try await refresh()
             state = .joined
+            saveSession(SavedRoomSession(pin: normalizedPIN, nickname: nickname.trimmingCharacters(in: .whitespacesAndNewlines)))
             observeRoom()
         } catch {
             connectionState = .idle
@@ -110,20 +125,38 @@ public final class LobbyViewModel {
         Task { await service.stopObserving() }
     }
 
+    /// Restores the room after a process relaunch, or reconciles the current
+    /// room after returning from the background. The anonymous Supabase
+    /// identity remains the server-side source of the player identity.
+    public func activate() async {
+        if state == .joined {
+            await resume()
+            return
+        }
+        guard state == .idle, let saved = loadSavedSession() else { return }
+        pin = saved.pin
+        nickname = saved.nickname
+        await join()
+    }
+
     /// Called when the app becomes active. The snapshot is refreshed before
     /// Realtime is subscribed again so background gaps never become game state.
     public func resume() async {
-        guard state == .joined, roomID != nil else { return }
+        guard state == .joined, let roomID else { return }
 
         let previousTask = observationTask
         observationTask = nil
         previousTask?.cancel()
-        await previousTask?.value
+        // Closing the socket first also releases a subscription attempt that
+        // was suspended during the network switch. Waiting first could leave
+        // foreground recovery stuck behind the old connection.
         await service.stopObserving()
+        await previousTask?.value
 
         connectionState = .reconnecting
         do {
             try await service.prepareSession()
+            try await service.touchPresence(roomID: roomID)
             try await refresh()
             lastConnectionError = nil
         } catch {
@@ -150,6 +183,44 @@ public final class LobbyViewModel {
         if let server = RoomSnapshot.parseDate(received.serverTime) {
             serverOffset = server.timeIntervalSinceNow
         }
+        await requestAdvanceIfEligible(received)
+    }
+
+    /// Any connected participant may ask for a due transition. The RPC uses
+    /// compare-and-set and the database rechecks deadline/all-submitted, so
+    /// simultaneous phones cannot skip a phase.
+    private func requestAdvanceIfEligible(_ snapshot: RoomSnapshot) async {
+        guard snapshot.room.pausedAt == nil else { return }
+        let due = snapshot.secondsRemaining(at: Date(), serverOffset: serverOffset) == 0
+        let allDone: Bool
+        let seats = Set(snapshot.match?.seatOrder ?? [])
+        switch snapshot.room.phase {
+        case .roundActive:
+            allDone = !seats.isEmpty && seats.isSubset(of: Set(snapshot.answers.keys))
+        case .drawStep, .guessStep:
+            allDone = !seats.isEmpty
+                && seats.isSubset(of: Set(snapshot.match?.submittedPlayerIds ?? []))
+        case .voting:
+            var eligible = seats
+            if let presenter = snapshot.currentPresenter?.id { eligible.remove(presenter) }
+            allDone = !eligible.isEmpty && eligible.isSubset(of: Set(snapshot.votes.keys))
+        default:
+            allDone = false
+        }
+        guard due || allDone else { return }
+        let key = "\(snapshot.actionRoundKey):\(snapshot.room.phaseEndsAt ?? "none")"
+        if let attempt = latestAdvanceAttempt, attempt.key == key,
+           Date().timeIntervalSince(attempt.at) < 2 { return }
+        latestAdvanceAttempt = (key, Date())
+        do {
+            try await service.advancePhase(
+                roomID: snapshot.room.id,
+                expectedPhase: snapshot.room.phase,
+                expectedEndsAt: snapshot.room.phaseEndsAt
+            )
+        } catch {
+            lastConnectionError = Self.message(for: error)
+        }
     }
 
     /// Low-frequency recovery when an invalidation is lost; owned by the root
@@ -168,6 +239,10 @@ public final class LobbyViewModel {
         guard let snapshot else { return false }
         // Quiz submissions live in answers, not the drawing game's submitted IDs.
         return snapshot.myAnswer != nil
+    }
+
+    public var hasCurrentDrawingSubmission: Bool {
+        snapshot?.me.submitted == true
     }
 
     public func submitAnswer(_ option: Int) async {
@@ -190,6 +265,84 @@ public final class LobbyViewModel {
         await synchronize()
         if self.snapshot?.quizRoundKey == roundKey, !hasAnswered {
             actionError = "Não conseguimos confirmar sua resposta. Tente novamente."
+        }
+    }
+
+    public func submitVote(_ rating: Int) async {
+        guard let snapshot, snapshot.room.phase == .voting,
+              snapshot.isMatchParticipant, !snapshot.isCurrentPresenter,
+              let playerID = snapshot.me.playerId,
+              snapshot.votes[playerID] == nil,
+              (1...5).contains(rating), !isSubmitting
+        else { return }
+        let actionKey = snapshot.actionRoundKey
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            let result = try await service.submitVote(roomID: snapshot.room.id, rating: rating)
+            guard result.accepted == true, result.skipped == nil else {
+                throw RoomServiceError.rejected(result.skipped ?? "voto recusado")
+            }
+            await synchronize()
+        } catch {
+            await synchronize()
+        }
+        if self.snapshot?.actionRoundKey == actionKey,
+           self.snapshot?.votes[playerID] == nil {
+            actionError = "A rede não confirmou seu voto. Toque novamente."
+        }
+    }
+
+    public func submitGuess(_ text: String) async {
+        let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+        guard !clean.isEmpty else { return }
+        await submitDrawingContribution(strokes: nil, text: clean, status: .submitted)
+    }
+
+    public func submitDrawing(strokes: JSONValue, status: SubmissionStatus = .submitted) async {
+        await submitDrawingContribution(strokes: strokes, text: "", status: status)
+    }
+
+    public func publicDrawingURL(path: String) async -> URL? {
+        await service.publicDrawingURL(path: path)
+    }
+
+    public func touchPresence() async {
+        guard state == .joined, let roomID else { return }
+        try? await service.touchPresence(roomID: roomID)
+    }
+
+    private func submitDrawingContribution(
+        strokes: JSONValue?,
+        text: String,
+        status: SubmissionStatus
+    ) async {
+        guard let snapshot,
+              snapshot.room.phase == .drawStep || snapshot.room.phase == .guessStep,
+              snapshot.isMatchParticipant, snapshot.assignment != nil,
+              !snapshot.me.submitted, !isSubmitting
+        else { return }
+        let actionKey = snapshot.actionRoundKey
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            let result = try await service.submitContribution(
+                roomID: snapshot.room.id, strokes: strokes, text: text, status: status
+            )
+            guard result.contributionID != nil, result.skipped == nil else {
+                throw RoomServiceError.rejected(result.skipped ?? "contribuição recusada")
+            }
+            await synchronize()
+        } catch {
+            await synchronize()
+        }
+        if self.snapshot?.actionRoundKey == actionKey,
+           self.snapshot?.me.submitted != true {
+            actionError = text.isEmpty
+                ? "Seu desenho continua salvo nesta tela. Tente enviar novamente."
+                : "Seu palpite continua aqui. Tente enviar novamente."
         }
     }
 
@@ -245,6 +398,18 @@ public final class LobbyViewModel {
         "#ff5c8a", "#ffb703", "#3ddc97", "#4cc9f0", "#b892ff",
         "#ff8c42", "#06d6a0", "#ef476f", "#8ecae6", "#c9ff4c",
     ]
+
+    private static let persistedSessionKey = "tapa.joined-room.v1"
+
+    private static func loadPersistedSession() -> SavedRoomSession? {
+        guard let data = UserDefaults.standard.data(forKey: persistedSessionKey) else { return nil }
+        return try? JSONDecoder().decode(SavedRoomSession.self, from: data)
+    }
+
+    private static func persistSession(_ session: SavedRoomSession) {
+        guard let data = try? JSONEncoder().encode(session) else { return }
+        UserDefaults.standard.set(data, forKey: persistedSessionKey)
+    }
 
     private static func message(for error: Error) -> String {
         if isNetworkError(error) {

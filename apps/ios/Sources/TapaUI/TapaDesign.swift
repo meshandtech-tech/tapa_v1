@@ -27,8 +27,13 @@ struct TapaLogo: View {
 }
 extension View {
     func paper(fill: Color = .white) -> some View {
-        background(fill).overlay(Rectangle().strokeBorder(.black, lineWidth: 3))
-            .shadow(color: .black, radius: 0, x: 5, y: 6)
+        background {
+            ZStack {
+                Rectangle().fill(.black).offset(x: 5, y: 6)
+                Rectangle().fill(fill)
+            }
+        }
+        .overlay(Rectangle().strokeBorder(.black, lineWidth: 3))
     }
 }
 struct TapaButtonStyle: ButtonStyle {
@@ -37,9 +42,16 @@ struct TapaButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(.headline, design: .rounded, weight: .black))
             .frame(maxWidth: .infinity, minHeight: 28).padding(16)
-            .foregroundStyle(dark ? .white : .black).background(dark ? Color.black : Color.white)
+            .foregroundStyle(dark ? .white : .black)
+            .background {
+                ZStack {
+                    Rectangle().fill(.black)
+                    .offset(x: configuration.isPressed ? 1 : 4,
+                            y: configuration.isPressed ? 1 : 5)
+                    Rectangle().fill(dark ? Color.black : Color.white)
+                }
+            }
             .overlay(Rectangle().strokeBorder(.black, lineWidth: 3))
-            .shadow(color: .black, radius: 0, x: configuration.isPressed ? 1 : 4, y: configuration.isPressed ? 1 : 5)
             .offset(y: configuration.isPressed ? 3 : 0).opacity(enabled ? 1 : 0.5)
     }
 }

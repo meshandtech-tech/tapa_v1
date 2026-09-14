@@ -28,11 +28,8 @@ public struct TapaRootView: View {
                             TapaMessage(icon: "flag.checkered", title: "PARTY ENCERRADA", detail: "Esta sala foi encerrada pelo host.")
                         } else if s.room.phase == .lobby {
                             NativeLobby(snapshot: s)
-                        } else if s.room.gameId == .quemErraPaga {
-                            QuizGameView(model: model, snapshot: s)
                         } else {
-                            TapaMessage(icon: "hammer.fill", title: "ESSE AINDA É NO WEB",
-                                        detail: "\(s.room.gameId.displayName) ainda não tem telas nativas. Entre pelo navegador para jogar. Quem Erra, Paga já está disponível aqui.")
+                            NativeGameRouter(model: model, snapshot: s)
                         }
                     } else {
                         NativeJoin(model: model)
@@ -47,16 +44,42 @@ public struct TapaRootView: View {
         .foregroundStyle(.black).tint(.black).preferredColorScheme(.light)
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
-            await model.resume()
+            await model.activate()
+            var pollCount = 0
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(5)) } catch { return }
                 await model.synchronize()
+                pollCount += 1
+                if pollCount.isMultiple(of: 3) { await model.touchPresence() }
             }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { model.stop() }
         }
         .onDisappear { model.stop() }
+    }
+}
+
+private struct NativeGameRouter: View {
+    @Bindable var model: LobbyViewModel
+    let snapshot: RoomSnapshot
+    @ViewBuilder
+    var body: some View {
+        if !snapshot.isMatchParticipant {
+            TapaMessage(icon: "person.crop.circle.badge.clock", title: "PARTIDA EM ANDAMENTO",
+                        detail: "Você já está na sala e entra na próxima partida. Por enquanto, acompanha a bagunça com a galera.")
+        } else {
+            switch snapshot.room.gameId {
+            case .quemErraPaga:
+                QuizGameView(model: model, snapshot: snapshot)
+            case .advogadoDoDiabo:
+                DebateGameView(model: model, snapshot: snapshot)
+            case .drawingTelephone:
+                DrawingGameView(model: model, snapshot: snapshot)
+            case .improvSlides:
+                SlidesGameView(model: model, snapshot: snapshot)
+            }
+        }
     }
 }
 

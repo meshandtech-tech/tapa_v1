@@ -10,12 +10,14 @@
 		4BE00516CA6F80A424BA714B /* TapaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9A724EDFA79E7D89478B46 /* TapaApp.swift */; };
 		B169D52AD7A02C7B23446783 /* TapaUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA3D000F738863FC7470B36 /* TapaUI */; };
 		D26ECE3BAFFB492F11B4CFDB /* TapaCore in Frameworks */ = {isa = PBXBuildFile; productRef = E39B8E236A9D9EA2DC83DD5D /* TapaCore */; };
+		E4C0305B9F0B4873A5D6F42B /* slides in Resources */ = {isa = PBXBuildFile; fileRef = DA2A61AAF317BFB865AA9161 /* slides */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		066069F1913900B5432A6C09 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		2D9B4BF4BF860CF0B8470E4F /* ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ios; path = .; sourceTree = SOURCE_ROOT; };
 		63AAF16B2D0112045C597155 /* Tapa.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Tapa.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA2A61AAF317BFB865AA9161 /* slides */ = {isa = PBXFileReference; lastKnownFileType = folder; name = slides; path = ../../src/assets/slides; sourceTree = SOURCE_ROOT; };
 		FF9A724EDFA79E7D89478B46 /* TapaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapaApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -68,6 +70,7 @@
 		F933FBADEC62591D0AE1D198 = {
 			isa = PBXGroup;
 			children = (
+				DA2A61AAF317BFB865AA9161 /* slides */,
 				327287087B33F5EF96B3141B /* Config */,
 				E750C1CCB3FBAC41B80DA3B5 /* Packages */,
 				B7F350ED0E73A28F1BD21DCC /* TapaApp */,
@@ -83,6 +86,7 @@
 			buildConfigurationList = 8004605CF1346621427B11F2 /* Build configuration list for PBXNativeTarget "Tapa" */;
 			buildPhases = (
 				832396E2436F9CEE8F76CF5E /* Sources */,
+				12B66C6C4BF10EDFF1083CD7 /* Resources */,
 				34E5E61AA1081235D8AE36F9 /* Frameworks */,
 			);
 			buildRules = (
@@ -133,6 +137,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		12B66C6C4BF10EDFF1083CD7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4C0305B9F0B4873A5D6F42B /* slides in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		832396E2436F9CEE8F76CF5E /* Sources */ = {

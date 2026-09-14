@@ -12,6 +12,24 @@ public struct JoinRoomResult: Codable, Equatable, Sendable {
     }
 }
 
+public struct VoteSubmissionResult: Codable, Equatable, Sendable {
+    public let accepted: Bool?
+    public let duplicate: Bool?
+    public let skipped: String?
+}
+
+public struct ContributionSubmissionResult: Codable, Equatable, Sendable {
+    public let contributionID: String?
+    public let skipped: String?
+    public let status: SubmissionStatus?
+
+    enum CodingKeys: String, CodingKey {
+        case contributionID = "contribution_id"
+        case skipped
+        case status
+    }
+}
+
 public enum RoomResolutionStatus: String, Codable, Equatable, Sendable {
     case open
     case roomNotFound = "room_not_found"
@@ -74,6 +92,20 @@ public protocol RoomService: Sendable {
     func joinRoom(pin: String, nickname: String, color: String, avatarSeed: String) async throws -> JoinRoomResult
     func snapshot(roomID: String) async throws -> RoomSnapshot
     func submitAnswer(roomID: String, option: Int) async throws
+    func submitVote(roomID: String, rating: Int) async throws -> VoteSubmissionResult
+    func submitContribution(
+        roomID: String,
+        strokes: JSONValue?,
+        text: String,
+        status: SubmissionStatus
+    ) async throws -> ContributionSubmissionResult
+    func publicDrawingURL(path: String) async -> URL?
+    func advancePhase(
+        roomID: String,
+        expectedPhase: PartyPhase,
+        expectedEndsAt: String?
+    ) async throws
+    func touchPresence(roomID: String) async throws
     func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent>
     func stopObserving() async
 }
