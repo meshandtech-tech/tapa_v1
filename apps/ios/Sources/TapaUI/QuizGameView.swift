@@ -31,9 +31,6 @@ struct QuizGameView: View {
             default:
                 TapaMessage(icon: "hourglass", title: "PRÓXIMA RODADA", detail: "Aguardando a sala atualizar. Sua conexão continua ativa.")
             }
-            if let error = model.actionError {
-                Label(error, systemImage: "exclamationmark.triangle.fill").font(.callout.weight(.bold)).padding().paper()
-            }
         }.accessibilityIdentifier("native-quiz-\(snapshot.room.phase.rawValue)")
     }
     private var activeQuestion: some View {

@@ -1,0 +1,1510 @@
+{
+  "version": 1,
+  "drawingPrompts": [
+    {
+      "id": "s-01",
+      "text": "Maçã",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-02",
+      "text": "Tubarão",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-03",
+      "text": "Avião",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-04",
+      "text": "Vulcão",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-05",
+      "text": "Pizza",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-06",
+      "text": "Fantasma",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-07",
+      "text": "Dinossauro",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-08",
+      "text": "Robô",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-09",
+      "text": "Coroa",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-10",
+      "text": "Banana",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-11",
+      "text": "Violão",
+      "complexity": "simple",
+      "acceptedAnswers": [
+        "guitarra"
+      ],
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-12",
+      "text": "Cobra",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-13",
+      "text": "Castelo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-14",
+      "text": "Diamante",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-15",
+      "text": "Martelo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-16",
+      "text": "Anjo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-17",
+      "text": "Diabo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-18",
+      "text": "Pirata",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-19",
+      "text": "Bomba",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-20",
+      "text": "Cérebro",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-21",
+      "text": "Moto",
+      "complexity": "simple",
+      "acceptedAnswers": [
+        "motocicleta"
+      ],
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-22",
+      "text": "Coração partido",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-23",
+      "text": "Disco voador",
+      "complexity": "simple",
+      "acceptedAnswers": [
+        "ovni",
+        "nave"
+      ],
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-24",
+      "text": "Aliança",
+      "complexity": "simple",
+      "acceptedAnswers": [
+        "anel"
+      ],
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-25",
+      "text": "Vaso sanitário",
+      "complexity": "simple",
+      "acceptedAnswers": [
+        "privada"
+      ],
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-26",
+      "text": "Cachorro",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-27",
+      "text": "Gato",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-28",
+      "text": "Sol",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-29",
+      "text": "Lua",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-30",
+      "text": "Estrela",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-31",
+      "text": "Árvore",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-32",
+      "text": "Casa",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-33",
+      "text": "Carro",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-34",
+      "text": "Barco",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-35",
+      "text": "Foguete",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-36",
+      "text": "Óculos",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-37",
+      "text": "Chapéu",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-38",
+      "text": "Chinelo",
+      "complexity": "simple",
+      "acceptedAnswers": [
+        "sandália"
+      ],
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-39",
+      "text": "Chave",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-40",
+      "text": "Relógio",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-41",
+      "text": "Celular",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-42",
+      "text": "Computador",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-43",
+      "text": "Televisão",
+      "complexity": "simple",
+      "acceptedAnswers": [
+        "tv"
+      ],
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-44",
+      "text": "Geladeira",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-45",
+      "text": "Cadeira",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-46",
+      "text": "Cama",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-47",
+      "text": "Porta",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-48",
+      "text": "Janela",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-49",
+      "text": "Escada",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-50",
+      "text": "Ponte",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-51",
+      "text": "Montanha",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-52",
+      "text": "Nuvem",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-53",
+      "text": "Raio",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-54",
+      "text": "Fogo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-55",
+      "text": "Ovo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-56",
+      "text": "Bolo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-57",
+      "text": "Sorvete",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-58",
+      "text": "Hambúrguer",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-59",
+      "text": "Cachorro-quente",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-60",
+      "text": "Xícara de café",
+      "complexity": "simple",
+      "acceptedAnswers": [
+        "café"
+      ],
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-61",
+      "text": "Garrafa",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-62",
+      "text": "Copo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-63",
+      "text": "Faca",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-64",
+      "text": "Garfo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-65",
+      "text": "Panela",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-66",
+      "text": "Vassoura",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-67",
+      "text": "Guarda-chuva",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-68",
+      "text": "Mochila",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-69",
+      "text": "Livro",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-70",
+      "text": "Lápis",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-71",
+      "text": "Tesoura",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-72",
+      "text": "Balão",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-73",
+      "text": "Presente",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-74",
+      "text": "Bandeira",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-75",
+      "text": "Sino",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-76",
+      "text": "Âncora",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-77",
+      "text": "Caveira",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-78",
+      "text": "Aranha",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-79",
+      "text": "Abelha",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-80",
+      "text": "Borboleta",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-81",
+      "text": "Peixe",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-82",
+      "text": "Polvo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-83",
+      "text": "Elefante",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-84",
+      "text": "Girafa",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-85",
+      "text": "Leão",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-86",
+      "text": "Macaco",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-87",
+      "text": "Pinguim",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-88",
+      "text": "Coelho",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-89",
+      "text": "Sapo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-90",
+      "text": "Galinha",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-91",
+      "text": "Porco",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-92",
+      "text": "Vaca",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-93",
+      "text": "Cavalo",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-94",
+      "text": "Cacto",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-95",
+      "text": "Sereia",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-96",
+      "text": "Múmia",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-97",
+      "text": "Zumbi",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-98",
+      "text": "Palhaço",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-99",
+      "text": "Bruxa",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-100",
+      "text": "Ninja",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-101",
+      "text": "Astronauta",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-102",
+      "text": "Trem",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "s-103",
+      "text": "Bicicleta",
+      "complexity": "simple",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-01",
+      "text": "Porco voando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-02",
+      "text": "Bebê chorando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-03",
+      "text": "Banana dançando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-04",
+      "text": "Cachorro correndo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-05",
+      "text": "Gato dormindo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-06",
+      "text": "Galinha brava",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-07",
+      "text": "Carro explodindo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-08",
+      "text": "Homem caindo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-09",
+      "text": "Vovó dançando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-10",
+      "text": "Palhaço chorando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-11",
+      "text": "Tubarão voando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-12",
+      "text": "Casa pegando fogo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-13",
+      "text": "Celular quebrado",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-14",
+      "text": "Chefe bravo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-15",
+      "text": "Pirata bêbado",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-16",
+      "text": "Alien dançando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-17",
+      "text": "Robô chorando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-18",
+      "text": "Gato voando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-19",
+      "text": "Cachorro dormindo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-20",
+      "text": "Homem correndo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-21",
+      "text": "Peixe pulando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-22",
+      "text": "Cobra dançando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-23",
+      "text": "Macaco gritando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-24",
+      "text": "Elefante pulando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-25",
+      "text": "Sapo cantando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-26",
+      "text": "Vaca dormindo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-27",
+      "text": "Fantasma dançando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-28",
+      "text": "Esqueleto correndo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-29",
+      "text": "Menino gritando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-30",
+      "text": "Coelho pulando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-31",
+      "text": "Leão dormindo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-32",
+      "text": "Pinguim escorregando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-33",
+      "text": "Robô dançando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-34",
+      "text": "Vulcão explodindo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-35",
+      "text": "Homem chorando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-36",
+      "text": "Cavalo correndo",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-37",
+      "text": "Bruxa voando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-38",
+      "text": "Ninja pulando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-39",
+      "text": "Astronauta flutuando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    },
+    {
+      "id": "a-40",
+      "text": "Passarinho cantando",
+      "complexity": "action",
+      "locale": "pt-BR"
+    }
+  ],
+  "debateTopics": {
+    "easy": [
+      {
+        "id": "e1",
+        "text": "A Terra é plana",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e2",
+        "text": "Abacaxi na pizza é o certo",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e3",
+        "text": "Segunda é o melhor dia da semana",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e4",
+        "text": "Café devia ser proibido",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e5",
+        "text": "Dormir é perda de tempo",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e6",
+        "text": "Férias não deviam existir",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e7",
+        "text": "Filme dublado é melhor que legendado",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e8",
+        "text": "Praia é superestimada",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e9",
+        "text": "Pizza fria é melhor que pizza quente",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e10",
+        "text": "Áudio de cinco minutos é superior a texto",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e11",
+        "text": "Toalha não precisa ser lavada",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e12",
+        "text": "Sorvete é uma refeição completa",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e13",
+        "text": "Refrigerante hidrata melhor que água",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e14",
+        "text": "Acordar às quatro da manhã é o segredo do sucesso",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e15",
+        "text": "Cachorro é melhor que gato, e tem ciência nisso",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e16",
+        "text": "Gato é melhor que cachorro, e tem ciência nisso",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e17",
+        "text": "Grupo de família no zap é a melhor invenção da internet",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e18",
+        "text": "Videochamada é melhor que ver a pessoa ao vivo",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e19",
+        "text": "Bolo de chocolate no café da manhã é o certo",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e20",
+        "text": "Reunião devia durar o dobro",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e21",
+        "text": "Andar descalço na rua é libertador",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e22",
+        "text": "Trabalhar sete dias por semana deixaria todo mundo mais feliz",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e23",
+        "text": "Aniversário não devia ser comemorado",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e24",
+        "text": "Mercado sem lista é mais eficiente",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e25",
+        "text": "Meia com chinelo é elegante",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e26",
+        "text": "Quem chega atrasado é mais inteligente",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e27",
+        "text": "Banho quente é frescura",
+        "difficulty": "easy"
+      },
+      {
+        "id": "e28",
+        "text": "Legenda em português em filme brasileiro devia ser obrigatória",
+        "difficulty": "easy"
+      }
+    ],
+    "medium": [
+      {
+        "id": "m1",
+        "text": "Faculdade é perda de tempo",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m2",
+        "text": "Dinheiro compra felicidade",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m3",
+        "text": "Ciúme faz bem para o relacionamento",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m4",
+        "text": "Casamento é superestimado",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m5",
+        "text": "Traição já salvou relacionamento",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m6",
+        "text": "Casal tem que dividir todas as senhas",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m7",
+        "text": "Privacidade não existe dentro de um casamento",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m8",
+        "text": "Seu parceiro tem direito de escolher as suas amizades",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m9",
+        "text": "Morar junto antes de casar é erro",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m10",
+        "text": "Ter filho é decisão egoísta",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m11",
+        "text": "Não ter filho é decisão egoísta",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m12",
+        "text": "Amizade entre homem e mulher não existe",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m13",
+        "text": "Ex não pode continuar na sua vida",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m14",
+        "text": "Dividir a conta no encontro é obrigação",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m15",
+        "text": "Dormir em quartos separados salva casamento",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m16",
+        "text": "Trabalho remoto destruiu as empresas",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m17",
+        "text": "Trabalho remoto foi a melhor coisa que já aconteceu",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m18",
+        "text": "Quem não posta não viveu",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m19",
+        "text": "A internet foi um erro",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m20",
+        "text": "Rede social devia ser proibida para menor de idade",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m21",
+        "text": "Todo mundo é sensível demais hoje em dia",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m22",
+        "text": "Se ofender é escolha",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m23",
+        "text": "Terapia virou modismo",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m24",
+        "text": "Fofoca é saudável",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m25",
+        "text": "Mentir por educação é obrigação",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m26",
+        "text": "Quem não bebe não se diverte igual",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m27",
+        "text": "Segunda chance não devia existir",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m28",
+        "text": "Chegar atrasado é falta de respeito, sem exceção",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m29",
+        "text": "Autoajuda faz mais mal do que bem",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m30",
+        "text": "Presente ruim é pior que presente nenhum",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m31",
+        "text": "Amizade de infância tem prazo de validade",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m32",
+        "text": "Quem lê seu diário está certo",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m33",
+        "text": "Ninguém precisa saber que você foi infiel",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m34",
+        "text": "Dívida de amigo não se cobra, se esquece",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m35",
+        "text": "Trabalhar no que ama é péssimo conselho",
+        "difficulty": "medium"
+      },
+      {
+        "id": "m36",
+        "text": "Quem nunca foi demitido não arriscou nada",
+        "difficulty": "medium"
+      }
+    ],
+    "hard": [
+      {
+        "id": "h1",
+        "text": "A democracia não funciona",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h2",
+        "text": "A democracia é a melhor coisa que a humanidade inventou",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h3",
+        "text": "Votar devia exigir prova de conhecimento",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h4",
+        "text": "Voto tem que ser de todo mundo, sem filtro nenhum",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h5",
+        "text": "Bilionário não devia existir",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h6",
+        "text": "Bilionário é consequência natural do mérito",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h7",
+        "text": "O capitalismo falhou com a sociedade",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h8",
+        "text": "O capitalismo é o melhor sistema que existe",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h9",
+        "text": "Papel tradicional de gênero fazia família mais estável",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h10",
+        "text": "Papel tradicional de gênero é o que quebrou as famílias",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h11",
+        "text": "O feminismo foi longe demais",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h12",
+        "text": "O feminismo ainda não foi longe o suficiente",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h13",
+        "text": "Quem é contra o aborto não pensou dois minutos no assunto",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h14",
+        "text": "Quem é a favor do aborto não pensou dois minutos no assunto",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h15",
+        "text": "Religião devia mandar na política",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h16",
+        "text": "Religião não devia ter influência nenhuma na política",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h17",
+        "text": "Rede social devia censurar muito mais",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h18",
+        "text": "Rede social não devia censurar quase nada",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h19",
+        "text": "Liberdade de expressão foi longe demais",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h20",
+        "text": "Censura nunca se justifica, em hipótese nenhuma",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h21",
+        "text": "Herança devia ser inteiramente taxada",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h22",
+        "text": "Herança não é da conta do Estado",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h23",
+        "text": "Meritocracia é conto de fadas para justificar desigualdade",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h24",
+        "text": "Meritocracia é o critério mais justo que existe",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h25",
+        "text": "Ter filho devia exigir licença",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h26",
+        "text": "Pais deviam escolher a carreira dos filhos",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h27",
+        "text": "Pais deviam escolher com quem os filhos casam",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h28",
+        "text": "Criança não devia escolher nada sozinha",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h29",
+        "text": "Governo autoritário é mais eficiente que democracia",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h30",
+        "text": "Sociedade às vezes precisa de pulso firme",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h31",
+        "text": "As pessoas têm liberdade política demais",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h32",
+        "text": "Governo devia poder banir ideia perigosa",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h33",
+        "text": "Cancelamento é necessário",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h34",
+        "text": "Cancelamento destruiu o debate",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h35",
+        "text": "Monogamia está ultrapassada",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h36",
+        "text": "Monogamia é o único modelo que funciona",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h37",
+        "text": "Divórcio devia ser muito mais difícil",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h38",
+        "text": "Divórcio devia ser muito mais fácil",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h39",
+        "text": "Voto não devia ser obrigatório",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h40",
+        "text": "Escola particular devia ser proibida",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h41",
+        "text": "O Estado não devia se meter em educação",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h42",
+        "text": "Privacidade acabou e isso é ótimo",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h43",
+        "text": "Anonimato na internet devia ser proibido",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h44",
+        "text": "Aposentadoria é um erro de projeto da sociedade",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h45",
+        "text": "Trabalho não deveria ser o centro da vida de ninguém",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h46",
+        "text": "Quem não trabalha não deveria receber nada do Estado",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h47",
+        "text": "Todo mundo devia receber dinheiro do Estado sem fazer nada",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h48",
+        "text": "Imposto é roubo",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h49",
+        "text": "Imposto baixo é o que mantém o país pobre",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h50",
+        "text": "Redes sociais deviam ser estatais",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h51",
+        "text": "Inteligência artificial devia decidir política pública",
+        "difficulty": "hard"
+      },
+      {
+        "id": "h52",
+        "text": "Nenhuma decisão importante devia ser tomada por máquina",
+        "difficulty": "hard"
+      }
+    ]
+  },
+  "slideIDs": [
+    "hp2jp-fw8aafzij",
+    "hpstuauwcai09fg",
+    "hpyxxw-wyaatfkb",
+    "images",
+    "images-1",
+    "images-10",
+    "images-11",
+    "images-12",
+    "images-13",
+    "images-14",
+    "images-15",
+    "images-16",
+    "images-17",
+    "images-18",
+    "images-19",
+    "images-2",
+    "images-3",
+    "images-4",
+    "images-5",
+    "images-6",
+    "images-7",
+    "images-8",
+    "images-9",
+    "john-pork",
+    "photo-1500252185289-40ca85eb23a7",
+    "photo-1583872341575-610c859c7a57",
+    "photo-1621996346565-e3dbc646d9a9",
+    "photo-1634347214185-d90ac76645e7",
+    "premium-photo-1666700698920-d2d2bba589f8",
+    "premium-photo-1695646555080-d605e6cb78b9",
+    "premium-photo-1723810312310-be7fe2dc6ef7",
+    "yoga"
+  ]
+}

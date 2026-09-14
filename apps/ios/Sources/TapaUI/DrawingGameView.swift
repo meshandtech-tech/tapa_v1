@@ -13,10 +13,6 @@ struct DrawingGameView: View {
             } else {
                 phaseContent
             }
-            if let error = model.actionError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout.weight(.bold)).padding().paper()
-            }
         }.accessibilityIdentifier("native-drawing-\(snapshot.room.phase.rawValue)")
     }
 

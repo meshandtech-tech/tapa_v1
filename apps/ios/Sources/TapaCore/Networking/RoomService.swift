@@ -12,6 +12,11 @@ public struct JoinRoomResult: Codable, Equatable, Sendable {
     }
 }
 
+public struct CreateRoomResult: Codable, Equatable, Sendable {
+    public let id: String
+    public let pin: String
+}
+
 public struct VoteSubmissionResult: Codable, Equatable, Sendable {
     public let accepted: Bool?
     public let duplicate: Bool?
@@ -88,9 +93,16 @@ public enum RoomObservationEvent: Equatable, Sendable {
 
 public protocol RoomService: Sendable {
     func prepareSession() async throws
+    func createRoom(pin: String, gameID: GameID) async throws -> CreateRoomResult
     func resolveRoom(pin: String) async throws -> RoomResolution
     func joinRoom(pin: String, nickname: String, color: String, avatarSeed: String) async throws -> JoinRoomResult
     func snapshot(roomID: String) async throws -> RoomSnapshot
+    func setSettings(
+        roomID: String,
+        gameID: GameID?,
+        settings: [String: JSONValue]?
+    ) async throws
+    func startMatch(roomID: String, payload: StartMatchPayload) async throws
     func submitAnswer(roomID: String, option: Int) async throws
     func submitVote(roomID: String, rating: Int) async throws -> VoteSubmissionResult
     func submitContribution(
@@ -103,8 +115,15 @@ public protocol RoomService: Sendable {
     func advancePhase(
         roomID: String,
         expectedPhase: PartyPhase,
-        expectedEndsAt: String?
+        expectedEndsAt: String?,
+        force: Bool
     ) async throws
+    func pauseRoom(roomID: String, paused: Bool) async throws
+    func rerollTopic(roomID: String) async throws
+    func rerollPunishment(roomID: String) async throws
+    func setRevealAutoplay(roomID: String, enabled: Bool) async throws
+    func countAsMatch(roomID: String, chainID: String) async throws
+    func resetToLobby(roomID: String) async throws
     func touchPresence(roomID: String) async throws
     func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent>
     func stopObserving() async

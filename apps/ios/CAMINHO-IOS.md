@@ -44,13 +44,20 @@ Não estamos criando outro jogo nem substituindo a versão web.
 7. **Confiabilidade e integração — pendente.**
    Testar uma partida completa web + iOS, background/foreground, reconexão,
    troca Wi-Fi/5G e perda de evento Realtime. Não prometer prontidão com build apenas.
-8. **Controles de host nativo — etapa posterior.**
-   Criação/início/avanço/reinício no iOS precisam de implementação e testes próprios.
-   Nesta entrega, o host permanece no navegador.
+8. **Controles de host nativo — estrutura implementada, playtest pendente.**
+   O iPhone cria a sala no mesmo Supabase do web, entra como host, monta o
+   payload oficial dos quatro jogos, inicia/reinicia a partida e volta ao lobby.
+   Avanços manuais usam compare-and-set no `advance_phase`; pausa, reroll de
+   tese/prenda, autoplay/acerto manual da revelação e saídas de emergência
+   continuam validados pelas RPCs existentes. No lobby, o host também troca
+   jogo e dificuldade sem apagar outras configurações da sala.
+   O catálogo nativo é exportado mecanicamente do conteúdo web para evitar duas
+   listas divergentes. Nenhuma tabela ou migration nova foi necessária.
 
 ## Como acompanhar e retomar
 
-Checkpoint de 2026-09-14: os quatro jogos possuem fluxo nativo de participante,
+Checkpoint de 2026-09-14: os quatro jogos possuem fluxo nativo de participante
+e a primeira estrutura completa de host,
 sempre renderizado pelo `room_snapshot`. Resposta, voto e contribuição só viram
 sucesso depois da confirmação autoritativa. O desenho usa o formato compacto v2
 do web, mantém rascunho local, envia os traços antes de qualquer imagem e aplica
@@ -60,11 +67,11 @@ Confiabilidade: tentativas de ação têm prazo curto e são idempotentes; snaps
 entrada e presença também têm prazo; retorno do background fecha primeiro o socket
 antigo; presença é renovada; a última sala é restaurada após relançar o app.
 
-Verificação deste checkpoint: **23 testes Swift passaram**, build do app para o
-iPhone 17 Pro Simulator passou e o app abriu sem crash. Como proteção adicional,
-os **422 testes web** e o build Vite passaram mesmo sem nenhum arquivo web alterado.
-Ainda falta a partida multiplayer completa web + iOS e a troca real Wi-Fi/5G;
-não declarar produção pronta antes desse playtest.
+Verificação atual: **32 testes Swift passaram**, o projeto Xcode compilou para o
+iPhone 17 Pro Simulator e abriu sem crash. Como proteção adicional, os **422
+testes web** e o build Vite passaram sem nenhum arquivo web alterado. Ainda falta
+a partida multiplayer completa web + iOS e a troca real Wi-Fi/5G; não declarar
+produção pronta antes desse playtest.
 
 ## Ordem de prioridade decidida
 

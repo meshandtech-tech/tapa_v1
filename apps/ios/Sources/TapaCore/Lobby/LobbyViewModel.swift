@@ -68,9 +68,32 @@ public final class LobbyViewModel {
             && state != .connecting
     }
 
+    public var canCreate: Bool {
+        !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && state != .connecting
+    }
+
     public var isHost: Bool {
         guard let snapshot, snapshot.me.playerId != nil else { return false }
         return snapshot.me.playerId == snapshot.room.hostPlayerId
+    }
+
+    public var canCountCurrentDrawingAsMatch: Bool {
+        guard let snapshot, isHost, snapshot.room.gameId == .drawingTelephone,
+              snapshot.room.phase == .revealPage, let match = snapshot.match,
+              match.revealPageIndex == match.stepCount + 1,
+              snapshot.chains.indices.contains(match.revealChainIndex)
+        else { return false }
+        let chain = snapshot.chains[match.revealChainIndex]
+        guard !chain.countedAsMatch else { return false }
+        let finalGuess = chain.pages
+            .filter { $0.kind == "guess" }
+            .max { $0.stepIndex < $1.stepIndex }?.text ?? ""
+        return !AnswerMatcher.matches(
+            guess: finalGuess,
+            prompt: chain.originalPrompt,
+            acceptedAnswers: chain.acceptedAnswers
+        )
     }
 
     public func join() async {
@@ -111,6 +134,33 @@ public final class LobbyViewModel {
         } catch {
             connectionState = .idle
             state = .failed(Self.message(for: error))
+        }
+    }
+
+    /// Creates the authoritative room and immediately joins it with the same
+    /// anonymous identity. `create_room` resolves PIN collisions atomically
+    /// and returns the actual PIN that must be shared.
+    public func create(gameID: GameID) async {
+        guard canCreate else { return }
+        state = .connecting
+        connectionState = .reconnecting
+        lastConnectionError = nil
+
+        do {
+            try await service.prepareSession()
+            let proposedPIN = String(format: "%04d", Int.random(in: 0...9_999))
+            let room = try await service.createRoom(pin: proposedPIN, gameID: gameID)
+            pin = room.pin
+            // Reuse the regular join path so host creation has exactly the
+            // same validation, snapshot confirmation and persistence.
+            state = .idle
+            connectionState = .idle
+            await join()
+        } catch {
+            connectionState = .idle
+            state = .failed(Self.isNetworkError(error)
+                ? "Falha temporária de rede. Verifique sua conexão e tente novamente."
+                : "Não foi possível criar a sala. Tente novamente.")
         }
     }
 
@@ -216,7 +266,8 @@ public final class LobbyViewModel {
             try await service.advancePhase(
                 roomID: snapshot.room.id,
                 expectedPhase: snapshot.room.phase,
-                expectedEndsAt: snapshot.room.phaseEndsAt
+                expectedEndsAt: snapshot.room.phaseEndsAt,
+                force: false
             )
         } catch {
             lastConnectionError = Self.message(for: error)
@@ -265,6 +316,221 @@ public final class LobbyViewModel {
         await synchronize()
         if self.snapshot?.quizRoundKey == roundKey, !hasAnswered {
             actionError = "Não conseguimos confirmar sua resposta. Tente novamente."
+        }
+    }
+
+    public func changeGame(to gameID: GameID) async {
+        guard let snapshot, isHost, snapshot.room.phase == .lobby,
+              snapshot.room.gameId != gameID, !isSubmitting
+        else { return }
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.setSettings(
+                roomID: snapshot.room.id, gameID: gameID, settings: nil
+            )
+        } catch {
+            // Confirm the room below in case the response was lost.
+        }
+        await synchronize()
+        if self.snapshot?.room.gameId != gameID {
+            actionError = "O jogo da sala não mudou. Tente novamente."
+        }
+    }
+
+    public func changeDifficulty(to difficulty: GameDifficulty) async {
+        guard let snapshot, isHost, snapshot.room.phase == .lobby,
+              snapshot.room.difficulty != difficulty, !isSubmitting
+        else { return }
+        var settings = snapshot.room.settings
+        settings["difficulty"] = .string(difficulty.rawValue)
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.setSettings(
+                roomID: snapshot.room.id, gameID: nil, settings: settings
+            )
+        } catch {
+            // Confirm the room below in case the response was lost.
+        }
+        await synchronize()
+        if self.snapshot?.room.difficulty != difficulty {
+            actionError = "A dificuldade não mudou. Tente novamente."
+        }
+    }
+
+    public func startMatch() async {
+        guard let snapshot, isHost,
+              snapshot.room.phase == .lobby || snapshot.room.phase == .gameOver,
+              snapshot.players.count >= snapshot.room.gameId.minimumPlayers,
+              !isSubmitting
+        else { return }
+        let initialPhase = snapshot.room.phase
+        guard let payload = HostGameCatalog.bundled?.payload(
+            gameID: snapshot.room.gameId,
+            difficulty: snapshot.room.difficulty,
+            playerCount: snapshot.players.count
+        ) else {
+            actionError = "O conteúdo deste jogo não está disponível nesta versão."
+            return
+        }
+
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.startMatch(roomID: snapshot.room.id, payload: payload)
+        } catch {
+            // The transaction may have committed before transport failed.
+            // Reconcile before presenting a retry.
+        }
+        await synchronize()
+        if self.snapshot?.room.phase == initialPhase {
+            actionError = "A partida não começou. Confira os jogadores e tente novamente."
+        }
+    }
+
+    public func forceAdvance() async {
+        guard let snapshot, isHost, snapshot.room.phase != .lobby,
+              snapshot.room.phase != .gameOver, !isSubmitting
+        else { return }
+        let actionKey = snapshot.actionRoundKey
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.advancePhase(
+                roomID: snapshot.room.id,
+                expectedPhase: snapshot.room.phase,
+                expectedEndsAt: snapshot.room.phaseEndsAt,
+                force: true
+            )
+        } catch {
+            // A response can be lost after the transaction commits.
+        }
+        await synchronize()
+        if self.snapshot?.actionRoundKey == actionKey {
+            actionError = "O servidor não confirmou a próxima fase. Tente novamente."
+        }
+    }
+
+    public func resetToLobby() async {
+        guard let snapshot, isHost, snapshot.room.phase == .gameOver, !isSubmitting else { return }
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.resetToLobby(roomID: snapshot.room.id)
+        } catch {
+            // Reconcile because the reset may have committed before the
+            // transport reported a failure.
+        }
+        await synchronize()
+        if self.snapshot?.room.phase != .lobby {
+            actionError = "A sala não voltou ao lobby. Tente novamente."
+        }
+    }
+
+    public func setPaused(_ paused: Bool) async {
+        guard let snapshot, isHost, snapshot.room.phaseEndsAt != nil,
+              snapshot.room.phase != .lobby, snapshot.room.phase != .gameOver,
+              !isSubmitting
+        else { return }
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.pauseRoom(roomID: snapshot.room.id, paused: paused)
+        } catch {
+            // Always confirm the authoritative paused_at value below.
+        }
+        await synchronize()
+        let confirmed = paused
+            ? self.snapshot?.room.pausedAt != nil
+            : self.snapshot?.room.pausedAt == nil
+        if !confirmed {
+            actionError = paused
+                ? "Não conseguimos pausar a partida. Tente novamente."
+                : "Não conseguimos retomar a partida. Tente novamente."
+        }
+    }
+
+    public func rerollTopic() async {
+        guard let snapshot, isHost, snapshot.room.gameId == .advogadoDoDiabo,
+              snapshot.room.phase == .topicReveal || snapshot.room.phase == .preparation,
+              !isSubmitting
+        else { return }
+        let previousTopic = snapshot.currentTopicText
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.rerollTopic(roomID: snapshot.room.id)
+        } catch {
+            // Snapshot confirmation handles a response lost after commit.
+        }
+        await synchronize()
+        if self.snapshot?.room.phase != .topicSpin,
+           self.snapshot?.currentTopicText == previousTopic {
+            actionError = "A tese não mudou. Tente novamente."
+        }
+    }
+
+    public func rerollPunishment() async {
+        guard let snapshot, isHost, snapshot.room.gameId == .quemErraPaga,
+              snapshot.room.phase == .forfeitWheel, !isSubmitting
+        else { return }
+        let previous = snapshot.match?.punishmentIndex
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.rerollPunishment(roomID: snapshot.room.id)
+        } catch {
+            // Snapshot confirmation handles a response lost after commit.
+        }
+        await synchronize()
+        if self.snapshot?.match?.punishmentIndex == previous {
+            actionError = "A roleta não confirmou uma nova prenda. Tente novamente."
+        }
+    }
+
+    public func setRevealAutoplay(_ enabled: Bool) async {
+        guard let snapshot, isHost, snapshot.room.gameId == .drawingTelephone,
+              snapshot.room.phase == .revealPage, !isSubmitting
+        else { return }
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.setRevealAutoplay(roomID: snapshot.room.id, enabled: enabled)
+        } catch {
+            // Confirm from the snapshot even if the response was lost.
+        }
+        await synchronize()
+        if self.snapshot?.match?.revealAutoplay != enabled {
+            actionError = "O modo automático não foi confirmado. Tente novamente."
+        }
+    }
+
+    public func countCurrentDrawingAsMatch() async {
+        guard let snapshot, canCountCurrentDrawingAsMatch, let match = snapshot.match,
+              snapshot.chains.indices.contains(match.revealChainIndex), !isSubmitting
+        else { return }
+        let chainID = snapshot.chains[match.revealChainIndex].id
+        isSubmitting = true
+        actionError = nil
+        defer { isSubmitting = false }
+        do {
+            try await service.countAsMatch(roomID: snapshot.room.id, chainID: chainID)
+        } catch {
+            // Confirm from the snapshot even if the response was lost.
+        }
+        await synchronize()
+        if self.snapshot?.chains.first(where: { $0.id == chainID })?.countedAsMatch != true {
+            actionError = "O acerto manual não foi confirmado. Tente novamente."
         }
     }
 

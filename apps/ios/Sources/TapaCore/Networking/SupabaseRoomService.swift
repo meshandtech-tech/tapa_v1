@@ -35,6 +35,20 @@ public actor SupabaseRoomService: RoomService {
         }
     }
 
+    public func createRoom(pin: String, gameID: GameID) async throws -> CreateRoomResult {
+        struct Parameters: Encodable {
+            let p_pin: String
+            let p_game_id: String
+        }
+        let request = try await authenticatedRPC(
+            "create_room",
+            params: Parameters(p_pin: pin, p_game_id: gameID.rawValue)
+        )
+        return try await Self.withTimeout(.seconds(8)) {
+            try await request.execute().value
+        }
+    }
+
     public func resolveRoom(pin: String) async throws -> RoomResolution {
         struct Parameters: Encodable {
             let pin: String
@@ -106,6 +120,58 @@ public actor SupabaseRoomService: RoomService {
             throw RoomServiceError.invalidSnapshot(error)
         }
         return value
+    }
+
+    public func setSettings(
+        roomID: String,
+        gameID: GameID?,
+        settings: [String: JSONValue]?
+    ) async throws {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_game_id: String?
+            let p_settings: [String: JSONValue]?
+        }
+        let request = try await authenticatedRPC(
+            "set_settings",
+            params: Parameters(
+                p_room: roomID,
+                p_game_id: gameID?.rawValue,
+                p_settings: settings
+            )
+        )
+        _ = try await Self.withTimeout(.seconds(5)) {
+            _ = try await request.execute()
+            return ()
+        }
+    }
+
+    public func startMatch(roomID: String, payload: StartMatchPayload) async throws {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_prompts: [StartMatchPrompt]
+            let p_topics: [StartMatchTopic]
+            let p_question_order: [Int]
+            let p_correct: [Int]
+            let p_slide_ids: [String]
+            let p_punishment_count: Int
+        }
+        let request = try await authenticatedRPC(
+            "start_match",
+            params: Parameters(
+                p_room: roomID,
+                p_prompts: payload.prompts,
+                p_topics: payload.topics,
+                p_question_order: payload.questionOrder,
+                p_correct: payload.correctOptions,
+                p_slide_ids: payload.slideIDs,
+                p_punishment_count: payload.punishmentCount
+            )
+        )
+        _ = try await Self.withTimeout(.seconds(8)) {
+            _ = try await request.execute()
+            return ()
+        }
     }
 
     public func submitAnswer(roomID: String, option: Int) async throws {
@@ -201,7 +267,8 @@ public actor SupabaseRoomService: RoomService {
     public func advancePhase(
         roomID: String,
         expectedPhase: PartyPhase,
-        expectedEndsAt: String?
+        expectedEndsAt: String?,
+        force: Bool
     ) async throws {
         struct Parameters: Encodable {
             let p_room: String
@@ -215,8 +282,85 @@ public actor SupabaseRoomService: RoomService {
                 p_room: roomID,
                 p_expected_phase: expectedPhase.rawValue,
                 p_expected_ends_at: expectedEndsAt,
-                p_force: false
+                p_force: force
             )
+        )
+        _ = try await Self.withTimeout(.seconds(5)) {
+            _ = try await request.execute()
+            return ()
+        }
+    }
+
+    public func resetToLobby(roomID: String) async throws {
+        struct Parameters: Encodable { let p_room: String }
+        let request = try await authenticatedRPC(
+            "reset_to_lobby", params: Parameters(p_room: roomID)
+        )
+        _ = try await Self.withTimeout(.seconds(8)) {
+            _ = try await request.execute()
+            return ()
+        }
+    }
+
+    public func pauseRoom(roomID: String, paused: Bool) async throws {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_paused: Bool
+        }
+        let request = try await authenticatedRPC(
+            "pause_room", params: Parameters(p_room: roomID, p_paused: paused)
+        )
+        _ = try await Self.withTimeout(.seconds(5)) {
+            _ = try await request.execute()
+            return ()
+        }
+    }
+
+    public func rerollTopic(roomID: String) async throws {
+        struct Parameters: Encodable { let p_room: String }
+        let request = try await authenticatedRPC(
+            "reroll_topic", params: Parameters(p_room: roomID)
+        )
+        _ = try await Self.withTimeout(.seconds(5)) {
+            _ = try await request.execute()
+            return ()
+        }
+    }
+
+    public func rerollPunishment(roomID: String) async throws {
+        struct Parameters: Encodable { let p_room: String }
+        let request = try await authenticatedRPC(
+            "reroll_punishment", params: Parameters(p_room: roomID)
+        )
+        _ = try await Self.withTimeout(.seconds(5)) {
+            _ = try await request.execute()
+            return ()
+        }
+    }
+
+    public func setRevealAutoplay(roomID: String, enabled: Bool) async throws {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_on: Bool
+        }
+        let request = try await authenticatedRPC(
+            "set_reveal_autoplay",
+            params: Parameters(p_room: roomID, p_on: enabled)
+        )
+        _ = try await Self.withTimeout(.seconds(5)) {
+            _ = try await request.execute()
+            return ()
+        }
+    }
+
+    public func countAsMatch(roomID: String, chainID: String) async throws {
+        struct Parameters: Encodable {
+            let p_room: String
+            let p_chain: String
+        }
+        let request = try await authenticatedRPC(
+            "count_as_match",
+            params: Parameters(p_room: roomID, p_chain: chainID)
         )
         _ = try await Self.withTimeout(.seconds(5)) {
             _ = try await request.execute()
