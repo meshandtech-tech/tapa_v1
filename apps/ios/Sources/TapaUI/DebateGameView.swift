@@ -35,7 +35,8 @@ struct DebateGameView: View {
                         .foregroundStyle(.white)
                 }
             case .playerSpin:
-                DebatePresenterSpinner(
+                PlayerSpinner(
+                    title: "QUEM VAI DEFENDER?",
                     players: snapshot.remainingDebatePresenters + currentPresenterArray,
                     winnerID: snapshot.currentPresenter?.id
                 )
@@ -150,47 +151,5 @@ private struct DebateTopicWheel: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Sorteando uma entre \(topics.count) teses")
-    }
-}
-
-private struct DebatePresenterSpinner: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let players: [SnapshotPlayer]
-    let winnerID: String?
-    @State private var displayedName = "QUEM SERÁ?"
-
-    var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "person.3.sequence.fill")
-                .font(.system(size: 58, weight: .black))
-            Text("QUEM VAI DEFENDER?").font(.title2.weight(.black))
-            Text(displayedName.uppercased())
-                .font(.system(size: 34, weight: .black, design: .rounded))
-                .multilineTextAlignment(.center)
-                .contentTransition(.numericText())
-                .frame(maxWidth: .infinity, minHeight: 84)
-        }
-        .padding(26)
-        .paper(fill: TapaPalette.lime)
-        .task(id: winnerID) {
-            guard let winner = players.first(where: { $0.id == winnerID }) else { return }
-            if reduceMotion || players.count < 2 {
-                displayedName = winner.nickname
-                return
-            }
-            for index in 0..<18 {
-                if Task.isCancelled { return }
-                withAnimation(.easeOut(duration: 0.08)) {
-                    displayedName = players[index % players.count].nickname
-                }
-                do { try await Task.sleep(for: .milliseconds(75 + index * 4)) }
-                catch { return }
-            }
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
-                displayedName = winner.nickname
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Sorteando quem vai defender")
     }
 }

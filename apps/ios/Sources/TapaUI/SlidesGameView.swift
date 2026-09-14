@@ -22,9 +22,13 @@ struct SlidesGameView: View {
             switch snapshot.room.phase {
             case .gameIntro:
                 TapaMessage(icon: "rectangle.on.rectangle.angled", title: "COMO SE JOGA",
-                            detail: "Você recebe 5 slides aleatórios e precisa transformar tudo numa apresentação. São 20 segundos por slide; eles passam sozinhos.")
+                            detail: "Você recebe 5 slides aleatórios, vê o primeiro por 20 segundos e transforma tudo numa história. Depois são 20 segundos por slide; eles passam sozinhos.")
             case .playerSpin:
-                SpinCard(title: "PRÓXIMO A APRESENTAR", items: participantNames)
+                PlayerSpinner(
+                    title: "PRÓXIMO A APRESENTAR",
+                    players: snapshot.slidesPresenterCandidates,
+                    winnerID: snapshot.currentPresenter?.id
+                )
             case .playerReveal:
                 TapaMessage(icon: "person.crop.circle.badge.questionmark",
                             title: snapshot.isCurrentPresenter ? "É VOCÊ." : (snapshot.currentPresenter?.nickname.uppercased() ?? "QUEM SERÁ?"),
@@ -57,18 +61,20 @@ struct SlidesGameView: View {
         }
     }
 
-    private var participantNames: [String] {
-        guard let order = snapshot.match?.seatOrder else { return [] }
-        return order.compactMap { id in snapshot.players.first { $0.id == id }?.nickname }
-    }
-
     private var preparation: some View {
         VStack(spacing: 18) {
             TapaMessage(icon: "brain.head.profile",
                         title: snapshot.isCurrentPresenter ? "VOCÊ É O PRÓXIMO" : "\(snapshot.currentPresenter?.nickname.uppercased() ?? "ALGUÉM") SE PREPARA",
                         detail: snapshot.isCurrentPresenter ? "Começo, meio e fim. Os outros quatro slides continuam surpresa." : "Prepare o dedo para avaliar.")
             if snapshot.isCurrentPresenter, let first = snapshot.match?.slideIds.first {
+                Text("SEU PRIMEIRO SLIDE")
+                    .font(.caption.weight(.black))
+                    .tracking(2)
+                    .foregroundStyle(.white)
                 SlideImage(id: first)
+                Text("Começa por aqui. Os outros quatro são surpresa.")
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(.white)
             }
             PartyTimer(snapshot: snapshot, serverOffset: model.serverOffset)
         }
@@ -76,13 +82,21 @@ struct SlidesGameView: View {
 
     private var presentation: some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { context in
-            let progress = slideProgress(at: context.date)
+            let progress = snapshot.slidesProgress(at: context.date, serverOffset: model.serverOffset)
             VStack(spacing: 14) {
                 HStack {
-                    Text(snapshot.currentPresenter?.nickname.uppercased() ?? "APRESENTAÇÃO")
-                        .font(.headline.weight(.black)).foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(snapshot.currentPresenter?.nickname.uppercased() ?? "APRESENTAÇÃO")
+                            .font(.headline.weight(.black))
+                        if SlidesRules.beats.indices.contains(progress.index) {
+                            Text(SlidesRules.beats[progress.index].uppercased())
+                                .font(.caption2.weight(.black))
+                                .tracking(1)
+                        }
+                    }
+                    .foregroundStyle(.white)
                     Spacer()
-                    Text("\(progress.index + 1) / 5 · \(progress.remaining)s")
+                    Text("\(progress.index + 1) / \(SlidesRules.slidesPerPresentation) · \(progress.remainingSeconds)s")
                         .font(.system(.headline, design: .monospaced, weight: .black)).padding(10).paper()
                 }
                 if let slides = snapshot.match?.slideIds, slides.indices.contains(progress.index) {
@@ -95,34 +109,32 @@ struct SlidesGameView: View {
         }
     }
 
-    private func slideProgress(at date: Date) -> (index: Int, remaining: Int) {
-        let totalRemaining = snapshot.secondsRemaining(at: date, serverOffset: model.serverOffset) ?? 100
-        let elapsed = min(max(100 - totalRemaining, 0), 99)
-        let index = min(4, elapsed / 20)
-        return (index, max(1, 20 - elapsed % 20))
-    }
-
     @ViewBuilder private var voting: some View {
         if snapshot.isCurrentPresenter {
             TapaMessage(icon: "eye.fill", title: "ESTÃO TE JULGANDO",
-                        detail: "\(snapshot.votes.count) voto(s) chegaram.")
+                        detail: "\(snapshot.slidesVotesIn) de \(snapshot.eligibleSlidesVoters.count) votos chegaram. Você não vota em si mesmo.")
+        } else if !snapshot.isMatchParticipant {
+            TapaMessage(icon: "eye.fill", title: "ASSISTINDO A VOTAÇÃO",
+                        detail: "Você entrou durante a partida e vota na próxima.")
         } else if let id = snapshot.me.playerId, let vote = snapshot.votes[id] {
             TapaMessage(icon: "checkmark.seal.fill", title: "VOTO REGISTRADO",
-                        detail: VoteScale.slides.first { $0.value == Int(vote) }?.label ?? "Esperando o host…")
+                        detail: snapshot.slidesVotesMissing > 0
+                            ? "\(VoteScale.slides.first { $0.value == Int(vote) }?.label ?? "NOTA ENVIADA") · faltam \(snapshot.slidesVotesMissing)"
+                            : "Esperando o host mostrar a nota.")
         } else {
             VotePanel(title: "Que nota para \(snapshot.currentPresenter?.nickname ?? "a apresentação")?",
                       items: VoteScale.slides,
-                      disabled: model.isSubmitting || !snapshot.isMatchParticipant,
+                      disabled: model.isSubmitting,
                       action: model.submitVote)
         }
     }
 
     private var scoreReveal: some View {
         let presenter = snapshot.currentPresenter
-        let score = presenter.flatMap { snapshot.scores[$0.id] }
+        let score = snapshot.currentSlidesScore
         return TapaMessage(icon: "star.fill",
                            title: score.map { String(format: "%.1f / 5", $0) } ?? "— / 5",
-                           detail: "Nota de \(presenter?.nickname ?? "quem apresentou").")
+                           detail: "\(presenter?.nickname ?? "Quem apresentou"): \(slidesVerdict(for: score))")
     }
 }
 

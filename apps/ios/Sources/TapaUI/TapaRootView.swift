@@ -439,7 +439,9 @@ private struct NativeHostControls: View {
         case (.improvSlides, .presentation):
             ("ENCERRAR APRESENTAÇÃO", "stop.fill", false)
         case (.improvSlides, .voting):
-            ("FECHAR VOTAÇÃO", "checkmark.circle.fill", true)
+            snapshot.slidesVotesMissing > 0
+                ? ("FECHAR VOTAÇÃO · FALTAM \(snapshot.slidesVotesMissing)", "checkmark.circle.fill", true)
+                : ("VER A NOTA", "checkmark.circle.fill", true)
         case (.improvSlides, .scoreReveal):
             ("PRÓXIMO APRESENTADOR", "forward.fill", true)
         default:

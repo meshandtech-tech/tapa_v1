@@ -53,9 +53,15 @@ Não estamos criando outro jogo nem substituindo a versão web.
    contribuições; timeout aceita folha vazia para não travar a corrente; ordem
    de caderno e página usa as posições autoritativas do snapshot. O host ainda
    pode pular espera, controlar autoplay e aceitar um sinônimo como acerto.
-6. **Pitch no Escuro — estrutura participante implementada, playtest pendente.**
-   Sorteio, preparação, slides reais do acervo, temporização derivada do prazo,
-   votação confirmada, nota e ranking.
+6. **Pitch no Escuro — implementação nativa auditada, playtest pendente.**
+   O sorteio anima exclusivamente o apresentador oficial da ordem congelada;
+   preparação mostra só a ele o primeiro slide. Os cinco blocos de vinte
+   segundos derivam do mesmo deadline do Supabase, inclusive durante pausa e
+   reconexão, sem relógio ou índice paralelo no aparelho. Votação conta apenas
+   participantes originais, exclui apresentador e espectador tardio, confirma
+   no snapshot e preserva a média oficial. Os 32 IDs do catálogo correspondem
+   aos 32 arquivos decodificáveis empacotados no app. O host vê quantos votos
+   ainda faltam antes de fechar a rodada.
 7. **Confiabilidade e integração — pendente.**
    Testar uma partida completa web + iOS, background/foreground, reconexão,
    troca Wi-Fi/5G e perda de evento Realtime. Não prometer prontidão com build apenas.
@@ -82,7 +88,7 @@ Confiabilidade: tentativas de ação têm prazo curto e são idempotentes; snaps
 entrada e presença também têm prazo; retorno do background fecha primeiro o socket
 antigo; presença é renovada; a última sala é restaurada após relançar o app.
 
-Verificação atual: **44 testes Swift passaram**, o projeto Xcode compilou para o
+Verificação atual: **49 testes Swift passaram**, o projeto Xcode compilou para o
 iPhone 17 Pro Simulator e abriu sem crash. Como proteção adicional, os **422
 testes web** e o build Vite passaram sem nenhum arquivo web alterado. Ainda falta
 a partida multiplayer completa web + iOS e a troca real Wi-Fi/5G; não declarar

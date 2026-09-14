@@ -161,7 +161,8 @@ public extension GameID {
     var minimumPlayers: Int {
         switch self {
         case .drawingTelephone: 4
-        case .quemErraPaga, .advogadoDoDiabo, .improvSlides: 2
+        case .improvSlides: 3
+        case .quemErraPaga, .advogadoDoDiabo: 2
         }
     }
 }
