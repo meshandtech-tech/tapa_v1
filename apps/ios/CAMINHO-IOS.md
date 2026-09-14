@@ -23,10 +23,13 @@ Não estamos criando outro jogo nem substituindo a versão web.
 1. **Base visual e navegação — suficiente para testes, refinamento adiado.**
    Componentes SwiftUI reutilizáveis; entrada, lobby e roteamento por fase.
    Conferir telas pequenas, teclado, textos longos e acessibilidade.
-2. **Quem Erra, Paga como participante — implementado, playtest pendente.**
-   Host no web; iOS recebe perguntas, envia alternativa, acompanha revelação,
-   prenda, placar e retorno ao lobby. Perguntas/alternativas preservam índices do web.
-   Validar envio duplicado, resposta não persistida, falha de rede, pausa e espectador.
+2. **Quem Erra, Paga nativo — implementação auditada, playtest pendente.**
+   iOS recebe perguntas, envia e confirma a alternativa, acompanha revelação,
+   roleta/prenda, placar e retorno ao lobby. A roleta anima até o índice sorteado
+   pelo Supabase; nunca sorteia localmente. Perguntas/alternativas preservam os
+   índices do web. Espectadores tardios veem a partida, mas não respondem nem
+   entram no placar. Envio duplicado, resposta não persistida e regras da
+   pegadinha possuem testes automatizados; rede real e pausa ficam para o playtest.
 3. **Camada funcional comum — implementada, playtest real pendente.**
    RPCs nativas para resposta, voto e contribuição; confirmações autoritativas;
    desenho compacto compatível com web; rascunho local; pedidos idempotentes
@@ -67,7 +70,7 @@ Confiabilidade: tentativas de ação têm prazo curto e são idempotentes; snaps
 entrada e presença também têm prazo; retorno do background fecha primeiro o socket
 antigo; presença é renovada; a última sala é restaurada após relançar o app.
 
-Verificação atual: **32 testes Swift passaram**, o projeto Xcode compilou para o
+Verificação atual: **34 testes Swift passaram**, o projeto Xcode compilou para o
 iPhone 17 Pro Simulator e abriu sem crash. Como proteção adicional, os **422
 testes web** e o build Vite passaram sem nenhum arquivo web alterado. Ainda falta
 a partida multiplayer completa web + iOS e a troca real Wi-Fi/5G; não declarar

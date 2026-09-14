@@ -29,6 +29,12 @@ public struct QuizCatalog: Decodable, Sendable {
 }
 
 public extension RoomSnapshot {
+    var matchParticipants: [SnapshotPlayer] {
+        guard let order = match?.seatOrder else { return [] }
+        let byID = Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0) })
+        return order.compactMap { byID[$0] }
+    }
+
     var isQuizParticipant: Bool {
         guard let id = me.playerId, let match else { return false }
         return match.seatOrder.contains(id)
@@ -41,6 +47,31 @@ public extension RoomSnapshot {
 
     var quizRoundKey: String {
         "\(room.id):\(match?.id ?? ""):\(room.round)"
+    }
+
+    func quizOutcome(for question: QuizCatalog.Question) -> QuizRoundOutcome {
+        var correct: [SnapshotPlayer] = []
+        var wrong: [SnapshotPlayer] = []
+        var pending: [SnapshotPlayer] = []
+
+        for player in matchParticipants {
+            let answer = answers[player.id]
+            if answer == nil { pending.append(player) }
+            if let expected = question.correctAnswer, answer == expected {
+                correct.append(player)
+            } else {
+                // An unanswered player and every player on a trick question
+                // lose the round, matching Postgres and the web client.
+                wrong.append(player)
+            }
+        }
+        return QuizRoundOutcome(correct: correct, wrong: wrong, pending: pending)
+    }
+
+    var matchRanking: [SnapshotPlayer] {
+        matchParticipants.sorted {
+            $0.score == $1.score ? $0.joinedAt < $1.joinedAt : $0.score > $1.score
+        }
     }
 
     var currentPresenter: SnapshotPlayer? {
@@ -88,4 +119,10 @@ public extension RoomSnapshot {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: value)
     }
+}
+
+public struct QuizRoundOutcome: Equatable, Sendable {
+    public let correct: [SnapshotPlayer]
+    public let wrong: [SnapshotPlayer]
+    public let pending: [SnapshotPlayer]
 }

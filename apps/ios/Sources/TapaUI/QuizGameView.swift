@@ -48,12 +48,20 @@ struct QuizGameView: View {
                 Text(question.question).font(.system(.title2, design: .rounded, weight: .black))
                     .frame(maxWidth: .infinity, alignment: .leading).padding(24).paper()
                 if model.hasAnswered {
-                    TapaMessage(icon: "checkmark.seal.fill", title: "TÁ NA MÃO!", detail: "Resposta confirmada. Agora espera a galera — sem trocar de ideia.")
+                    TapaMessage(
+                        icon: "checkmark.seal.fill",
+                        title: "TÁ NA MÃO!",
+                        detail: selectedAnswerText
+                    )
                 } else {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         VStack(spacing: 16) {
                             ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
-                                Button { Task { await model.submitAnswer(index) } } label: {
+                                Button {
+                                    runProtectedGameAction(named: "Enviar resposta") {
+                                        await model.submitAnswer(index)
+                                    }
+                                } label: {
                                     HStack(spacing: 14) {
                                         Text(["A", "B", "C", "D"][index]).font(.title2.weight(.black))
                                             .frame(width: 38, height: 38).background(TapaPalette.lime)
@@ -93,32 +101,27 @@ struct QuizGameView: View {
     }
     private var forfeit: some View {
         VStack(spacing: 24) {
-            TapaMessage(icon: "sparkles", title: "A ROLETA\nDECIDIU.", detail: punishment ?? "Esperando o resultado oficial da roleta…")
-            if let question {
-                let losers = snapshot.players.filter {
-                    snapshot.match?.seatOrder.contains($0.id) == true
-                    && (question.correctAnswer == nil || snapshot.answers[$0.id] != question.correctAnswer)
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("QUEM VAI PAGAR").font(.headline.weight(.black))
-                    ForEach(losers) { PlayerRow(player: $0, suffix: "👀") }
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(20).paper(fill: TapaPalette.lime)
+            if let index = snapshot.match?.punishmentIndex,
+               let punishments = QuizCatalog.bundled?.punishments,
+               punishments.indices.contains(index) {
+                PunishmentWheel(
+                    items: punishments,
+                    winnerIndex: index,
+                    losers: question.map { snapshot.quizOutcome(for: $0).wrong } ?? []
+                )
+                .id("\(snapshot.quizRoundKey):\(index)")
+            } else {
+                TapaMessage(icon: "sparkles", title: "GIRANDO…",
+                            detail: "Esperando o resultado oficial da roleta.")
             }
             waiting
         }
-    }
-    private var punishment: String? {
-        guard let index = snapshot.match?.punishmentIndex, let list = QuizCatalog.bundled?.punishments,
-              list.indices.contains(index) else { return nil }
-        return list[index]
     }
     private var leaderboard: some View {
         VStack(spacing: 24) {
             TapaMessage(icon: "trophy.fill", title: "RESPEITA\nO PLACAR.", detail: "Os pontos são oficiais. A zoeira é por conta de vocês.")
             VStack(spacing: 18) {
-                ForEach(Array(snapshot.players.sorted {
-                    $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score
-                }.enumerated()), id: \.element.id) { index, player in
+                ForEach(Array(snapshot.matchRanking.enumerated()), id: \.element.id) { index, player in
                     HStack {
                         Text("\(index + 1)").font(.title2.weight(.black)).frame(width: 26)
                         PlayerRow(player: player, suffix: "\(player.score) PTS")
@@ -131,5 +134,126 @@ struct QuizGameView: View {
     private var waiting: some View {
         Label("Acompanhe o host. A próxima fase entra sozinha.", systemImage: "arrow.triangle.2.circlepath")
             .font(.callout.weight(.semibold)).foregroundStyle(.white).multilineTextAlignment(.center)
+    }
+    private var selectedAnswerText: String {
+        guard let answer = snapshot.myAnswer, (0..<4).contains(answer) else {
+            return "Resposta confirmada. Agora espera a galera — sem trocar de ideia."
+        }
+        return "Você marcou \(["A", "B", "C", "D"][answer]). Não dá para trocar."
+    }
+}
+
+private struct PunishmentWheel: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let items: [String]
+    let winnerIndex: Int
+    let losers: [SnapshotPlayer]
+    @State private var rotation = 0.0
+    @State private var revealed = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Text(revealed ? "A PRENDA É" : "RODANDO…")
+                .font(.title2.weight(.black))
+                .foregroundStyle(.white)
+
+            ZStack(alignment: .top) {
+                WheelSegments(count: items.count)
+                    .rotationEffect(.degrees(rotation))
+                    .frame(maxWidth: 330)
+                    .aspectRatio(1, contentMode: .fit)
+                    .shadow(color: .black.opacity(0.5), radius: 0, x: 8, y: 8)
+
+                Image(systemName: "arrowtriangle.down.fill")
+                    .font(.system(size: 38, weight: .black))
+                    .foregroundStyle(.black)
+                    .offset(y: -13)
+            }
+
+            if revealed {
+                TapaMessage(icon: "sparkles", title: "A ROLETA\nDECIDIU.", detail: items[winnerIndex])
+                    .transition(.scale.combined(with: .opacity))
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("QUEM VAI PAGAR").font(.headline.weight(.black))
+                    ForEach(losers) { PlayerRow(player: $0, suffix: "👀") }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .paper(fill: TapaPalette.lime)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .task(id: winnerIndex) {
+            guard items.indices.contains(winnerIndex), !items.isEmpty else { return }
+            rotation = 0
+            revealed = reduceMotion
+            guard !reduceMotion else { return }
+
+            // The database chooses the index. Animation only rotates that
+            // authoritative segment under the pointer and never rerolls it.
+            let segment = 360.0 / Double(items.count)
+            let target = (360.0 * 6) - ((Double(winnerIndex) + 0.5) * segment)
+            withAnimation(.timingCurve(0.12, 0.72, 0.18, 1, duration: 2.8)) {
+                rotation = target
+            }
+            do { try await Task.sleep(for: .milliseconds(2_800)) } catch { return }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
+                revealed = true
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(revealed ? "Prenda: \(items[winnerIndex])" : "Roleta girando")
+    }
+}
+
+private struct WheelSegments: View {
+    let count: Int
+
+    var body: some View {
+        Canvas { context, size in
+            guard count > 0 else { return }
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let radius = min(size.width, size.height) / 2 - 5
+            let angle = (2 * Double.pi) / Double(count)
+
+            for index in 0..<count {
+                let start = -Double.pi / 2 + Double(index) * angle
+                let end = start + angle
+                var path = Path()
+                path.move(to: center)
+                path.addArc(
+                    center: center,
+                    radius: radius,
+                    startAngle: .radians(start),
+                    endAngle: .radians(end),
+                    clockwise: false
+                )
+                path.closeSubpath()
+                context.fill(
+                    path,
+                    with: .color(index.isMultiple(of: 2) ? TapaPalette.lime : .white)
+                )
+                context.stroke(path, with: .color(.black), lineWidth: 3)
+
+                let middle = start + angle / 2
+                let labelPoint = CGPoint(
+                    x: center.x + cos(middle) * radius * 0.7,
+                    y: center.y + sin(middle) * radius * 0.7
+                )
+                context.draw(
+                    Text("\(index + 1)").font(.caption.weight(.black)),
+                    at: labelPoint,
+                    anchor: .center
+                )
+            }
+
+            let rim = Path(ellipseIn: CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            ))
+            context.stroke(rim, with: .color(.black), lineWidth: 7)
+        }
     }
 }

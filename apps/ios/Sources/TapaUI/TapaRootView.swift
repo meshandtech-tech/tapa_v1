@@ -72,20 +72,17 @@ private struct NativeGameRouter: View {
     let snapshot: RoomSnapshot
     @ViewBuilder
     var body: some View {
-        if !snapshot.isMatchParticipant {
-            TapaMessage(icon: "person.crop.circle.badge.clock", title: "PARTIDA EM ANDAMENTO",
-                        detail: "Você já está na sala e entra na próxima partida. Por enquanto, acompanha a bagunça com a galera.")
-        } else {
-            switch snapshot.room.gameId {
-            case .quemErraPaga:
-                QuizGameView(model: model, snapshot: snapshot)
-            case .advogadoDoDiabo:
-                DebateGameView(model: model, snapshot: snapshot)
-            case .drawingTelephone:
-                DrawingGameView(model: model, snapshot: snapshot)
-            case .improvSlides:
-                SlidesGameView(model: model, snapshot: snapshot)
-            }
+        // Late arrivals still receive the public game screen. Each game owns
+        // its spectator behavior and independently disables private actions.
+        switch snapshot.room.gameId {
+        case .quemErraPaga:
+            QuizGameView(model: model, snapshot: snapshot)
+        case .advogadoDoDiabo:
+            DebateGameView(model: model, snapshot: snapshot)
+        case .drawingTelephone:
+            DrawingGameView(model: model, snapshot: snapshot)
+        case .improvSlides:
+            SlidesGameView(model: model, snapshot: snapshot)
         }
     }
 }
