@@ -4,6 +4,47 @@ import XCTest
 
 @MainActor
 final class LobbyViewModelTests: XCTestCase {
+    func testSuccessfulRPCWithoutPersistedAnswerDoesNotConfirm() async throws {
+        let service = RoomServiceMock(snapshot: try fixture("game_question"))
+        let model = makeModel(service: service)
+        model.pin = "0427"
+        model.nickname = "Bia"
+        await model.join()
+        await model.submitAnswer(1)
+        XCTAssertFalse(model.hasAnswered)
+        XCTAssertNotNil(model.actionError)
+        model.stop()
+    }
+
+    func testPersistedAnswerIsConfirmedEvenWhenTransportFails() async throws {
+        let initial = try fixture("game_question")
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(initial)) as? [String: Any])
+        payload["answers"] = ["player-2": 1]
+        let persisted = try JSONDecoder().decode(RoomSnapshot.self, from: JSONSerialization.data(withJSONObject: payload))
+        let service = RoomServiceMock(snapshot: initial)
+        await service.configureSubmission(snapshot: persisted, fail: true)
+        let model = makeModel(service: service)
+        model.pin = "0427"
+        model.nickname = "Bia"
+        await model.join()
+        await model.submitAnswer(1)
+        XCTAssertTrue(model.hasAnswered)
+        XCTAssertNil(model.actionError)
+        await model.submitAnswer(2)
+        let count = await service.submissionCount()
+        XCTAssertEqual(count, 1)
+        model.stop()
+    }
+
+    func testQuizCatalogKeepsWireIndexAndTrickQuestion() throws {
+        let catalog = try XCTUnwrap(QuizCatalog.bundled)
+        let question = try XCTUnwrap(catalog.question(for: fixture("game_question")))
+        XCTAssertEqual(question.id, 213)
+        XCTAssertNil(question.correctAnswer)
+        XCTAssertEqual(question.options.count, 4)
+        XCTAssertEqual(catalog.decks.values.map(\.count).sorted(), [13, 13, 13])
+    }
+
     func testRealtimeInvalidationRefreshesAuthoritativeSnapshot() async throws {
         let lobby = try fixture("lobby")
         let twoPlayers = try fixture("lobby_two_players")
@@ -134,6 +175,9 @@ private actor RoomServiceMock: RoomService {
     private var observations = 0
     private var observationFailuresRemaining = 0
     private var prepareSessionError: Error?
+    private var submissionSnapshot: RoomSnapshot?
+    private var submissionFails = false
+    private var submissions = 0
 
     init(snapshot: RoomSnapshot) {
         currentSnapshot = snapshot
@@ -167,7 +211,18 @@ private actor RoomServiceMock: RoomService {
         currentSnapshot
     }
 
-    func submitAnswer(roomID: String, option: Int) async throws {}
+    func submitAnswer(roomID: String, option: Int) async throws {
+        submissions += 1
+        if let submissionSnapshot { currentSnapshot = submissionSnapshot }
+        if submissionFails { throw URLError(.networkConnectionLost) }
+    }
+
+    func configureSubmission(snapshot: RoomSnapshot, fail: Bool) {
+        submissionSnapshot = snapshot
+        submissionFails = fail
+    }
+
+    func submissionCount() -> Int { submissions }
 
     func roomChanges(roomID: String) async throws -> AsyncStream<RoomObservationEvent> {
         observations += 1

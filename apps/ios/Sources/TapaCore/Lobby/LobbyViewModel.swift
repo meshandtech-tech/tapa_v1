@@ -26,7 +26,6 @@ public final class LobbyViewModel {
     public private(set) var serverOffset: TimeInterval = 0
     public private(set) var isSubmitting = false
     public private(set) var actionError: String?
-    public private(set) var confirmedAnswerRound: String?
 
     @ObservationIgnored private let service: any RoomService
     @ObservationIgnored private let reconnectDelay: @Sendable (Int) async -> Void
@@ -167,8 +166,8 @@ public final class LobbyViewModel {
 
     public var hasAnswered: Bool {
         guard let snapshot else { return false }
-        return snapshot.me.submitted || snapshot.myAnswer != nil
-            || confirmedAnswerRound == snapshot.quizRoundKey
+        // Quiz submissions live in answers, not the drawing game's submitted IDs.
+        return snapshot.myAnswer != nil
     }
 
     public func submitAnswer(_ option: Int) async {
@@ -184,14 +183,13 @@ public final class LobbyViewModel {
         defer { isSubmitting = false }
         do {
             try await service.submitAnswer(roomID: snapshot.room.id, option: option)
-            // Acknowledged by the server, not an optimistic local score/update.
-            confirmedAnswerRound = roundKey
-            await synchronize()
         } catch {
-            await synchronize()
-            if self.snapshot?.quizRoundKey == roundKey, !hasAnswered {
-                actionError = "Não conseguimos confirmar sua resposta. Tente novamente."
-            }
+            // A network error may arrive after the server persisted the answer.
+            // Reconcile below instead of assuming either success or failure.
+        }
+        await synchronize()
+        if self.snapshot?.quizRoundKey == roundKey, !hasAnswered {
+            actionError = "Não conseguimos confirmar sua resposta. Tente novamente."
         }
     }
 
