@@ -44,9 +44,15 @@ Não estamos criando outro jogo nem substituindo a versão web.
    duplicado são bloqueados pelo servidor; o envio iniciado antes de background
    ganha uma janela curta para terminar. Identidade de tese usa `source:id` para
    impedir colisão entre catálogo oficial e tese personalizada.
-5. **Telefone Sem Fio — estrutura participante implementada, playtest pendente.**
-   Atribuição secreta, canvas nativo, rascunho, envio repetível de traços,
-   palpite, passagem, revelação e ranking. Imagem é otimização; traços protegem a página.
+5. **Telefone Sem Fio — implementação nativa auditada, playtest pendente.**
+   Atribuição secreta, canvas nativo, rascunho por caderno/passo, envio
+   idempotente de traços, palpite, passagem, revelação coletiva e ranking.
+   Imagem é otimização: os traços aparecem imediatamente e permanecem como
+   fallback se o Storage falhar. Uma atribuição ausente é rebuscada com espera
+   progressiva e nunca vira falsamente “desenho enviado”. Pausa bloqueia novas
+   contribuições; timeout aceita folha vazia para não travar a corrente; ordem
+   de caderno e página usa as posições autoritativas do snapshot. O host ainda
+   pode pular espera, controlar autoplay e aceitar um sinônimo como acerto.
 6. **Pitch no Escuro — estrutura participante implementada, playtest pendente.**
    Sorteio, preparação, slides reais do acervo, temporização derivada do prazo,
    votação confirmada, nota e ranking.
@@ -76,7 +82,7 @@ Confiabilidade: tentativas de ação têm prazo curto e são idempotentes; snaps
 entrada e presença também têm prazo; retorno do background fecha primeiro o socket
 antigo; presença é renovada; a última sala é restaurada após relançar o app.
 
-Verificação atual: **39 testes Swift passaram**, o projeto Xcode compilou para o
+Verificação atual: **44 testes Swift passaram**, o projeto Xcode compilou para o
 iPhone 17 Pro Simulator e abriu sem crash. Como proteção adicional, os **422
 testes web** e o build Vite passaram sem nenhum arquivo web alterado. Ainda falta
 a partida multiplayer completa web + iOS e a troca real Wi-Fi/5G; não declarar

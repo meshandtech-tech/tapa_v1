@@ -22,8 +22,7 @@ struct DrawingGameView: View {
             TapaMessage(icon: "book.pages.fill", title: "DESENHA. PASSA.\nTENTA ENTENDER.",
                         detail: "Você desenha uma palavra secreta. O caderno passa; outra pessoa adivinha, a próxima desenha o palpite e o estrago cresce.")
         case .passing:
-            TapaMessage(icon: "arrow.right.arrow.left.circle.fill", title: "PASSA O CADERNO",
-                        detail: "Ninguém troca o celular. O Supabase está distribuindo a próxima página.")
+            PassingNotebooksView()
         case .drawStep:
             drawingStep
         case .guessStep:
@@ -52,9 +51,9 @@ struct DrawingGameView: View {
             submissionWaiting(title: "DESENHO ENVIADO")
         } else if let assignment = snapshot.assignment {
             NativeDrawingCanvas(model: model, snapshot: snapshot, assignment: assignment)
+                .id("\(assignment.chainId):\(assignment.stepIndex)")
         } else {
-            TapaMessage(icon: "wifi.exclamationmark", title: "BUSCANDO SEU CADERNO",
-                        detail: "A tarefa não chegou ainda. A sincronização tentará novamente sem inventar uma página.")
+            MissingDrawingAssignmentView(model: model, snapshot: snapshot)
         }
     }
 
@@ -63,31 +62,51 @@ struct DrawingGameView: View {
             submissionWaiting(title: "PALPITE ENVIADO")
         } else if let assignment = snapshot.assignment {
             NativeGuessView(model: model, snapshot: snapshot, assignment: assignment)
+                .id("\(assignment.chainId):\(assignment.stepIndex)")
         } else {
-            TapaMessage(icon: "wifi.exclamationmark", title: "BUSCANDO SEU CADERNO",
-                        detail: "A tarefa não chegou ainda. Aguarde a próxima sincronização.")
+            MissingDrawingAssignmentView(model: model, snapshot: snapshot)
         }
     }
 
     private func submissionWaiting(title: String) -> some View {
-        let done = snapshot.match?.submittedPlayerIds.count ?? 0
-        let total = snapshot.match?.seatOrder.count ?? 0
-        return TapaMessage(icon: "checkmark.seal.fill", title: title,
-                           detail: "\(done) de \(total) pessoas já entregaram. Seu envio está confirmado.")
+        VStack(spacing: 14) {
+            TapaMessage(
+                icon: "checkmark.seal.fill",
+                title: title,
+                detail: "\(snapshot.drawingSubmittedParticipants.count) de \(snapshot.matchParticipants.count) pessoas já entregaram. Seu envio está confirmado."
+            )
+            VStack(spacing: 12) {
+                ForEach(snapshot.matchParticipants) { player in
+                    PlayerRow(
+                        player: player,
+                        suffix: snapshot.drawingSubmittedParticipants.contains(where: { $0.id == player.id })
+                            ? "PRONTO" : "DESENHANDO…"
+                    )
+                }
+            }
+            .padding(18)
+            .paper(fill: TapaPalette.lime)
+        }
     }
 
     @ViewBuilder private var reveal: some View {
-        if let match = snapshot.match,
-           snapshot.chains.indices.contains(match.revealChainIndex) {
-            let chain = snapshot.chains[match.revealChainIndex]
+        if let match = snapshot.match, let chain = snapshot.currentDrawingChain {
             let pageIndex = match.revealPageIndex
+            let owner = snapshot.players.first { $0.id == chain.ownerPlayerId }?.nickname
             VStack(spacing: 16) {
-                Text("CADERNO \(match.revealChainIndex + 1) / \(snapshot.chains.count)")
-                    .font(.caption.weight(.black)).padding(10).paper(fill: TapaPalette.lime)
+                VStack(spacing: 3) {
+                    Text("CADERNO \(match.revealChainIndex + 1) / \(snapshot.chains.count)")
+                        .font(.caption.weight(.black))
+                    if let owner { Text("DE \(owner.uppercased())").font(.headline.weight(.black)) }
+                    Text("PÁGINA \(pageIndex + 1) / \(snapshot.drawingRevealPageCount)")
+                        .font(.caption2.weight(.bold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(10)
+                .paper(fill: TapaPalette.lime)
                 if pageIndex == 0 {
                     TopicCard(topic: chain.originalPrompt, caption: "TUDO COMEÇOU COM")
-                } else if pageIndex <= match.stepCount,
-                          let page = chain.pages.first(where: { $0.stepIndex == pageIndex - 1 }) {
+                } else if let page = snapshot.currentDrawingPage {
                     RevealPage(model: model, snapshot: snapshot, page: page)
                 } else {
                     ChainComparison(snapshot: snapshot, chain: chain)
@@ -97,6 +116,85 @@ struct DrawingGameView: View {
             TapaMessage(icon: "books.vertical.fill", title: "ABRINDO O CADERNO",
                         detail: "Esperando a página oficial da revelação.")
         }
+    }
+}
+
+private struct MissingDrawingAssignmentView: View {
+    @Bindable var model: LobbyViewModel
+    let snapshot: RoomSnapshot
+    @State private var attempt = 0
+    @State private var retryCycle = 0
+    private let delays = [400, 1_200, 2_500, 4_000]
+
+    var body: some View {
+        VStack(spacing: 18) {
+            TapaMessage(
+                icon: attempt >= delays.count ? "exclamationmark.triangle.fill" : "wifi.exclamationmark",
+                title: attempt >= delays.count ? "SEU CADERNO NÃO CHEGOU" : "PREPARANDO SEU CADERNO",
+                detail: attempt >= delays.count
+                    ? "Este aparelho ainda não recebeu a tarefa do passo \((snapshot.match?.stepIndex ?? 0) + 1). Normalmente é a rede."
+                    : "Buscando a tarefa oficial no Supabase · tentativa \(attempt + 1) de \(delays.count)."
+            )
+            if attempt >= delays.count {
+                Button {
+                    attempt = 0
+                    retryCycle += 1
+                } label: {
+                    Label("BUSCAR DE NOVO", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(TapaButtonStyle(dark: true))
+                Text("Se continuar assim, peça ao host para pular a espera.")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .task(id: "\(snapshot.actionRoundKey):\(retryCycle)") {
+            for milliseconds in delays {
+                do { try await Task.sleep(for: .milliseconds(milliseconds)) }
+                catch { return }
+                guard snapshot.assignment == nil else { return }
+                await model.synchronize()
+                attempt += 1
+            }
+        }
+    }
+}
+
+private struct PassingNotebooksView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var moving = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                ForEach(0..<3, id: \.self) { index in
+                    Image(systemName: "book.closed.fill")
+                        .font(.system(size: 48, weight: .black))
+                        .padding(12)
+                        .background(index.isMultiple(of: 2) ? TapaPalette.lime : Color.white)
+                        .overlay(Rectangle().stroke(.black, lineWidth: 4))
+                        .offset(x: reduceMotion ? CGFloat((index - 1) * 54) : (moving ? 96 : -96))
+                        .rotationEffect(.degrees(moving ? 7 : -7))
+                        .opacity(reduceMotion ? 1 : (moving ? 0.15 : 1))
+                        .animation(
+                            reduceMotion ? nil : .easeInOut(duration: 1.05).repeatForever(autoreverses: false).delay(Double(index) * 0.14),
+                            value: moving
+                        )
+                }
+            }
+            .frame(height: 100)
+            Text("PASSANDO OS CADERNOS…")
+                .font(.title2.weight(.black))
+                .multilineTextAlignment(.center)
+            Text("Ninguém troca de celular. A próxima página vem até você.")
+                .font(.body.weight(.medium))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(28)
+        .paper()
+        .onAppear { moving = true }
     }
 }
 
@@ -133,9 +231,14 @@ private struct NativeGuessView: View {
                 Label(model.isSubmitting ? "ENVIANDO…" : "ENVIAR PALPITE", systemImage: "paperplane.fill")
             }.buttonStyle(TapaButtonStyle(dark: true))
                 .disabled(model.isSubmitting || requestedSubmission
+                          || snapshot.room.pausedAt != nil
                           || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .onChange(of: text) { _, value in
+            if value.count > 60 {
+                text = String(value.prefix(60))
+                return
+            }
             UserDefaults.standard.set(value, forKey: Self.draftKey(snapshot: snapshot, assignment: assignment))
         }
         .onChange(of: snapshot.me.submitted) { _, submitted in
@@ -155,8 +258,10 @@ private struct NativeGuessView: View {
         #if os(iOS)
         TextField("Escreve seu palpite…", text: $text)
             .textInputAutocapitalization(.sentences)
+            .disabled(snapshot.room.pausedAt != nil)
         #else
         TextField("Escreve seu palpite…", text: $text)
+            .disabled(snapshot.room.pausedAt != nil)
         #endif
     }
 
@@ -166,7 +271,13 @@ private struct NativeGuessView: View {
         requestedSubmission = true
         runProtectedGameAction(named: "Enviar palpite") {
             await model.submitGuess(clean)
-            if !model.hasCurrentDrawingSubmission { requestedSubmission = false }
+            if model.hasCurrentDrawingSubmission {
+                UserDefaults.standard.removeObject(
+                    forKey: Self.draftKey(snapshot: snapshot, assignment: assignment)
+                )
+            } else {
+                requestedSubmission = false
+            }
         }
     }
 
@@ -186,6 +297,7 @@ private struct NativeDrawingCanvas: View {
     @State private var colorIndex = 0
     @State private var width = 0.014
     @State private var requestedSubmission = false
+    @State private var showingClearConfirmation = false
     private let brushSizes = [0.006, 0.014, 0.032]
     private let palette = ["#111111", "#e63946", "#1d6fe0", "#2a9d4a", "#f2b705", "#7b2cbf", "#f4741f", "#8b5e3c"]
 
@@ -255,10 +367,13 @@ private struct NativeDrawingCanvas: View {
                 Button { tool = tool == .eraser ? .brush : .eraser } label: {
                     Label(tool == .eraser ? "Pincel" : "Borracha", systemImage: tool == .eraser ? "paintbrush" : "eraser")
                 }
-                Button { strokes.removeAll(); saveDraft() } label: {
+                Button { showingClearConfirmation = true } label: {
                     Label("Limpar", systemImage: "trash")
                 }
-            }.font(.caption.weight(.bold)).buttonStyle(.bordered)
+            }
+            .font(.caption.weight(.bold))
+            .buttonStyle(.bordered)
+            .disabled(model.isSubmitting || requestedSubmission || snapshot.room.pausedAt != nil)
             HStack(spacing: 12) {
                 Text("TRAÇO").font(.caption2.weight(.black))
                 ForEach(Array(brushSizes.enumerated()), id: \.offset) { index, size in
@@ -282,7 +397,18 @@ private struct NativeDrawingCanvas: View {
             Button { submit(status: .submitted) } label: {
                 Label(model.isSubmitting ? "ENVIANDO…" : "ENVIAR DESENHO", systemImage: "paperplane.fill")
             }.buttonStyle(TapaButtonStyle(dark: true))
-                .disabled(model.isSubmitting || requestedSubmission || snapshot.room.pausedAt != nil)
+                .disabled(model.isSubmitting || requestedSubmission
+                          || snapshot.room.pausedAt != nil || !hasVisibleStroke)
+        }
+        .alert("Limpar todo o desenho?", isPresented: $showingClearConfirmation) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Limpar", role: .destructive) {
+                strokes.removeAll()
+                activeStroke = nil
+                saveDraft()
+            }
+        } message: {
+            Text("Não dá para desfazer depois.")
         }
         .onChange(of: snapshot.me.submitted) { _, submitted in
             if submitted { clearDraft() }
@@ -315,7 +441,11 @@ private struct NativeDrawingCanvas: View {
         runProtectedGameAction(named: "Enviar desenho") {
             let payload = strokes + (activeStroke.map { [$0] } ?? [])
             await model.submitDrawing(strokes: DrawingCodec.encode(payload), status: status)
-            if !model.hasCurrentDrawingSubmission { requestedSubmission = false }
+            if model.hasCurrentDrawingSubmission {
+                clearDraft()
+            } else {
+                requestedSubmission = false
+            }
         }
     }
 
@@ -356,14 +486,12 @@ private struct DrawingReplayView: View {
     let strokes: JSONValue?
     let status: SubmissionStatus?
     @State private var imageURL: URL?
+    @State private var resolvedStoragePath: String?
     private let palette = ["#111111", "#e63946", "#1d6fe0", "#2a9d4a", "#f2b705", "#7b2cbf", "#f4741f", "#8b5e3c"]
     var body: some View {
         ZStack {
             Color.white
-            if let imageURL {
-                AsyncImage(url: imageURL) { image in image.resizable().scaledToFit() }
-                    placeholder: { ProgressView() }
-            } else if let decoded = DrawingCodec.decode(strokes) {
+            if let decoded = DrawingCodec.decode(strokes) {
                 Canvas { context, size in
                     for stroke in decoded {
                         render(stroke, context: &context, size: size)
@@ -372,9 +500,30 @@ private struct DrawingReplayView: View {
             } else {
                 ContentUnavailableView(fallback, systemImage: "pencil.slash")
             }
+            if resolvedStoragePath == storagePath, let imageURL {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case let .success(image):
+                        image.resizable().scaledToFit().background(.white)
+                    case .empty:
+                        if DrawingCodec.decode(strokes) == nil { ProgressView() }
+                    case .failure:
+                        EmptyView()
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+            }
         }
         .task(id: storagePath) {
-            if let storagePath { imageURL = await model.publicDrawingURL(path: storagePath) }
+            imageURL = nil
+            resolvedStoragePath = nil
+            if let storagePath {
+                let url = await model.publicDrawingURL(path: storagePath)
+                guard !Task.isCancelled else { return }
+                imageURL = url
+                resolvedStoragePath = storagePath
+            }
         }
     }
     private var fallback: String {
@@ -428,12 +577,8 @@ private struct ChainComparison: View {
     let snapshot: RoomSnapshot
     let chain: SnapshotChain
     var body: some View {
-        let final = chain.pages.last(where: { $0.kind == "guess" })?.text
-        let survived = chain.countedAsMatch || AnswerMatcher.matches(
-            guess: final ?? "",
-            prompt: chain.originalPrompt,
-            acceptedAnswers: chain.acceptedAnswers
-        )
+        let final = snapshot.finalDrawingGuess(in: chain)
+        let survived = snapshot.drawingChainSurvived(chain)
         return VStack(spacing: 18) {
             TopicCard(topic: chain.originalPrompt, caption: "COMEÇOU COMO")
             Image(systemName: "arrow.down").font(.largeTitle.weight(.black))

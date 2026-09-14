@@ -81,19 +81,11 @@ public final class LobbyViewModel {
     public var canCountCurrentDrawingAsMatch: Bool {
         guard let snapshot, isHost, snapshot.room.gameId == .drawingTelephone,
               snapshot.room.phase == .revealPage, let match = snapshot.match,
-              match.revealPageIndex == match.stepCount + 1,
-              snapshot.chains.indices.contains(match.revealChainIndex)
+              match.revealPageIndex == match.stepCount + 1
         else { return false }
-        let chain = snapshot.chains[match.revealChainIndex]
+        guard let chain = snapshot.currentDrawingChain else { return false }
         guard !chain.countedAsMatch else { return false }
-        let finalGuess = chain.pages
-            .filter { $0.kind == "guess" }
-            .max { $0.stepIndex < $1.stepIndex }?.text ?? ""
-        return !AnswerMatcher.matches(
-            guess: finalGuess,
-            prompt: chain.originalPrompt,
-            acceptedAnswers: chain.acceptedAnswers
-        )
+        return !snapshot.drawingChainSurvived(chain)
     }
 
     public func join() async {
@@ -560,10 +552,9 @@ public final class LobbyViewModel {
     }
 
     public func countCurrentDrawingAsMatch() async {
-        guard let snapshot, canCountCurrentDrawingAsMatch, let match = snapshot.match,
-              snapshot.chains.indices.contains(match.revealChainIndex), !isSubmitting
+        guard let snapshot, canCountCurrentDrawingAsMatch, !isSubmitting
         else { return }
-        let chainID = snapshot.chains[match.revealChainIndex].id
+        guard let chainID = snapshot.currentDrawingChain?.id else { return }
         isSubmitting = true
         actionError = nil
         defer { isSubmitting = false }
@@ -630,6 +621,7 @@ public final class LobbyViewModel {
     ) async {
         guard let snapshot,
               snapshot.room.phase == .drawStep || snapshot.room.phase == .guessStep,
+              snapshot.room.pausedAt == nil,
               snapshot.isMatchParticipant, snapshot.assignment != nil,
               !snapshot.me.submitted, !isSubmitting
         else { return }

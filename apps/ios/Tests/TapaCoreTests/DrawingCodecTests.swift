@@ -52,4 +52,11 @@ final class DrawingCodecTests: XCTestCase {
         let result = DrawingCodec.simplified(points, tolerance: 0.01)
         XCTAssertEqual(result, [points[0], points[2], points[3]])
     }
+
+    func testBlankTimedOutDrawingStillHasAValidWireDocument() throws {
+        let encoded = DrawingCodec.encode([])
+        let decoded = try XCTUnwrap(DrawingCodec.decode(encoded))
+
+        XCTAssertTrue(decoded.isEmpty)
+    }
 }

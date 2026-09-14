@@ -303,6 +303,27 @@ final class LobbyViewModelTests: XCTestCase {
         model.stop()
     }
 
+    func testPausedDrawingPhaseRejectsLocalContributionAttempt() async throws {
+        let paused = try snapshotByChanging(try fixture("drawing_step")) { payload in
+            if var room = payload["room"] as? [String: Any] {
+                room["pausedAt"] = "2026-09-09T12:00:30.000Z"
+                payload["room"] = room
+            }
+        }
+        let service = RoomServiceMock(snapshot: paused)
+        let model = makeModel(service: service)
+        model.pin = "8642"
+        model.nickname = "Bia"
+        await model.join()
+
+        await model.submitDrawing(strokes: DrawingCodec.encode([]), status: .timeout)
+
+        let contributionCount = await service.contributionCount()
+        XCTAssertEqual(contributionCount, 0)
+        XCTAssertFalse(model.hasCurrentDrawingSubmission)
+        model.stop()
+    }
+
     func testSuccessfulRPCWithoutPersistedAnswerDoesNotConfirm() async throws {
         let service = RoomServiceMock(snapshot: try fixture("game_question"))
         let model = makeModel(service: service)
