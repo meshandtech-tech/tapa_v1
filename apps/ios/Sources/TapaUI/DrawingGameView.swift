@@ -168,7 +168,7 @@ private struct NativeGuessView: View {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !requestedSubmission, !clean.isEmpty, !snapshot.me.submitted else { return }
         requestedSubmission = true
-        Task {
+        runProtectedGameAction(named: "Enviar palpite") {
             await model.submitGuess(clean)
             if !model.hasCurrentDrawingSubmission { requestedSubmission = false }
         }
@@ -316,7 +316,7 @@ private struct NativeDrawingCanvas: View {
         guard !requestedSubmission, !snapshot.me.submitted else { return }
         requestedSubmission = true
         saveDraft()
-        Task {
+        runProtectedGameAction(named: "Enviar desenho") {
             let payload = strokes + (activeStroke.map { [$0] } ?? [])
             await model.submitDrawing(strokes: DrawingCodec.encode(payload), status: status)
             if !model.hasCurrentDrawingSubmission { requestedSubmission = false }

@@ -1,5 +1,47 @@
 import SwiftUI
 import TapaCore
+#if canImport(UIKit)
+import UIKit
+#endif
+
+/// Keeps a last-second vote/drawing/guess alive while iOS moves the app to
+/// the background. It does not schedule future work; it only gives an already
+/// started, short authoritative RPC time to finish.
+@MainActor
+func runProtectedGameAction(
+    named name: String,
+    operation: @escaping @MainActor () async -> Void
+) {
+    #if canImport(UIKit)
+    let lease = BackgroundExecutionLease(name: name)
+    Task { @MainActor in
+        await operation()
+        lease.end()
+    }
+    #else
+    Task { @MainActor in await operation() }
+    #endif
+}
+
+#if canImport(UIKit)
+@MainActor
+private final class BackgroundExecutionLease {
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+    init(name: String) {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            Task { @MainActor in self?.end() }
+        }
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
+    }
+
+}
+#endif
 
 struct GameHeader: View {
     let title: String
